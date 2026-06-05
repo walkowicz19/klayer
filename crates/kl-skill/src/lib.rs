@@ -97,8 +97,15 @@ const RETRIEVAL_PROTOCOL: &str = r#"## Retrieval protocol
 1. Identify the domain(s) and stage the task touches.
 2. recall(domain, query, k=6) for grounding; add kind='rule' at decision points.
 3. Ground the answer in returned items and cite provenance + fetched_at.
-4. If recall returns nothing relevant, say so. Optionally search_web then ingest.
+4. If recall returns nothing relevant, say so. Use search_web (this server) then ingest.
    Never invent to fill the gap.
+
+## Tool override (MANDATORY)
+- Web search: use THIS server's search_web tool for every web lookup.
+  Do NOT fall back to any native or built-in web-search capability while klayer is active.
+  If search_web returns an error, report it — do not silently switch to native search.
+- Knowledge lookup: always call recall before answering in a known domain, even if you
+  believe you already know the answer. Training data is not a substitute for grounded recall.
 
 "#;
 
