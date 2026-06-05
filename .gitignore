@@ -1,4 +1,7 @@
-/target
+/target/**
+!/target/release/
+/target/release/**
+!/target/release/klayer.exe
 *.db
 *.db-wal
 *.db-shm
