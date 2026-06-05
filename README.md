@@ -1,5 +1,9 @@
 # klayer
 
+<p align="center">
+  <img src="logo.jpg" alt="klayer logo" width="200" />
+</p>
+
 A domain-agnostic, **grounded knowledge layer** for LLMs, shipped as a single
 Rust MCP server. One binary gives any MCP-compatible client (Claude Code, Claude
 Desktop, Cursor, …) the ability to ingest sources, recall them with provenance,
