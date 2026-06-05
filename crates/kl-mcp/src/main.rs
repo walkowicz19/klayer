@@ -173,10 +173,11 @@ impl Klayer {
         json_ok(&results)
     }
 
-    #[tool(description = "Fetch a URL, extract readable text, chunk it, and store it in the untrusted reference tier under a domain.")]
+    #[tool(description = "Fetch a URL and store its content in the untrusted reference tier under a domain. Supports HTML pages, PDFs, JSON APIs, and plain-text / Markdown files.")]
     async fn ingest(&self, Parameters(p): Parameters<IngestParams>) -> Result<CallToolResult, McpError> {
-        let body = kl_ingest::fetch(&p.url).await.map_err(err)?;
-        let (title, text) = kl_ingest::extract(&body);
+        let fetched = kl_ingest::fetch(&p.url).await.map_err(err)?;
+        let content_type = fetched.content_type.clone();
+        let (title, text) = kl_ingest::extract(&fetched);
         let chunks = kl_ingest::chunk(&text, 800);
         if chunks.is_empty() {
             return text_ok(format!("No extractable text at {}", p.url));
@@ -187,7 +188,7 @@ impl Klayer {
             .map_err(err)?;
         let n = self.store.add_chunks(source_id, &p.domain, &chunks).map_err(err)?;
         text_ok(format!(
-            "Ingested {n} chunks from \"{title}\" into domain '{}' (source #{source_id}, trust=untrusted).",
+            "Ingested {n} chunks from \"{title}\" into domain '{}' (source #{source_id}, type={content_type}, trust=untrusted).",
             p.domain
         ))
     }
