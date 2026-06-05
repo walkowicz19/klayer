@@ -39,27 +39,39 @@ only reviewed + user are ENFORCED.
 `forget` · `list_knowledge` · `set_preference` · `list_domains` ·
 `register_domain` · `log_episode` · `compile_skill`
 
-## Build & run
+## Quick start (pre-built binary)
 
-```bash
-cargo build --release
-KLAYER_DB=./klayer.db KLAYER_SKILL=./skills/klayer/SKILL.md ./target/release/klayer
-```
+A compiled Windows binary is included in the repo at `target/release/klayer.exe`.
+No Rust toolchain or model downloads required — just download and run.
 
-The server speaks MCP over stdio. Env vars: `KLAYER_DB` (default `klayer.db`),
-`KLAYER_SKILL` (default `skills/klayer/SKILL.md`), `RUST_LOG` (default `info`).
+**Steps:**
 
-## Wire into an MCP client
+1. Download `target/release/klayer.exe` from this repository.
+2. Wire it into your MCP client config (see below).
+3. Point `KLAYER_DB` at a writable path for the SQLite database.
 
 ```json
 {
   "mcpServers": {
     "klayer": {
-      "command": "/absolute/path/to/target/release/klayer",
-      "env": { "KLAYER_DB": "/abs/path/klayer.db" }
+      "command": "C:\\path\\to\\klayer.exe",
+      "env": { "KLAYER_DB": "C:\\path\\to\\klayer.db" }
     }
   }
 }
+```
+
+The server speaks MCP over stdio. Env vars: `KLAYER_DB` (default `klayer.db`),
+`KLAYER_SKILL` (default `skills/klayer/SKILL.md`), `RUST_LOG` (default `info`).
+
+## Build from source
+
+Only needed if you want to modify klayer or target a different OS.
+Requires the Rust toolchain (`rustup`).
+
+```bash
+cargo build --release
+KLAYER_DB=./klayer.db KLAYER_SKILL=./skills/klayer/SKILL.md ./target/release/klayer
 ```
 
 ## Seed a domain (example: secure-coding)
