@@ -1,7 +1,7 @@
 # klayer
 
 <p align="center">
-  <img src="logo.jpg" alt="klayer logo" width="200" />
+  <img src="logo-v2.jpg" alt="klayer logo" width="200" />
 </p>
 
 A domain-agnostic, **grounded knowledge layer** for LLMs, shipped as a single
