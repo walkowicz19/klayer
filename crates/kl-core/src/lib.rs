@@ -139,6 +139,31 @@ pub struct StageRow {
     pub description: Option<String>,
 }
 
+/// A row returned by list_sources.
+#[derive(Debug, Clone, Serialize)]
+pub struct SourceRow {
+    pub id: i64,
+    pub kind: String,
+    pub uri: Option<String>,
+    pub title: Option<String>,
+    pub domain: String,
+    pub fetched_at: i64,
+    pub trust: String,
+}
+
+/// A row returned by list_episodes.
+#[derive(Debug, Clone, Serialize)]
+pub struct EpisodeRow {
+    pub id: i64,
+    pub run_id: String,
+    pub step: i64,
+    pub stage: Option<String>,
+    pub action: Option<String>,
+    pub observation: Option<String>,
+    pub outcome: Option<String>,
+    pub ts: i64,
+}
+
 /// Pluggable web search. Implemented in kl-search; held as a trait object so the
 /// backend can be swapped (scraper today, real API later) without touching the server.
 #[async_trait]

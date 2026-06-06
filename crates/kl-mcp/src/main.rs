@@ -131,6 +131,18 @@ struct CompileParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ListSourcesParams {
+    #[schemars(description = "Filter by domain. Omit to list sources across all domains.")]
+    domain: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ListEpisodesParams {
+    #[schemars(description = "Filter by run_id. Omit to list all recent episodes.")]
+    run_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct ClearDomainParams {
     #[schemars(description = "Domain to clear.")]
     domain: String,
@@ -278,6 +290,18 @@ impl Klayer {
     fn list_knowledge(&self, Parameters(p): Parameters<ListKnowledgeParams>) -> Result<CallToolResult, McpError> {
         let kind = p.kind.as_deref().and_then(Kind::parse);
         let rows = self.store.list_knowledge(&p.domain, p.trust.as_deref(), kind).map_err(err)?;
+        json_ok(&rows)
+    }
+
+    #[tool(description = "List ingested sources (files/URLs) for a domain or all domains. Shows id, URI, title, fetch time, and trust.")]
+    fn list_sources(&self, Parameters(p): Parameters<ListSourcesParams>) -> Result<CallToolResult, McpError> {
+        let rows = self.store.list_sources(p.domain.as_deref()).map_err(err)?;
+        json_ok(&rows)
+    }
+
+    #[tool(description = "List agentic run episodes from the audit trail. Filter by run_id to inspect a specific run, or omit to see all recent episodes.")]
+    fn list_episodes(&self, Parameters(p): Parameters<ListEpisodesParams>) -> Result<CallToolResult, McpError> {
+        let rows = self.store.list_episodes(p.run_id.as_deref()).map_err(err)?;
         json_ok(&rows)
     }
 

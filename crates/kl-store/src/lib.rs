@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use kl_core::{DomainRow, Kind, KnowledgeRow, RecallHit, StageRow, Trust};
+use kl_core::{DomainRow, EpisodeRow, Kind, KnowledgeRow, RecallHit, SourceRow, StageRow, Trust};
 use rusqlite::{params, Connection, OptionalExtension};
 
 const MIGRATION: &str = include_str!("migrations/0001_init.sql");
@@ -373,6 +373,55 @@ impl Store {
             params![run_id, step, stage, action, observation, outcome, now],
         )?;
         Ok(c.last_insert_rowid())
+    }
+
+    /// List ingested sources for a domain (or all domains if None). Newest first, limit 100.
+    pub fn list_sources(&self, domain: Option<&str>) -> Result<Vec<SourceRow>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, kind, uri, title, domain, fetched_at, trust
+               FROM sources
+              WHERE (?1 IS NULL OR domain = ?1)
+              ORDER BY fetched_at DESC
+              LIMIT 100",
+        )?;
+        let rows = stmt.query_map(params![domain], |r| {
+            Ok(SourceRow {
+                id: r.get(0)?,
+                kind: r.get(1)?,
+                uri: r.get(2)?,
+                title: r.get(3)?,
+                domain: r.get(4)?,
+                fetched_at: r.get(5)?,
+                trust: r.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// List agentic run episodes. Filter by run_id if provided. Newest first, limit 200.
+    pub fn list_episodes(&self, run_id: Option<&str>) -> Result<Vec<EpisodeRow>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, run_id, step, stage, action, observation, outcome, ts
+               FROM episodes
+              WHERE (?1 IS NULL OR run_id = ?1)
+              ORDER BY ts DESC, step DESC
+              LIMIT 200",
+        )?;
+        let rows = stmt.query_map(params![run_id], |r| {
+            Ok(EpisodeRow {
+                id: r.get(0)?,
+                run_id: r.get(1)?,
+                step: r.get(2)?,
+                stage: r.get(3)?,
+                action: r.get(4)?,
+                observation: r.get(5)?,
+                outcome: r.get(6)?,
+                ts: r.get(7)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     pub fn domain_exists(&self, name: &str) -> Result<bool> {
