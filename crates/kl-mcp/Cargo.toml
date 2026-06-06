@@ -27,3 +27,6 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 rmcp.workspace = true
+axum.workspace = true
+tower-http.workspace = true
+open.workspace = true

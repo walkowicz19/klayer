@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>klayer — Dashboard</title>
+  <style>
+    :root {
+      --bg:      #F0F2F7;
+      --surface: #FFFFFF;
+      --border:  #E2E8F0;
+      --blue:    #2B6EE8;
+      --blue-lt: #EEF3FD;
+      --navy:    #0D1B3E;
+      --text:    #1A2742;
+      --muted:   #6B7A99;
+      --green:   #1DB87E;
+      --amber:   #F59E0B;
+      --red:     #EF4444;
+      --r:       10px;
+      --r-sm:    6px;
+      --sh:      0 1px 3px rgba(13,27,62,.06), 0 1px 2px rgba(13,27,62,.04);
+      --sh-md:   0 4px 14px rgba(13,27,62,.09);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      background: var(--bg); color: var(--text); font-size: 14px;
+      line-height: 1.5; min-height: 100vh;
+    }
+
+    /* ── Layout ── */
+    .layout { display: grid; grid-template-columns: 216px 1fr; grid-template-rows: 52px 1fr; min-height: 100vh; }
+
+    /* ── Topbar ── */
+    .topbar {
+      grid-column: 1/-1; background: var(--navy);
+      display: flex; align-items: center; padding: 0 20px; gap: 10px;
+      position: sticky; top: 0; z-index: 20;
+    }
+    .logo-layers { display: flex; flex-direction: column; gap: 2.5px; }
+    .logo-layers span { display: block; height: 2.5px; background: var(--blue); border-radius: 2px; }
+    .logo-layers span:nth-child(1) { width: 20px; }
+    .logo-layers span:nth-child(2) { width: 14px; margin-left: 3px; }
+    .logo-layers span:nth-child(3) { width: 8px;  margin-left: 6px; }
+    .logo-word { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: -.4px; }
+    .topbar-end { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 2px rgba(29,184,126,.25); }
+    .topbar-hint { font-size: 11px; color: rgba(255,255,255,.45); }
+    .refresh-btn {
+      font-size: 11px; font-weight: 600; color: rgba(255,255,255,.7);
+      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
+      border-radius: var(--r-sm); padding: 4px 10px; cursor: pointer; transition: background .15s;
+    }
+    .refresh-btn:hover { background: rgba(255,255,255,.14); }
+    .refresh-btn.spinning { opacity: .6; pointer-events: none; }
+
+    /* ── Sidebar ── */
+    .sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 18px 0; overflow-y: auto; }
+    .nav-group { padding: 0 10px; margin-bottom: 18px; }
+    .nav-group-label { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 0 8px; margin-bottom: 3px; }
+    .nav-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: var(--r-sm); border: none; background: none; color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer; text-align: left; transition: background .12s, color .12s; }
+    .nav-btn:hover { background: var(--bg); color: var(--text); }
+    .nav-btn.active { background: var(--blue-lt); color: var(--blue); }
+    .nav-badge { margin-left: auto; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 20px; background: var(--bg); color: var(--muted); }
+    .nav-btn.active .nav-badge { background: rgba(43,110,232,.15); color: var(--blue); }
+
+    /* ── Main ── */
+    .main { overflow-y: auto; padding: 28px 30px; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Page header ── */
+    .ph { margin-bottom: 22px; }
+    .ph-title { font-size: 19px; font-weight: 700; color: var(--navy); letter-spacing: -.3px; }
+    .ph-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Stats ── */
+    .stats { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px; margin-bottom: 22px; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px 18px; box-shadow: var(--sh); }
+    .stat.accent { border-top: 3px solid var(--blue); }
+    .stat-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 6px; }
+    .stat-val { font-size: 30px; font-weight: 700; color: var(--navy); letter-spacing: -1.5px; line-height: 1; }
+    .stat-hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .stat-val.loading { width: 48px; height: 30px; background: var(--border); border-radius: 4px; animation: shimmer 1.4s infinite; }
+
+    /* ── Shimmer ── */
+    @keyframes shimmer { 0%,100%{opacity:.5} 50%{opacity:1} }
+    .skeleton { background: var(--border); border-radius: 4px; animation: shimmer 1.4s infinite; }
+
+    /* ── Grid ── */
+    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+
+    /* ── Card ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--sh); overflow: hidden; }
+    .card + .card { margin-top: 18px; }
+    .ch { padding: 14px 18px 11px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+    .ch-title { font-size: 13px; font-weight: 600; color: var(--navy); }
+    .ch-count { margin-left: auto; font-size: 12px; color: var(--muted); }
+    .cb { padding: 16px 18px; }
+
+    /* ── Trust flow ── */
+    .tflow { display: flex; align-items: stretch; padding: 18px 16px; }
+    .tnode { flex: 1; text-align: center; padding: 14px 10px; border-radius: var(--r-sm); }
+    .tnode-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
+    .tnode-val { font-size: 24px; font-weight: 700; margin: 4px 0 2px; letter-spacing: -1px; }
+    .tnode-sub { font-size: 10px; opacity: .65; }
+    .tn-raw  { background: rgba(156,163,175,.1); } .tn-raw  .tnode-lbl,.tn-raw  .tnode-val { color: #6B7280; }
+    .tn-prop { background: rgba(245,158,11,.1);  } .tn-prop .tnode-lbl,.tn-prop .tnode-val { color: #B45309; }
+    .tn-rev  { background: rgba(43,110,232,.1);  } .tn-rev  .tnode-lbl,.tn-rev  .tnode-val { color: var(--blue); }
+    .tn-usr  { background: rgba(29,184,126,.1);  } .tn-usr  .tnode-lbl,.tn-usr  .tnode-val { color: #059669; }
+    .tarrow { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 6px; gap: 2px; flex-shrink: 0; }
+    .tarrow-lbl { font-size: 9px; color: var(--muted); white-space: nowrap; }
+    .tarrow-sym { font-size: 16px; color: var(--border); }
+
+    /* ── Domain cards ── */
+    .domain-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(270px,1fr)); gap: 14px; margin-bottom: 20px; }
+    .dcard { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 18px 20px; box-shadow: var(--sh); transition: box-shadow .15s; }
+    .dcard:hover { box-shadow: var(--sh-md); }
+    .dcard-name { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+    .dcard-desc { font-size: 12px; color: var(--muted); margin-bottom: 14px; line-height: 1.45; }
+    .dcard-row { display: flex; gap: 20px; }
+    .dcard-stat-val { font-size: 22px; font-weight: 700; color: var(--blue); letter-spacing: -.5px; line-height: 1; }
+    .dcard-stat-lbl { font-size: 10px; color: var(--muted); margin-top: 1px; }
+    .dbar { margin-top: 14px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
+    .dbar-fill { height: 100%; background: var(--blue); border-radius: 2px; }
+
+    /* ── Badges ── */
+    .badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .b-user     { background: rgba(29,184,126,.12); color: #059669; }
+    .b-reviewed { background: rgba(43,110,232,.12); color: var(--blue); }
+    .b-proposed { background: rgba(245,158,11,.12); color: #B45309; }
+    .b-untrusted{ background: rgba(156,163,175,.15); color: #6B7280; }
+    .ktag { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .kt-rule { background: rgba(43,110,232,.09); color: var(--blue); }
+    .kt-fact { background: rgba(29,184,126,.09); color: #059669; }
+    .kt-note { background: rgba(156,163,175,.12); color: #6B7280; }
+    .dtag { font-size: 12px; font-weight: 500; color: var(--blue); }
+
+    /* ── Table ── */
+    .tw { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding: 9px 16px; border-bottom: 1px solid var(--border); background: var(--bg); white-space: nowrap; }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--bg); }
+    td { padding: 10px 16px; vertical-align: middle; }
+    .td-main { font-weight: 600; color: var(--navy); max-width: 300px; }
+    .td-dim  { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .td-mono { font-family: 'SF Mono','Fira Code',monospace; font-size: 11px; color: var(--muted); }
+
+    /* ── Episodes ── */
+    .ep-list { display: flex; flex-direction: column; }
+    .ep-item { display: flex; align-items: flex-start; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--border); }
+    .ep-item:last-child { border-bottom: none; }
+    .ep-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+    .ep-body { flex: 1; min-width: 0; }
+    .ep-action { font-size: 13px; font-weight: 600; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ep-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .ep-out { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
+    .eo-ok   { background: rgba(29,184,126,.12); color: #059669; }
+    .eo-warn { background: rgba(245,158,11,.12);  color: #B45309; }
+    .eo-blk  { background: rgba(239,68,68,.12);   color: #DC2626; }
+
+    /* ── Sources ── */
+    .src-item { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .src-item:last-child { border-bottom: none; }
+    .src-icon { width: 30px; height: 30px; border-radius: var(--r-sm); background: var(--blue-lt); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+    .src-url { font-size: 12px; font-weight: 600; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px; }
+    .src-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .src-end { margin-left: auto; flex-shrink: 0; }
+
+    /* ── Domain glance bars ── */
+    .dglance-item { margin-bottom: 13px; }
+    .dglance-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+    .dglance-name { font-size: 13px; font-weight: 600; color: var(--navy); }
+    .dglance-hint { font-size: 11px; color: var(--muted); }
+
+    /* ── Promote button ── */
+    .promote-btn { font-size: 11px; font-weight: 600; color: var(--blue); background: var(--blue-lt); border: none; border-radius: 4px; padding: 3px 10px; cursor: pointer; transition: background .12s; }
+    .promote-btn:hover { background: rgba(43,110,232,.2); }
+
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 32px 20px; color: var(--muted); font-size: 13px; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .ico { width: 15px; height: 15px; flex-shrink: 0; }
+
+    /* ── Preferences ── */
+    .pref-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .pref-item:last-child { border-bottom: none; }
+    .pref-val { font-size: 12px; color: var(--text); }
+    .pref-scope { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--bg); padding: 1px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; }
+
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .stats { grid-template-columns: repeat(3,1fr); }
+      .g2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="logo-layers"><span></span><span></span><span></span></div>
+    <span class="logo-word">klayer</span>
+    <div class="topbar-end">
+      <div class="pulse" id="status-dot"></div>
+      <span class="topbar-hint" id="status-text">connecting…</span>
+      <button class="refresh-btn" id="refresh-btn" onclick="loadData()">↺ Refresh</button>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="nav-group">
+      <div class="nav-group-label">Overview</div>
+      <button class="nav-btn active" data-page="overview">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".9"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".45"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".45"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".45"/></svg>
+        Dashboard
+      </button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label">Knowledge</div>
+      <button class="nav-btn" data-page="domains">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2C8 2 5.5 5 5.5 8s2.5 6 2.5 6M8 2c0 0 2.5 3 2.5 6S8 14 8 14M2 8h12" stroke="currentColor" stroke-width="1.3"/></svg>
+        Domains
+        <span class="nav-badge" id="nb-domains">—</span>
+      </button>
+      <button class="nav-btn" data-page="knowledge">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9H3V2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 2v3h3" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 7h6M5 10h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Knowledge
+        <span class="nav-badge" id="nb-knowledge">—</span>
+      </button>
+      <button class="nav-btn" data-page="sources">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 11l3.5-7 2.5 4.5 2-3L13 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Sources
+        <span class="nav-badge" id="nb-sources">—</span>
+      </button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label">Agent</div>
+      <button class="nav-btn" data-page="memory">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Agent Memory
+        <span class="nav-badge" id="nb-episodes">—</span>
+      </button>
+      <button class="nav-btn" data-page="trust">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L2 4v4c0 3.2 2.5 5.8 6 6.5 3.5-.7 6-3.3 6-6.5V4L8 1.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.5 8l2 2 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Trust Lifecycle
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- ─── Overview ─── -->
+    <div id="page-overview" class="page active">
+      <div class="ph">
+        <div class="ph-title">Dashboard</div>
+        <div class="ph-sub" id="overview-sub">Loading…</div>
+      </div>
+      <div class="stats">
+        <div class="stat accent"><div class="stat-lbl">Domains</div><div class="stat-val" id="s-domains"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div></div>
+        <div class="stat"><div class="stat-lbl">Documents</div><div class="stat-val" id="s-docs"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div><div class="stat-hint" id="s-docs-hint"></div></div>
+        <div class="stat"><div class="stat-lbl">Rules</div><div class="stat-val" id="s-rules"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div><div class="stat-hint" id="s-rules-hint"></div></div>
+        <div class="stat"><div class="stat-lbl">Episodes</div><div class="stat-val" id="s-eps"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div></div>
+        <div class="stat"><div class="stat-lbl">Preferences</div><div class="stat-val" id="s-prefs"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div></div>
+      </div>
+      <div class="g2">
+        <div class="card">
+          <div class="ch"><svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L2 4v4c0 3.2 2.5 5.8 6 6.5 3.5-.7 6-3.3 6-6.5V4L8 1.5z" stroke="#2B6EE8" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="ch-title">Trust Lifecycle</span></div>
+          <div class="tflow" id="tflow-overview"></div>
+        </div>
+        <div class="card">
+          <div class="ch"><svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9H3V2z" stroke="#2B6EE8" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="ch-title">Recent Knowledge</span><span class="ch-count" id="rk-count"></span></div>
+          <div class="tw"><table><thead><tr><th>Title</th><th>Domain</th><th>Trust</th></tr></thead><tbody id="tb-recent"></tbody></table></div>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="card">
+          <div class="ch"><svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="#2B6EE8" stroke-width="1.5"/></svg><span class="ch-title">Domains — rule coverage</span></div>
+          <div class="cb" id="domain-glance"></div>
+        </div>
+        <div class="card">
+          <div class="ch"><svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="#2B6EE8" stroke-width="1.5"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8" stroke="#2B6EE8" stroke-width="1.4" stroke-linecap="round"/></svg><span class="ch-title">Recent Episodes</span><span class="ch-count" id="ep-ov-count"></span></div>
+          <div class="cb"><div class="ep-list" id="ep-overview"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Domains ─── -->
+    <div id="page-domains" class="page">
+      <div class="ph"><div class="ph-title">Domains</div><div class="ph-sub">Active knowledge scopes — each is an isolated rule and fact namespace</div></div>
+      <div class="domain-grid" id="domain-grid"></div>
+    </div>
+
+    <!-- ─── Knowledge ─── -->
+    <div id="page-knowledge" class="page">
+      <div class="ph"><div class="ph-title">Knowledge</div><div class="ph-sub">All items in the store — rules, facts, notes · newest first</div></div>
+      <div class="card"><div class="tw"><table><thead><tr><th>Title</th><th>Kind</th><th>Domain</th><th>Trust</th><th>Created</th></tr></thead><tbody id="tb-knowledge"></tbody></table></div></div>
+    </div>
+
+    <!-- ─── Sources ─── -->
+    <div id="page-sources" class="page">
+      <div class="ph"><div class="ph-title">Sources</div><div class="ph-sub">Ingested URLs and files — chunked and indexed per domain</div></div>
+      <div class="card"><div class="cb" id="sources-list"></div></div>
+    </div>
+
+    <!-- ─── Agent Memory ─── -->
+    <div id="page-memory" class="page">
+      <div class="ph"><div class="ph-title">Agent Memory</div><div class="ph-sub">Episodes logged by agentic runs — full auditable trail</div></div>
+      <div class="card"><div class="cb"><div class="ep-list" id="ep-all"></div></div></div>
+    </div>
+
+    <!-- ─── Trust Lifecycle ─── -->
+    <div id="page-trust" class="page">
+      <div class="ph"><div class="ph-title">Trust Lifecycle</div><div class="ph-sub">The safety spine — only <em>reviewed</em> and <em>user</em> items are ever enforced</div></div>
+      <div class="card" style="margin-bottom:18px;">
+        <div class="ch"><span class="ch-title">Pipeline</span></div>
+        <div class="tflow" style="padding:22px 20px;" id="tflow-trust"></div>
+      </div>
+      <div class="card">
+        <div class="ch"><span class="ch-title">Proposed — awaiting promotion</span><span class="ch-count" id="prop-count"></span></div>
+        <div class="tw"><table><thead><tr><th>Title</th><th>Domain</th><th>Kind</th><th>Severity</th><th>Action</th></tr></thead><tbody id="tb-proposed"></tbody></table></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ── Global state ──
+let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [] };
+
+// ── Helpers ──
+const trustBadge = t => {
+  const c = {user:'b-user',reviewed:'b-reviewed',proposed:'b-proposed',untrusted:'b-untrusted'}[t]||'b-untrusted';
+  return `<span class="badge ${c}">${t}</span>`;
+};
+const kindTag = k => {
+  const c = {rule:'kt-rule',fact:'kt-fact',procedure:'kt-note'}[k]||'';
+  return `<span class="ktag ${c}">${k}</span>`;
+};
+const domainTag = d => `<span class="dtag">${d}</span>`;
+const outcomeEl = o => {
+  const c = {ok:'eo-ok',warn:'eo-warn',blocked:'eo-blk',error:'eo-blk'}[o]||'';
+  return `<span class="ep-out ${c}">${o||'—'}</span>`;
+};
+const dotColor = o => ({ok:'#1DB87E',warn:'#F59E0B',blocked:'#EF4444',error:'#EF4444'}[o]||'#2B6EE8');
+
+const domainIcon = d => ({'clean-code':'📄','cybersecurity':'🔐','design-ui-ux':'🎨','ingest-test':'🧪','mvp-poc':'🚀','sdlc':'⚙️'}[d]||'📄');
+
+// Format Unix epoch (seconds) → "YYYY-MM-DD"
+const fmtDate = ts => ts ? new Date(ts * 1000).toISOString().slice(0,10) : '—';
+// Format Unix epoch → "YYYY-MM-DD HH:MM"
+const fmtTs = ts => ts ? new Date(ts * 1000).toISOString().replace('T',' ').slice(0,16) : '—';
+
+function trustFlowHtml(raw, proposed, reviewed, user) {
+  return `
+    <div class="tnode tn-raw"><div class="tnode-lbl">Untrusted</div><div class="tnode-val">${raw}</div><div class="tnode-sub">raw ingest</div></div>
+    <div class="tarrow"><span class="tarrow-lbl">LLM</span><span class="tarrow-sym">→</span></div>
+    <div class="tnode tn-prop"><div class="tnode-lbl">Proposed</div><div class="tnode-val">${proposed}</div><div class="tnode-sub">pending</div></div>
+    <div class="tarrow"><span class="tarrow-lbl">promote()</span><span class="tarrow-sym">→</span></div>
+    <div class="tnode tn-rev"><div class="tnode-lbl">Reviewed</div><div class="tnode-val">${reviewed}</div><div class="tnode-sub">enforced</div></div>
+    <div class="tarrow"><span class="tarrow-lbl">&nbsp;</span><span class="tarrow-sym" style="color:var(--border)">·</span></div>
+    <div class="tnode tn-usr"><div class="tnode-lbl">User</div><div class="tnode-val">${user}</div><div class="tnode-sub">authored</div></div>
+  `;
+}
+
+// ── Renderers ──
+function renderOverview() {
+  const { stats, domains, knowledge, sources, episodes } = G;
+
+  // Stat cards
+  document.getElementById('s-domains').textContent = stats?.domains ?? '—';
+  document.getElementById('s-docs').textContent    = stats?.documents ?? '—';
+  document.getElementById('s-docs-hint').textContent = `across ${stats?.domains ?? 0} domains`;
+  document.getElementById('s-rules').textContent   = stats?.rules ?? '—';
+  document.getElementById('s-rules-hint').textContent = `${stats?.proposed ?? 0} proposed`;
+  document.getElementById('s-eps').textContent     = stats?.episodes ?? '—';
+  document.getElementById('s-prefs').textContent   = stats?.preferences ?? '—';
+
+  // Trust flow
+  const proposed = knowledge.filter(k => k.trust === 'proposed').length;
+  const reviewed  = knowledge.filter(k => k.trust === 'reviewed').length;
+  const user      = knowledge.filter(k => k.trust === 'user').length;
+  document.getElementById('tflow-overview').innerHTML = trustFlowHtml(sources.length, proposed, reviewed, user);
+
+  // Recent knowledge
+  const recent = [...knowledge].slice(0, 7);
+  document.getElementById('rk-count').textContent = `${knowledge.length} total`;
+  document.getElementById('tb-recent').innerHTML = recent.length
+    ? recent.map(k => `<tr><td class="td-main">${escHtml(k.title)}</td><td>${domainTag(k.domain)}</td><td>${trustBadge(k.trust)}</td></tr>`).join('')
+    : `<tr><td colspan="3" class="empty">No knowledge items yet</td></tr>`;
+
+  // Domain glance bars
+  const maxRules = Math.max(...domains.map(d => d.rule_count), 1);
+  document.getElementById('domain-glance').innerHTML = domains.length
+    ? domains.map(d => `
+        <div class="dglance-item">
+          <div class="dglance-row"><span class="dglance-name">${d.name}</span><span class="dglance-hint">${d.rule_count} rules · ${d.doc_count} docs</span></div>
+          <div class="dbar"><div class="dbar-fill" style="width:${d.rule_count===0?3:Math.round(d.rule_count/maxRules*100)}%"></div></div>
+        </div>`).join('')
+    : `<div class="empty">No domains registered</div>`;
+
+  // Episodes
+  const recent4 = episodes.slice(0, 4);
+  document.getElementById('ep-ov-count').textContent = `${episodes.length} total`;
+  document.getElementById('ep-overview').innerHTML = recent4.length
+    ? recent4.map(e => `
+        <div class="ep-item">
+          <div class="ep-dot" style="background:${dotColor(e.outcome)}"></div>
+          <div class="ep-body">
+            <div class="ep-action">${escHtml(e.action||'—')}</div>
+            <div class="ep-meta">${e.run_id} · step ${e.step} · <strong>${e.stage||'—'}</strong> · ${fmtTs(e.ts)}</div>
+          </div>
+          ${outcomeEl(e.outcome)}
+        </div>`).join('')
+    : `<div class="empty">No episodes logged yet</div>`;
+
+  // Status bar
+  document.getElementById('overview-sub').textContent =
+    `${domains.length} active domains · ${knowledge.length} knowledge items · last loaded ${new Date().toLocaleTimeString()}`;
+}
+
+function renderDomains() {
+  const { domains } = G;
+  const max = Math.max(...domains.map(d => d.rule_count), 1);
+  document.getElementById('domain-grid').innerHTML = domains.length
+    ? domains.map(d => `
+        <div class="dcard">
+          <div class="dcard-name">${d.name}</div>
+          <div class="dcard-desc">${escHtml(d.description||'No description.')}</div>
+          <div class="dcard-row">
+            <div><div class="dcard-stat-val">${d.doc_count}</div><div class="dcard-stat-lbl">documents</div></div>
+            <div><div class="dcard-stat-val">${d.rule_count}</div><div class="dcard-stat-lbl">enforced rules</div></div>
+          </div>
+          <div class="dbar"><div class="dbar-fill" style="width:${d.rule_count===0?3:Math.round(d.rule_count/max*100)}%"></div></div>
+        </div>`).join('')
+    : `<div class="empty">No domains registered yet</div>`;
+}
+
+function renderKnowledge() {
+  const { knowledge } = G;
+  document.getElementById('tb-knowledge').innerHTML = knowledge.length
+    ? knowledge.map(k => `
+        <tr>
+          <td class="td-main">${escHtml(k.title)}</td>
+          <td>${kindTag(k.kind)}</td>
+          <td>${domainTag(k.domain)}</td>
+          <td>${trustBadge(k.trust)}</td>
+          <td class="td-dim">${fmtDate(k.created_at)}</td>
+        </tr>`).join('')
+    : `<tr><td colspan="5" class="empty">No knowledge items yet</td></tr>`;
+}
+
+function renderSources() {
+  const { sources } = G;
+  document.getElementById('sources-list').innerHTML = sources.length
+    ? sources.map(s => `
+        <div class="src-item">
+          <div class="src-icon">${domainIcon(s.domain)}</div>
+          <div style="min-width:0;flex:1;">
+            <div class="src-url">${escHtml(s.uri||s.title||'(local file)')}</div>
+            <div class="src-meta">${escHtml(s.title||'')} · ingested ${fmtDate(s.fetched_at)}</div>
+          </div>
+          <div class="src-end">${domainTag(s.domain)}</div>
+        </div>`).join('')
+    : `<div class="empty">No sources ingested yet</div>`;
+}
+
+function renderEpisodes() {
+  const { episodes } = G;
+  document.getElementById('ep-all').innerHTML = episodes.length
+    ? episodes.map(e => `
+        <div class="ep-item">
+          <div class="ep-dot" style="background:${dotColor(e.outcome)}"></div>
+          <div class="ep-body">
+            <div class="ep-action">${escHtml(e.action||'—')}</div>
+            <div class="ep-meta">${e.run_id} · step ${e.step} · <strong>${e.stage||'—'}</strong> · ${fmtTs(e.ts)}</div>
+          </div>
+          ${outcomeEl(e.outcome)}
+        </div>`).join('')
+    : `<div class="empty">No episodes logged yet</div>`;
+}
+
+function renderTrust() {
+  const { knowledge, sources } = G;
+  const proposed = knowledge.filter(k => k.trust === 'proposed');
+  const reviewed  = knowledge.filter(k => k.trust === 'reviewed').length;
+  const user      = knowledge.filter(k => k.trust === 'user').length;
+
+  document.getElementById('tflow-trust').innerHTML = trustFlowHtml(
+    sources.length, proposed.length, reviewed, user
+  );
+
+  document.getElementById('prop-count').textContent = `${proposed.length} item${proposed.length===1?'':'s'}`;
+  document.getElementById('tb-proposed').innerHTML = proposed.length
+    ? proposed.map(k => `
+        <tr>
+          <td class="td-main">${escHtml(k.title)}</td>
+          <td>${domainTag(k.domain)}</td>
+          <td>${kindTag(k.kind)}</td>
+          <td>${k.severity ? `<span class="badge b-proposed">${k.severity}</span>` : '<span class="td-dim">—</span>'}</td>
+          <td><button class="promote-btn" onclick="promoteItem(${k.id}, this)">Promote →</button></td>
+        </tr>`).join('')
+    : `<tr><td colspan="5" class="empty">No proposed items — all clear</td></tr>`;
+}
+
+function renderAll() {
+  // Update nav badges
+  document.getElementById('nb-domains').textContent  = G.domains.length;
+  document.getElementById('nb-knowledge').textContent = G.knowledge.length;
+  document.getElementById('nb-sources').textContent  = G.sources.length;
+  document.getElementById('nb-episodes').textContent = G.episodes.length;
+
+  renderOverview();
+  renderDomains();
+  renderKnowledge();
+  renderSources();
+  renderEpisodes();
+  renderTrust();
+}
+
+// ── API ──
+async function loadData() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  btn.textContent = '↺ Loading…';
+
+  try {
+    const [stats, domains, knowledge, sources, episodes, preferences] = await Promise.all([
+      fetch('/api/stats').then(r => r.json()),
+      fetch('/api/domains').then(r => r.json()),
+      fetch('/api/knowledge').then(r => r.json()),
+      fetch('/api/sources').then(r => r.json()),
+      fetch('/api/episodes').then(r => r.json()),
+      fetch('/api/preferences').then(r => r.json()),
+    ]);
+
+    G = { stats, domains, knowledge, sources, episodes, preferences };
+
+    document.getElementById('status-dot').style.background = '#1DB87E';
+    document.getElementById('status-text').textContent = `klayer.db · live`;
+    renderAll();
+  } catch (e) {
+    document.getElementById('status-dot').style.background = '#EF4444';
+    document.getElementById('status-text').textContent = 'API unreachable';
+    console.error('klayer API error:', e);
+  } finally {
+    btn.classList.remove('spinning');
+    btn.textContent = '↺ Refresh';
+  }
+}
+
+// ── Promote action ──
+async function promoteItem(id, btn) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    // Call the MCP tool via the store indirectly — placeholder for future HTTP action endpoint.
+    // For now, show the id so the user can call promote(id) in the MCP client.
+    alert(`promote(${id})\n\nRun this MCP tool call in your Claude client to promote this item to 'reviewed'.`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Promote →';
+  }
+}
+
+// ── Navigation ──
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-' + btn.dataset.page).classList.add('active');
+    btn.classList.add('active');
+  });
+});
+
+// ── XSS guard ──
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ──
+loadData();
+</script>
+</body>
+</html>

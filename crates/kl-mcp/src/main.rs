@@ -6,11 +6,18 @@
 //! Transport: stdio (works with Claude Code, Claude Desktop, Cursor, etc.).
 //! Storage:   single SQLite file (path via KLAYER_DB, default ./klayer.db).
 //! Skill out: KLAYER_SKILL (default ./skills/klayer/SKILL.md).
+//! Dashboard: HTTP on KLAYER_DASHBOARD_PORT (default 7474), auto-opened in browser.
 
 use std::sync::Arc;
 
 use anyhow::Result;
-use kl_core::{Kind, SearchBackend};
+use axum::{
+    extract::{Query, State},
+    response::Html,
+    routing::get,
+    Json, Router,
+};
+use kl_core::{DomainRow, EpisodeRow, Kind, KnowledgeRow, SearchBackend, SourceRow};
 use kl_search::from_env as build_search;
 use kl_skill::RouterInputs;
 use kl_store::Store;
@@ -22,6 +29,7 @@ use rmcp::{
     ErrorData as McpError, ServerHandler, ServiceExt,
 };
 use serde::Deserialize;
+use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Clone)]
@@ -150,7 +158,7 @@ struct ClearDomainParams {
     chunks_only: Option<bool>,
 }
 
-// ----- helpers -------------------------------------------------------------
+// ----- MCP helpers ---------------------------------------------------------
 
 fn err<E: std::fmt::Display>(e: E) -> McpError {
     McpError::internal_error(e.to_string(), None)
@@ -165,7 +173,120 @@ fn text_ok(s: impl Into<String>) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::success(vec![Content::text(s.into())]))
 }
 
-// ----- tools ---------------------------------------------------------------
+// ----- dashboard HTTP server -----------------------------------------------
+
+const DASHBOARD_HTML: &str = include_str!("dashboard.html");
+
+// Query param structs for API endpoints (distinct from MCP param structs above).
+#[derive(Deserialize)]
+struct ApiKnowledgeQuery {
+    domain: Option<String>,
+    trust: Option<String>,
+    kind: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ApiDomainFilter {
+    domain: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ApiRunFilter {
+    run_id: Option<String>,
+}
+
+async fn dash_index() -> Html<&'static str> {
+    Html(DASHBOARD_HTML)
+}
+
+async fn dash_stats(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
+    let domains = store.list_domains().unwrap_or_default();
+    let sources = store.list_sources(None).unwrap_or_default();
+    let episodes = store.list_episodes(None).unwrap_or_default();
+    let prefs = store.list_preferences().unwrap_or_default();
+    let total_docs: i64 = domains.iter().map(|d| d.doc_count).sum();
+    let total_rules: i64 = domains.iter().map(|d| d.rule_count).sum();
+    let mut proposed = 0usize;
+    for d in &domains {
+        if let Ok(rows) = store.list_knowledge(&d.name, Some("proposed"), None) {
+            proposed += rows.len();
+        }
+    }
+    Json(serde_json::json!({
+        "domains":     domains.len(),
+        "documents":   total_docs,
+        "rules":       total_rules,
+        "proposed":    proposed,
+        "sources":     sources.len(),
+        "episodes":    episodes.len(),
+        "preferences": prefs.len(),
+    }))
+}
+
+async fn dash_domains(State(store): State<Arc<Store>>) -> Json<Vec<DomainRow>> {
+    Json(store.list_domains().unwrap_or_default())
+}
+
+async fn dash_knowledge(
+    State(store): State<Arc<Store>>,
+    Query(q): Query<ApiKnowledgeQuery>,
+) -> Json<Vec<KnowledgeRow>> {
+    let kind = q.kind.as_deref().and_then(Kind::parse);
+    let rows = if let Some(domain) = &q.domain {
+        store.list_knowledge(domain, q.trust.as_deref(), kind).unwrap_or_default()
+    } else {
+        // Aggregate across all registered domains.
+        let domains = store.list_domains().unwrap_or_default();
+        let mut all = Vec::new();
+        for d in &domains {
+            if let Ok(rows) = store.list_knowledge(&d.name, q.trust.as_deref(), kind) {
+                all.extend(rows);
+            }
+        }
+        all
+    };
+    Json(rows)
+}
+
+async fn dash_sources(
+    State(store): State<Arc<Store>>,
+    Query(q): Query<ApiDomainFilter>,
+) -> Json<Vec<SourceRow>> {
+    Json(store.list_sources(q.domain.as_deref()).unwrap_or_default())
+}
+
+async fn dash_episodes(
+    State(store): State<Arc<Store>>,
+    Query(q): Query<ApiRunFilter>,
+) -> Json<Vec<EpisodeRow>> {
+    Json(store.list_episodes(q.run_id.as_deref()).unwrap_or_default())
+}
+
+async fn dash_preferences(State(store): State<Arc<Store>>) -> Json<Vec<String>> {
+    Json(store.list_preferences().unwrap_or_default())
+}
+
+async fn start_dashboard(store: Arc<Store>, port: u16) {
+    let app = Router::new()
+        .route("/", get(dash_index))
+        .route("/api/stats", get(dash_stats))
+        .route("/api/domains", get(dash_domains))
+        .route("/api/knowledge", get(dash_knowledge))
+        .route("/api/sources", get(dash_sources))
+        .route("/api/episodes", get(dash_episodes))
+        .route("/api/preferences", get(dash_preferences))
+        .layer(CorsLayer::permissive())
+        .with_state(store);
+
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+        .await
+        .unwrap_or_else(|e| panic!("dashboard: cannot bind port {port}: {e}"));
+
+    tracing::info!("klayer dashboard → http://localhost:{port}");
+    axum::serve(listener, app).await.unwrap();
+}
+
+// ----- MCP tools -----------------------------------------------------------
 
 #[tool_router]
 impl Klayer {
@@ -364,6 +485,8 @@ impl ServerHandler for Klayer {
     }
 }
 
+// ----- entry point ---------------------------------------------------------
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -374,11 +497,25 @@ async fn main() -> Result<()> {
 
     let db = std::env::var("KLAYER_DB").unwrap_or_else(|_| "klayer.db".to_string());
     let skill = std::env::var("KLAYER_SKILL").unwrap_or_else(|_| "skills/klayer/SKILL.md".to_string());
+    let port: u16 = std::env::var("KLAYER_DASHBOARD_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(7474);
 
     let store = Arc::new(Store::open(&db)?);
     store.migrate()?;
     tracing::info!("klayer store ready at {db}");
 
+    // Spawn the dashboard HTTP server as a background task.
+    tokio::spawn(start_dashboard(Arc::clone(&store), port));
+
+    // Open the dashboard in the default browser (non-blocking, best-effort).
+    let url = format!("http://localhost:{port}");
+    std::thread::spawn(move || {
+        let _ = open::that(url);
+    });
+
+    // Run MCP server over stdio until the client disconnects.
     let service = Klayer::new(store, skill).serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
