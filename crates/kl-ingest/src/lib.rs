@@ -1,5 +1,6 @@
-//! kl-ingest — fetch a URL, detect content-type, extract readable text, chunk it.
+//! kl-ingest — fetch a URL or local file path, detect content-type, extract readable text, chunk it.
 //!
+//! Supported sources: HTTP/HTTPS URLs, local file paths (absolute or file://).
 //! Supported types: HTML, PDF, JSON, plain text / Markdown.
 //!
 //! IMPORTANT: scraper's `Html` is not `Send`. Keep HTML parsing synchronous and
@@ -7,13 +8,62 @@
 
 use anyhow::{Context, Result};
 use scraper::{Html, Selector};
+use std::path::Path;
 
 pub struct Fetched {
     pub content_type: String,
     pub body: Vec<u8>,
 }
 
-pub async fn fetch(url: &str) -> Result<Fetched> {
+/// Accepts an HTTP/HTTPS URL, a `file://` URI, or an absolute local path.
+pub async fn fetch(source: &str) -> Result<Fetched> {
+    if is_local(source) {
+        fetch_file(source)
+    } else {
+        fetch_http(source).await
+    }
+}
+
+fn is_local(source: &str) -> bool {
+    source.starts_with("file://")
+        || source.starts_with('/')
+        || (source.len() >= 3 && source.chars().nth(1) == Some(':')) // C:\...
+}
+
+fn fetch_file(source: &str) -> Result<Fetched> {
+    let path = if let Some(stripped) = source.strip_prefix("file://") {
+        // file:///C:/path or file:///home/user/path
+        let s = stripped.trim_start_matches('/');
+        // on Windows keep the drive letter: re-attach leading slash only on Unix
+        if s.len() >= 2 && s.chars().nth(1) == Some(':') {
+            s.to_string() // C:/path
+        } else {
+            format!("/{s}") // /home/user/path
+        }
+    } else {
+        source.to_string()
+    };
+
+    let body = std::fs::read(&path)
+        .with_context(|| format!("read file {path}"))?;
+    let content_type = content_type_from_ext(Path::new(&path)).to_string();
+    Ok(Fetched { content_type, body })
+}
+
+fn content_type_from_ext(path: &Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase().as_str() {
+        "pdf"                   => "application/pdf",
+        "json"                  => "application/json",
+        "md" | "markdown"       => "text/markdown",
+        "txt"                   => "text/plain",
+        "html" | "htm"          => "text/html",
+        "xml"                   => "text/xml",
+        "csv"                   => "text/plain",
+        _                       => "application/octet-stream",
+    }
+}
+
+async fn fetch_http(url: &str) -> Result<Fetched> {
     let client = reqwest::Client::builder()
         .user_agent("klayer/0.1 (+https://github.com/walkowicz19/klayer)")
         .build()?;

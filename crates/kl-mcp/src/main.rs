@@ -56,7 +56,7 @@ struct SearchParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct IngestParams {
-    #[schemars(description = "URL to fetch into the untrusted reference tier.")]
+    #[schemars(description = "Source to ingest: an HTTP/HTTPS URL, an absolute local file path (e.g. C:\\policies\\hr.pdf or /home/user/doc.pdf), or a file:// URI.")]
     url: String,
     #[schemars(description = "Domain to file the source under.")]
     domain: String,
@@ -173,7 +173,7 @@ impl Klayer {
         json_ok(&results)
     }
 
-    #[tool(description = "Fetch a URL and store its content in the untrusted reference tier under a domain. Supports HTML pages, PDFs, JSON APIs, and plain-text / Markdown files.")]
+    #[tool(description = "Ingest a source into the untrusted reference tier under a domain. Accepts HTTP/HTTPS URLs, absolute local file paths (C:\\path\\file.pdf or /path/file.pdf), or file:// URIs. Supports HTML, PDF, JSON, plain text, and Markdown.")]
     async fn ingest(&self, Parameters(p): Parameters<IngestParams>) -> Result<CallToolResult, McpError> {
         let fetched = kl_ingest::fetch(&p.url).await.map_err(err)?;
         let content_type = fetched.content_type.clone();
