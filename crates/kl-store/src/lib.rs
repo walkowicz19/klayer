@@ -112,6 +112,31 @@ impl Store {
         Ok(n > 0)
     }
 
+    /// Remove all ingested chunks and sources for a domain.
+    /// If `chunks_only` is false, also removes all curated knowledge (facts, rules, procedures).
+    pub fn clear_domain(&self, domain: &str, chunks_only: bool) -> Result<(usize, usize)> {
+        let mut c = self.conn.lock().unwrap();
+        let tx = c.transaction()?;
+
+        // delete FTS index entries for this domain's chunks
+        tx.execute(
+            "DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE domain = ?1)",
+            params![domain],
+        )?;
+        let chunks_deleted = tx.execute("DELETE FROM chunks WHERE domain = ?1", params![domain])?;
+        tx.execute("DELETE FROM sources WHERE domain = ?1", params![domain])?;
+        tx.execute("UPDATE domains SET doc_count = 0 WHERE name = ?1", params![domain])?;
+
+        let knowledge_deleted = if !chunks_only {
+            tx.execute("DELETE FROM knowledge WHERE domain = ?1", params![domain])?
+        } else {
+            0
+        };
+
+        tx.commit()?;
+        Ok((chunks_deleted, knowledge_deleted))
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn insert_knowledge(
         &self,

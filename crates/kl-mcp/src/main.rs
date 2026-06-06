@@ -130,6 +130,14 @@ struct CompileParams {
     taxonomy: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ClearDomainParams {
+    #[schemars(description = "Domain to clear.")]
+    domain: String,
+    #[schemars(description = "If true, delete only ingested chunks and sources but keep promoted rules and user facts. If false (default), wipe everything including knowledge.")]
+    chunks_only: Option<bool>,
+}
+
 // ----- helpers -------------------------------------------------------------
 
 fn err<E: std::fmt::Display>(e: E) -> McpError {
@@ -271,6 +279,21 @@ impl Klayer {
         let kind = p.kind.as_deref().and_then(Kind::parse);
         let rows = self.store.list_knowledge(&p.domain, p.trust.as_deref(), kind).map_err(err)?;
         json_ok(&rows)
+    }
+
+    #[tool(description = "Clear all ingested chunks/sources for a domain, and optionally its curated knowledge too. Use chunks_only=true to re-ingest updated documents while keeping promoted rules. Use chunks_only=false (default) to wipe everything.")]
+    fn clear_domain(&self, Parameters(p): Parameters<ClearDomainParams>) -> Result<CallToolResult, McpError> {
+        let chunks_only = p.chunks_only.unwrap_or(false);
+        let (chunks, knowledge) = self.store.clear_domain(&p.domain, chunks_only).map_err(err)?;
+        let knowledge_msg = if chunks_only {
+            "knowledge kept".to_string()
+        } else {
+            format!("{knowledge} knowledge items deleted")
+        };
+        text_ok(format!(
+            "Cleared domain '{}': {chunks} chunks deleted, {knowledge_msg}.",
+            p.domain
+        ))
     }
 
     #[tool(description = "Regenerate the thin SKILL.md router from the registries and write it to disk. Returns the rendered router.")]
