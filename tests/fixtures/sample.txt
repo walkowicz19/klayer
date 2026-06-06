@@ -1,0 +1,17 @@
+klayer Test Document — Plain Text
+
+This is a plain text file used to test klayer's ingest pipeline.
+klayer should pass this through directly without any HTML or PDF parsing.
+
+SDLC Best Practices:
+- Plan before coding; define acceptance criteria upfront.
+- Shift-left on security: find issues early, not in production.
+- Keep CI/CD pipelines fast; slow pipelines kill developer flow.
+- Code review every change; fresh eyes catch what the author misses.
+- Deploy small, deploy often; big releases are big risks.
+
+Clean Code Rules:
+- Names should reveal intent; if you need a comment to explain a name, rename it.
+- Functions do one thing only.
+- Don't repeat yourself; extract duplication into a single authoritative source.
+- You aren't gonna need it; build what is required today, not tomorrow.

@@ -1,0 +1,30 @@
+{
+  "api": "klayer-test",
+  "version": "1.0",
+  "description": "Sample JSON API response for ingest testing",
+  "rules": [
+    {
+      "id": 1,
+      "title": "Validate all external inputs",
+      "severity": "block",
+      "domain": "secure-coding"
+    },
+    {
+      "id": 2,
+      "title": "Never store secrets in source code",
+      "severity": "block",
+      "domain": "secure-coding"
+    },
+    {
+      "id": 3,
+      "title": "Use parameterized queries to prevent SQL injection",
+      "severity": "block",
+      "domain": "secure-coding"
+    }
+  ],
+  "metadata": {
+    "source": "internal",
+    "fetched_at": "2026-06-06",
+    "trust": "untrusted"
+  }
+}
