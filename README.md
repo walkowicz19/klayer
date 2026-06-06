@@ -32,8 +32,8 @@ kl-mcp     the `klayer` binary: rmcp server wiring the tool surface
 Trust lifecycle (the one invariant across every use case):
 
 ```
-untrusted ──(LLM extracts)──> proposed ──(promote = validation gate)──> reviewed
-                                                                         user (authored)
+untrusted ──(LLM extracts)──> proposed ──(promote = validation gate)──> reviewed - user (authored)
+                                                                         
 only reviewed + user are ENFORCED.
 ```
 
