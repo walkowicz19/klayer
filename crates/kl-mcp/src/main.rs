@@ -305,7 +305,7 @@ impl Klayer {
         json_ok(&rows)
     }
 
-    #[tool(description = "Clear all ingested chunks/sources for a domain, and optionally its curated knowledge too. Use chunks_only=true to re-ingest updated documents while keeping promoted rules. Use chunks_only=false (default) to wipe everything.")]
+    #[tool(description = "Fully delete a domain and all its data (chunks, sources, knowledge, registry entry). Use chunks_only=true to re-ingest updated documents while keeping promoted rules. Use chunks_only=false (default) to wipe everything including the domain itself.")]
     fn clear_domain(&self, Parameters(p): Parameters<ClearDomainParams>) -> Result<CallToolResult, McpError> {
         let chunks_only = p.chunks_only.unwrap_or(false);
         let (chunks, knowledge) = self.store.clear_domain(&p.domain, chunks_only).map_err(err)?;

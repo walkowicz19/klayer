@@ -54,7 +54,7 @@ only reviewed + user are ENFORCED.
 | `list_domains` | Show all registered domains with doc and rule counts |
 | `set_preference` | Store a durable user preference (always honored) |
 | `register_domain` | Create or update a domain with description and query hint |
-| `clear_domain` | Bulk-delete chunks and/or knowledge for a domain |
+| `clear_domain` | Fully delete a domain and all its data; `chunks_only=true` keeps promoted rules |
 | `log_episode` | Record one step of an agentic run for auditability |
 | `compile_skill` | Regenerate the SKILL.md router from the current registries |
 
@@ -141,8 +141,8 @@ ingest("https://api.example.com/rules.json", "secure-coding")
 list_knowledge("my-domain")                  # see all curated items + ids
 list_sources("my-domain")                    # see all ingested files/URLs
 forget(id)                                   # delete one item
-clear_domain("my-domain")                    # wipe everything
-clear_domain("my-domain", chunks_only=true)  # keep rules, clear ingested docs
+clear_domain("my-domain")                    # wipe everything including the domain
+clear_domain("my-domain", chunks_only=true)  # keep rules, clear ingested docs only
 ```
 
 ## Build from source

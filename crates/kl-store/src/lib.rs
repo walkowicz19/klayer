@@ -125,7 +125,7 @@ impl Store {
         )?;
         let chunks_deleted = tx.execute("DELETE FROM chunks WHERE domain = ?1", params![domain])?;
         tx.execute("DELETE FROM sources WHERE domain = ?1", params![domain])?;
-        tx.execute("UPDATE domains SET doc_count = 0 WHERE name = ?1", params![domain])?;
+        tx.execute("DELETE FROM domains WHERE name = ?1", params![domain])?;
 
         let knowledge_deleted = if !chunks_only {
             tx.execute("DELETE FROM knowledge WHERE domain = ?1", params![domain])?
