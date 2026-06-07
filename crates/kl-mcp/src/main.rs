@@ -354,6 +354,13 @@ async fn dash_code_repos(State(cs): State<Arc<CodeStore>>) -> Json<Vec<kl_code::
     Json(cs.list_repos().unwrap_or_default())
 }
 
+async fn dash_code_clear(State(cs): State<Arc<CodeStore>>) -> Json<serde_json::Value> {
+    match cs.clear_all() {
+        Ok(_)  => Json(serde_json::json!({ "ok": true })),
+        Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
+    }
+}
+
 async fn dash_code_search(
     State(cs): State<Arc<CodeStore>>,
     Query(q): Query<CodeSearchQuery>,
@@ -381,6 +388,7 @@ async fn start_dashboard(
         .route("/api/code/stats",    get(dash_code_stats))
         .route("/api/code/repos",    get(dash_code_repos))
         .route("/api/code/search",   get(dash_code_search))
+        .route("/api/code/clear",    get(dash_code_clear))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -613,6 +621,12 @@ impl Klayer {
         } else {
             text_ok(format!("No indexed repo found at '{}'. Check list_repos() for exact paths.", p.path))
         }
+    }
+
+    #[tool(description = "Clear ALL indexed codebase memory — removes every repository, file, and chunk from the code store. Use forget_repo() to remove a single repository instead.")]
+    fn clear_codebase(&self) -> Result<CallToolResult, McpError> {
+        self.code_store.clear_all().map_err(err)?;
+        text_ok("Codebase memory cleared. All indexed repositories, files, and chunks have been removed.")
     }
 }
 

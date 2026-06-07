@@ -131,6 +131,7 @@ only reviewed + user are ENFORCED.
 | `search_code` | Full-text + semantic search across all indexed codebases; returns matching snippets with file paths |
 | `list_repos` | List all indexed repositories with file/chunk counts and last-indexed timestamps |
 | `forget_repo` | Remove a previously indexed repository (all files and chunks) from the codebase DB |
+| `clear_codebase` | Wipe ALL indexed codebase memory — every repository, file, and chunk |
 
 ## Quick start (pre-built binary)
 

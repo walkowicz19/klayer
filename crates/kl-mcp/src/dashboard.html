@@ -569,6 +569,7 @@
       <div class="ph">
         <div class="ph-title" data-i18n="navCodebase"></div>
         <div class="ph-sub" data-i18n="phCodebaseSub"></div>
+        <button onclick="clearCodebase()" style="margin-top:.75rem;padding:.35rem .9rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="codeClearBtn"></button>
       </div>
 
       <div class="code-stats-row">
@@ -726,6 +727,7 @@ const LANGS = {
     codeSearchBtn: 'Search',
     codeNoResults: 'No results', codeSearchPrompt: 'Type a query and press Search',
     repoFiles: 'files', repoChunks: 'chunks', repoIndexed: 'indexed',
+    codeClearBtn: 'Clear all codebase memory',
     phSettingsSub: 'Language, connection info, and project details',
     settingsLang: 'Language', settingsConnection: 'Connection',
     settingsAbout: 'About', settingsDashURL: 'Dashboard URL',
@@ -779,6 +781,7 @@ const LANGS = {
     codeSearchBtn: 'Buscar',
     codeNoResults: 'Sem resultados', codeSearchPrompt: 'Digite uma consulta e pressione Buscar',
     repoFiles: 'arquivos', repoChunks: 'blocos', repoIndexed: 'indexado',
+    codeClearBtn: 'Limpar toda a memória de código',
     phSettingsSub: 'Idioma, informações de conexão e detalhes do projeto',
     settingsLang: 'Idioma', settingsConnection: 'Conexão',
     settingsAbout: 'Sobre', settingsDashURL: 'URL do Painel',
@@ -832,6 +835,7 @@ const LANGS = {
     codeSearchBtn: 'Buscar',
     codeNoResults: 'Sin resultados', codeSearchPrompt: 'Escribe una consulta y presiona Buscar',
     repoFiles: 'archivos', repoChunks: 'bloques', repoIndexed: 'indexado',
+    codeClearBtn: 'Borrar toda la memoria de código',
     phSettingsSub: 'Idioma, información de conexión y detalles del proyecto',
     settingsLang: 'Idioma', settingsConnection: 'Conexión',
     settingsAbout: 'Acerca de', settingsDashURL: 'URL del Panel',
@@ -885,6 +889,7 @@ const LANGS = {
     codeSearchBtn: '搜索',
     codeNoResults: '无结果', codeSearchPrompt: '输入查询并点击搜索',
     repoFiles: '文件', repoChunks: '块', repoIndexed: '已索引',
+    codeClearBtn: '清除所有代码库记忆',
     phSettingsSub: '语言、连接信息和项目详情',
     settingsLang: '语言', settingsConnection: '连接',
     settingsAbout: '关于', settingsDashURL: '控制台 URL',
@@ -938,6 +943,7 @@ const LANGS = {
     codeSearchBtn: 'Szukaj',
     codeNoResults: 'Brak wyników', codeSearchPrompt: 'Wpisz zapytanie i naciśnij Szukaj',
     repoFiles: 'pliki', repoChunks: 'fragmenty', repoIndexed: 'zaindeksowano',
+    codeClearBtn: 'Wyczyść całą pamięć kodu',
     phSettingsSub: 'Język, informacje o połączeniu i szczegóły projektu',
     settingsLang: 'Język', settingsConnection: 'Połączenie',
     settingsAbout: 'O projekcie', settingsDashURL: 'URL panelu',
@@ -1277,6 +1283,15 @@ async function loadData() {
     btn.classList.remove('spinning');
     btn.textContent = t('btnRefresh');
   }
+}
+
+async function clearCodebase() {
+  if (!confirm('Clear ALL indexed codebase memory? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/code/clear').then(res => res.json());
+    if (r.ok) { await loadData(); }
+    else alert('Clear failed: ' + (r.error || 'unknown error'));
+  } catch(e) { alert('Clear failed: ' + e); }
 }
 
 async function runCodeSearch() {

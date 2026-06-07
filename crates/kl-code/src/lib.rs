@@ -172,6 +172,15 @@ impl CodeStore {
         Ok(true)
     }
 
+    pub fn clear_all(&self) -> Result<u64> {
+        let c = self.conn.lock().unwrap();
+        c.execute_batch("DELETE FROM code_fts; DELETE FROM repos;")?;
+        let deleted: u64 = c.query_row(
+            "SELECT changes()", [], |r| r.get(0)
+        ).unwrap_or(0);
+        Ok(deleted)
+    }
+
     pub fn search(
         &self,
         query: &str,
