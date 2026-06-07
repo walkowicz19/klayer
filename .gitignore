@@ -6,3 +6,4 @@
 *.db-wal
 *.db-shm
 /skills/klayer/SKILL.md
+.mcp.json

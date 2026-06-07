@@ -205,6 +205,8 @@
     .dcard-row { display: flex; gap: 20px; }
     .dcard-stat-val { font-family: 'SF Pro Rounded','Nunito',system-ui,sans-serif; font-size: 20px; font-weight: 700; color: var(--blue); letter-spacing: -.5px; line-height: 1; }
     .dcard-stat-lbl { font-size: 10px; color: var(--mute); margin-top: 2px; }
+    .clickable-stat { cursor: pointer; }
+    .clickable-stat:hover .dcard-stat-val { text-decoration: underline; color: var(--blue); }
     .dbar { margin-top: 14px; height: 2px; border-radius: 2px; background: var(--hairline); overflow: hidden; }
     .dbar-fill { height: 100%; background: var(--blue); border-radius: 2px; }
 
@@ -514,13 +516,24 @@
         <div class="ph-sub" data-i18n="phKnowledgeSub"></div>
         <button onclick="clearKnowledge()" style="margin-top:.75rem;padding:.35rem .9rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="knowledgeClearBtn"></button>
       </div>
-      <div class="card"><div class="tw"><table>
-        <thead><tr>
-          <th data-i18n="thTitle"></th><th data-i18n="thKind"></th>
-          <th data-i18n="thDomain"></th><th data-i18n="thTrust"></th><th data-i18n="thCreated"></th>
-        </tr></thead>
-        <tbody id="tb-knowledge"></tbody>
-      </table></div></div>
+      <div class="card">
+        <div class="ch" style="border-bottom: 1px solid var(--hairline); display: flex; align-items: center; justify-content: space-between;">
+          <span class="ch-title" data-i18n="chKnowledge"></span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 12px; color: var(--body);" data-i18n="filterDomainLabel"></span>
+            <select id="knowledge-domain-filter" onchange="onKnowledgeFilterChange()" style="font-size: 12px; font-weight: 500; color: var(--body); background: var(--soft); border: 1px solid var(--hairline); border-radius: var(--r-full); padding: 2px 10px 2px 10px; height: 26px; cursor: pointer; outline: none; appearance: none; -webkit-appearance: none; padding-right: 24px; background-image: url(&quot;data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239BA8C0' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 8px center;">
+              <option value="" data-i18n="filterAllDomains"></option>
+            </select>
+          </div>
+        </div>
+        <div class="tw"><table>
+          <thead><tr>
+            <th data-i18n="thTitle"></th><th data-i18n="thKind"></th>
+            <th data-i18n="thDomain"></th><th data-i18n="thTrust"></th><th data-i18n="thCreated"></th>
+          </tr></thead>
+          <tbody id="tb-knowledge"></tbody>
+        </table></div>
+      </div>
     </div>
 
     <!-- Sources -->
@@ -530,7 +543,18 @@
         <div class="ph-sub" data-i18n="phSourcesSub"></div>
         <button onclick="clearSources()" style="margin-top:.75rem;padding:.35rem .9rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="sourcesClearBtn"></button>
       </div>
-      <div class="card"><div class="cb" id="sources-list"></div></div>
+      <div class="card">
+        <div class="ch" style="border-bottom: 1px solid var(--hairline); display: flex; align-items: center; justify-content: space-between;">
+          <span class="ch-title" data-i18n="navSources"></span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 12px; color: var(--body);" data-i18n="filterDomainLabel"></span>
+            <select id="sources-domain-filter" onchange="onSourcesFilterChange()" style="font-size: 12px; font-weight: 500; color: var(--body); background: var(--soft); border: 1px solid var(--hairline); border-radius: var(--r-full); padding: 2px 10px 2px 10px; height: 26px; cursor: pointer; outline: none; appearance: none; -webkit-appearance: none; padding-right: 24px; background-image: url(&quot;data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239BA8C0' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 8px center;">
+              <option value="" data-i18n="filterAllDomains"></option>
+            </select>
+          </div>
+        </div>
+        <div class="cb" id="sources-list"></div>
+      </div>
     </div>
 
     <!-- Agent Memory -->
@@ -742,6 +766,8 @@ const LANGS = {
     settingsAbout: 'About', settingsDashURL: 'Dashboard URL',
     settingsPort: 'Port', settingsStatus: 'Status',
     settingsProject: 'Project', settingsTransport: 'Transport',
+    filterDomainLabel: 'Filter by Domain:',
+    filterAllDomains: 'All Domains',
   },
   pt: {
     topbarSub: 'painel de conhecimento',
@@ -801,6 +827,8 @@ const LANGS = {
     settingsAbout: 'Sobre', settingsDashURL: 'URL do Painel',
     settingsPort: 'Porta', settingsStatus: 'Status',
     settingsProject: 'Projeto', settingsTransport: 'Transporte',
+    filterDomainLabel: 'Filtrar por Domínio:',
+    filterAllDomains: 'Todos os Domínios',
   },
   es: {
     topbarSub: 'panel de conocimiento',
@@ -860,6 +888,8 @@ const LANGS = {
     settingsAbout: 'Acerca de', settingsDashURL: 'URL del Panel',
     settingsPort: 'Puerto', settingsStatus: 'Estado',
     settingsProject: 'Proyecto', settingsTransport: 'Transporte',
+    filterDomainLabel: 'Filtrar por Dominio:',
+    filterAllDomains: 'Todos los Dominios',
   },
   zh: {
     topbarSub: '知识控制台',
@@ -919,6 +949,8 @@ const LANGS = {
     settingsAbout: '关于', settingsDashURL: '控制台 URL',
     settingsPort: '端口', settingsStatus: '状态',
     settingsProject: '项目', settingsTransport: '传输',
+    filterDomainLabel: '按域过滤:',
+    filterAllDomains: '所有域',
   },
   pl: {
     topbarSub: 'panel wiedzy',
@@ -978,6 +1010,8 @@ const LANGS = {
     settingsAbout: 'O projekcie', settingsDashURL: 'URL panelu',
     settingsPort: 'Port', settingsStatus: 'Status',
     settingsProject: 'Projekt', settingsTransport: 'Transport',
+    filterDomainLabel: 'Filtruj według domeny:',
+    filterAllDomains: 'Wszystkie domeny',
   },
 };
 
@@ -1039,6 +1073,90 @@ function setLang(code) {
 
 // ── Global state ────────────────────────────────────────────────────────────
 let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [] };
+
+// ── Filter state ─────────────────────────────────────────────────────────────
+let selectedDomainFilter = '';
+let selectedKnowledgeDomainFilter = '';
+
+function populateSourcesFilter() {
+  const filterSelect = document.getElementById('sources-domain-filter');
+  if (!filterSelect) return;
+  const currentVal = filterSelect.value || selectedDomainFilter;
+  
+  filterSelect.innerHTML = `<option value="">${t('filterAllDomains')}</option>`;
+  G.domains.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.name;
+    opt.textContent = d.name;
+    filterSelect.appendChild(opt);
+  });
+  
+  if (G.domains.some(d => d.name === currentVal)) {
+    filterSelect.value = currentVal;
+    selectedDomainFilter = currentVal;
+  } else {
+    filterSelect.value = '';
+    selectedDomainFilter = '';
+  }
+}
+
+function onSourcesFilterChange() {
+  const filterSelect = document.getElementById('sources-domain-filter');
+  if (filterSelect) {
+    selectedDomainFilter = filterSelect.value;
+    renderSources();
+  }
+}
+
+function showSourcesForDomain(domainName) {
+  selectedDomainFilter = domainName;
+  const filterSelect = document.getElementById('sources-domain-filter');
+  if (filterSelect) {
+    filterSelect.value = domainName;
+  }
+  renderSources();
+  showPage('sources');
+}
+
+function populateKnowledgeFilter() {
+  const filterSelect = document.getElementById('knowledge-domain-filter');
+  if (!filterSelect) return;
+  const currentVal = filterSelect.value || selectedKnowledgeDomainFilter;
+  
+  filterSelect.innerHTML = `<option value="">${t('filterAllDomains')}</option>`;
+  G.domains.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.name;
+    opt.textContent = d.name;
+    filterSelect.appendChild(opt);
+  });
+  
+  if (G.domains.some(d => d.name === currentVal)) {
+    filterSelect.value = currentVal;
+    selectedKnowledgeDomainFilter = currentVal;
+  } else {
+    filterSelect.value = '';
+    selectedKnowledgeDomainFilter = '';
+  }
+}
+
+function onKnowledgeFilterChange() {
+  const filterSelect = document.getElementById('knowledge-domain-filter');
+  if (filterSelect) {
+    selectedKnowledgeDomainFilter = filterSelect.value;
+    renderKnowledge();
+  }
+}
+
+function showKnowledgeForDomain(domainName) {
+  selectedKnowledgeDomainFilter = domainName;
+  const filterSelect = document.getElementById('knowledge-domain-filter');
+  if (filterSelect) {
+    filterSelect.value = domainName;
+  }
+  renderKnowledge();
+  showPage('knowledge');
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const trustBadge = v => {
@@ -1128,8 +1246,14 @@ function renderDomains() {
           <div class="dcard-name">${escHtml(d.name)}</div>
           <div class="dcard-desc">${escHtml(d.description||'—')}</div>
           <div class="dcard-row">
-            <div><div class="dcard-stat-val">${d.doc_count}</div><div class="dcard-stat-lbl">${t('dcDocuments')}</div></div>
-            <div><div class="dcard-stat-val">${d.rule_count}</div><div class="dcard-stat-lbl">${t('dcRules')}</div></div>
+            <div class="clickable-stat" onclick="showSourcesForDomain('${escHtml(d.name)}')">
+              <div class="dcard-stat-val">${d.doc_count}</div>
+              <div class="dcard-stat-lbl">${t('dcDocuments')}</div>
+            </div>
+            <div class="clickable-stat" onclick="showKnowledgeForDomain('${escHtml(d.name)}')">
+              <div class="dcard-stat-val">${d.rule_count}</div>
+              <div class="dcard-stat-lbl">${t('dcRules')}</div>
+            </div>
           </div>
           <div class="dbar"><div class="dbar-fill" style="width:${d.rule_count===0?3:Math.round(d.rule_count/max*100)}%"></div></div>
         </div>`).join('')
@@ -1138,8 +1262,11 @@ function renderDomains() {
 
 function renderKnowledge() {
   const { knowledge } = G;
-  document.getElementById('tb-knowledge').innerHTML = knowledge.length
-    ? knowledge.map((k, i) => `
+  const filtered = selectedKnowledgeDomainFilter
+    ? knowledge.filter(k => k.domain === selectedKnowledgeDomainFilter)
+    : knowledge;
+  document.getElementById('tb-knowledge').innerHTML = filtered.length
+    ? filtered.map((k, i) => `
         <tr class="k-row" onclick="toggleKnowledgeDetail(${i})" style="cursor:pointer" title="Click to expand">
           <td class="td-main">${escHtml(k.title)}</td>
           <td>${kindTag(k.kind)}</td>
@@ -1160,8 +1287,11 @@ function toggleKnowledgeDetail(i) {
 
 function renderSources() {
   const { sources } = G;
-  document.getElementById('sources-list').innerHTML = sources.length
-    ? sources.map(s => {
+  const filtered = selectedDomainFilter
+    ? sources.filter(s => s.domain === selectedDomainFilter)
+    : sources;
+  document.getElementById('sources-list').innerHTML = filtered.length
+    ? filtered.map(s => {
         const uri = s.uri || s.title || '';
         const isUrl = /^https?:\/\//i.test(uri);
         const label = escHtml(uri || '(local file)');
@@ -1261,6 +1391,8 @@ function renderAll() {
   document.getElementById('nb-sources').textContent   = G.sources.length;
   document.getElementById('nb-episodes').textContent  = G.episodes.length;
   document.getElementById('nb-repos').textContent     = G.codeRepos.length;
+  populateSourcesFilter();
+  populateKnowledgeFilter();
   applyLang(true);
   renderOverview(); renderDomains(); renderKnowledge();
   renderSources(); renderEpisodes(); renderTrust();
