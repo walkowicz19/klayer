@@ -1,7 +1,6 @@
 <svg width="220" height="56" viewBox="0 0 220 56" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="klayer">
-  <rect width="220" height="56" rx="8" fill="#ffffff"/>
   <rect x="0"  y="8"  width="44" height="8" rx="4" fill="#2B6EE8"/>
-  <rect x="5"  y="22" width="34" height="8" rx="4" fill="#0D1B3E"/>
+  <rect x="5"  y="22" width="34" height="8" rx="4" fill="#ffffff"/>
   <rect x="10" y="36" width="24" height="8" rx="4" fill="#2B6EE8" opacity="0.55"/>
-  <text x="62" y="36" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif" font-size="28" font-weight="700" fill="#0D1B3E" letter-spacing="-0.8">klayer</text>
+  <text x="62" y="36" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif" font-size="28" font-weight="700" fill="#ffffff" letter-spacing="-0.8">klayer</text>
 </svg>
