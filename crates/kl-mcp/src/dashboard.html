@@ -264,6 +264,40 @@
     /* ── Empty state ── */
     .empty { text-align: center; padding: 32px 20px; color: var(--mute); font-size: 13px; }
 
+    /* ── Codebase ── */
+    .code-search-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+    .code-search-input {
+      flex: 1; height: 36px; padding: 0 12px;
+      border: 1px solid var(--hairline); border-radius: var(--r-full);
+      font-size: 13px; color: var(--ink); background: var(--canvas);
+      outline: none; transition: border-color .12s;
+    }
+    .code-search-input:focus { border-color: var(--blue); }
+    .code-search-btn {
+      height: 36px; padding: 0 16px; border-radius: var(--r-full);
+      background: var(--navy); color: var(--on-dark); border: none;
+      font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+      transition: background .12s;
+    }
+    .code-search-btn:hover { background: #162550; }
+    .code-hit { padding: 12px 0; border-bottom: 1px solid var(--hairline); }
+    .code-hit:last-child { border-bottom: none; }
+    .code-hit-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+    .code-hit-file { font-size: 12px; font-weight: 600; color: var(--blue); }
+    .code-hit-lines { font-size: 11px; color: var(--mute); }
+    .code-lang-tag { padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; background: var(--soft); color: var(--charcoal); }
+    .code-snippet { font-family: ui-monospace, 'SF Mono', 'Consolas', monospace; font-size: 11.5px; line-height: 1.6; background: var(--soft); border-radius: var(--r-md); padding: 10px 12px; overflow-x: auto; white-space: pre; color: var(--ink); border: 1px solid var(--hairline); max-height: 180px; overflow-y: auto; }
+    .repo-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--hairline); }
+    .repo-row:last-child { border-bottom: none; }
+    .repo-icon { width: 32px; height: 32px; border-radius: var(--r-md); background: var(--soft); border: 1px solid var(--hairline); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+    .repo-name { font-size: 13px; font-weight: 700; color: var(--navy); }
+    .repo-path { font-size: 11px; color: var(--mute); font-family: ui-monospace, 'SF Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px; }
+    .repo-stats { display: flex; gap: 12px; margin-left: auto; flex-shrink: 0; }
+    .repo-stat { text-align: right; }
+    .repo-stat-val { font-size: 16px; font-weight: 700; color: var(--blue); line-height: 1; }
+    .repo-stat-lbl { font-size: 10px; color: var(--mute); }
+    .code-stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+
     /* ── Settings ── */
     .settings-section { margin-bottom: 20px; }
     .settings-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--mute); margin-bottom: 10px; }
@@ -368,6 +402,14 @@
       <button class="nav-btn" data-page="trust">
         <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L2 4v4c0 3.2 2.5 5.8 6 6.5 3.5-.7 6-3.3 6-6.5V4L8 1.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.5 8l2 2 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span data-i18n="navTrust"></span>
+      </button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label" data-i18n="navGroupCode"></div>
+      <button class="nav-btn" data-page="codebase">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M5 5L2 8l3 3M11 5l3 3-3 3M9 3l-2 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="navCodebase"></span>
+        <span class="nav-badge" id="nb-repos">—</span>
       </button>
     </div>
     <div class="nav-group">
@@ -521,6 +563,55 @@
       </div>
     </div>
 
+    <!-- Codebase -->
+    <div id="page-codebase" class="page">
+      <div class="ph">
+        <div class="ph-title" data-i18n="navCodebase"></div>
+        <div class="ph-sub" data-i18n="phCodebaseSub"></div>
+      </div>
+
+      <div class="code-stats-row">
+        <div class="stat accent">
+          <div class="stat-lbl" data-i18n="codeStatRepos"></div>
+          <div class="stat-val" id="cs-repos">—</div>
+          <div class="stat-hint" data-i18n="codeStatReposHint"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl" data-i18n="codeStatFiles"></div>
+          <div class="stat-val" id="cs-files">—</div>
+          <div class="stat-hint" data-i18n="codeStatFilesHint"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl" data-i18n="codeStatChunks"></div>
+          <div class="stat-val" id="cs-chunks">—</div>
+          <div class="stat-hint" data-i18n="codeStatChunksHint"></div>
+        </div>
+      </div>
+
+      <div class="card card-fw">
+        <div class="ch">
+          <svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M10 10l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span class="ch-title" data-i18n="chCodeSearch"></span>
+        </div>
+        <div class="cb">
+          <div class="code-search-bar">
+            <input class="code-search-input" id="code-search-input" type="text" data-i18n-placeholder="codeSearchPlaceholder" />
+            <button class="code-search-btn" onclick="runCodeSearch()" data-i18n="codeSearchBtn"></button>
+          </div>
+          <div id="code-search-results"></div>
+        </div>
+      </div>
+
+      <div class="card card-fw">
+        <div class="ch">
+          <svg class="ico" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 6h6M5 9h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <span class="ch-title" data-i18n="chRepos"></span>
+          <span class="ch-count" id="repos-count"></span>
+        </div>
+        <div class="cb" id="repos-list"></div>
+      </div>
+    </div>
+
     <!-- Settings -->
     <div id="page-settings" class="page">
       <div class="ph">
@@ -546,11 +637,11 @@
         <div class="cb">
           <div class="info-row">
             <span class="info-lbl" data-i18n="settingsDashURL"></span>
-            <a class="info-link" href="http://localhost:7474" target="_blank">http://localhost:7474</a>
+            <a class="info-link" id="settings-url-val" href="#" target="_blank">—</a>
           </div>
           <div class="info-row">
             <span class="info-lbl" data-i18n="settingsPort"></span>
-            <span class="info-val">7474</span>
+            <span class="info-val" id="settings-port-val">—</span>
           </div>
           <div class="info-row">
             <span class="info-lbl" data-i18n="settingsStatus"></span>
@@ -589,9 +680,9 @@
 const LANGS = {
   en: {
     topbarSub: 'knowledge dashboard',
-    navGroupOverview: 'Overview', navGroupKnowledge: 'Knowledge', navGroupAgent: 'Agent', navGroupSystem: 'System',
+    navGroupOverview: 'Overview', navGroupKnowledge: 'Knowledge', navGroupAgent: 'Agent', navGroupCode: 'Codebase', navGroupSystem: 'System',
     navDashboard: 'Dashboard', navDomains: 'Domains', navKnowledge: 'Knowledge',
-    navSources: 'Sources', navMemory: 'Agent Memory', navTrust: 'Trust Lifecycle', navSettings: 'Settings',
+    navSources: 'Sources', navMemory: 'Agent Memory', navTrust: 'Trust Lifecycle', navCodebase: 'Codebase', navSettings: 'Settings',
     btnRefresh: '↺ Refresh', btnLoading: '↺ Loading…',
     statusConnecting: 'connecting…', statusLive: 'klayer.db · live', statusError: 'API unreachable',
     statDomains: 'Domains', statDomainsHint: 'active namespaces',
@@ -625,6 +716,15 @@ const LANGS = {
     emptyKnowledge: 'No knowledge items yet', emptyDomains: 'No domains registered yet',
     emptyDomainsCoverage: 'No domains registered', emptySources: 'No sources ingested yet',
     emptyEpisodes: 'No episodes logged yet', emptyProposed: 'No proposed items — all clear',
+    phCodebaseSub: 'Indexed repos — search any function, symbol, or pattern across sessions',
+    codeStatRepos: 'Repos', codeStatReposHint: 'indexed codebases',
+    codeStatFiles: 'Files', codeStatFilesHint: 'source files',
+    codeStatChunks: 'Chunks', codeStatChunksHint: 'searchable blocks',
+    chCodeSearch: 'Search Code', chRepos: 'Indexed Repositories',
+    codeSearchPlaceholder: 'Search functions, symbols, file paths…',
+    codeSearchBtn: 'Search',
+    codeNoResults: 'No results', codeSearchPrompt: 'Type a query and press Search',
+    repoFiles: 'files', repoChunks: 'chunks', repoIndexed: 'indexed',
     phSettingsSub: 'Language, connection info, and project details',
     settingsLang: 'Language', settingsConnection: 'Connection',
     settingsAbout: 'About', settingsDashURL: 'Dashboard URL',
@@ -633,9 +733,9 @@ const LANGS = {
   },
   pt: {
     topbarSub: 'painel de conhecimento',
-    navGroupOverview: 'Visão Geral', navGroupKnowledge: 'Conhecimento', navGroupAgent: 'Agente', navGroupSystem: 'Sistema',
+    navGroupOverview: 'Visão Geral', navGroupKnowledge: 'Conhecimento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupSystem: 'Sistema',
     navDashboard: 'Painel', navDomains: 'Domínios', navKnowledge: 'Conhecimento',
-    navSources: 'Fontes', navMemory: 'Memória do Agente', navTrust: 'Ciclo de Confiança', navSettings: 'Configurações',
+    navSources: 'Fontes', navMemory: 'Memória do Agente', navTrust: 'Ciclo de Confiança', navCodebase: 'Base de Código', navSettings: 'Configurações',
     btnRefresh: '↺ Atualizar', btnLoading: '↺ Carregando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · ativo', statusError: 'API inacessível',
     statDomains: 'Domínios', statDomainsHint: 'namespaces ativos',
@@ -669,6 +769,15 @@ const LANGS = {
     emptyKnowledge: 'Nenhum item de conhecimento ainda', emptyDomains: 'Nenhum domínio registrado ainda',
     emptyDomainsCoverage: 'Nenhum domínio registrado', emptySources: 'Nenhuma fonte ingerida ainda',
     emptyEpisodes: 'Nenhum episódio registrado ainda', emptyProposed: 'Nenhum item proposto — tudo limpo',
+    phCodebaseSub: 'Repositórios indexados — busque qualquer função, símbolo ou padrão entre sessões',
+    codeStatRepos: 'Repos', codeStatReposHint: 'bases de código indexadas',
+    codeStatFiles: 'Arquivos', codeStatFilesHint: 'arquivos-fonte',
+    codeStatChunks: 'Blocos', codeStatChunksHint: 'blocos pesquisáveis',
+    chCodeSearch: 'Buscar Código', chRepos: 'Repositórios Indexados',
+    codeSearchPlaceholder: 'Buscar funções, símbolos, caminhos de arquivo…',
+    codeSearchBtn: 'Buscar',
+    codeNoResults: 'Sem resultados', codeSearchPrompt: 'Digite uma consulta e pressione Buscar',
+    repoFiles: 'arquivos', repoChunks: 'blocos', repoIndexed: 'indexado',
     phSettingsSub: 'Idioma, informações de conexão e detalhes do projeto',
     settingsLang: 'Idioma', settingsConnection: 'Conexão',
     settingsAbout: 'Sobre', settingsDashURL: 'URL do Painel',
@@ -677,9 +786,9 @@ const LANGS = {
   },
   es: {
     topbarSub: 'panel de conocimiento',
-    navGroupOverview: 'Resumen', navGroupKnowledge: 'Conocimiento', navGroupAgent: 'Agente', navGroupSystem: 'Sistema',
+    navGroupOverview: 'Resumen', navGroupKnowledge: 'Conocimiento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupSystem: 'Sistema',
     navDashboard: 'Panel', navDomains: 'Dominios', navKnowledge: 'Conocimiento',
-    navSources: 'Fuentes', navMemory: 'Memoria del Agente', navTrust: 'Ciclo de Confianza', navSettings: 'Configuración',
+    navSources: 'Fuentes', navMemory: 'Memoria del Agente', navTrust: 'Ciclo de Confianza', navCodebase: 'Base de Código', navSettings: 'Configuración',
     btnRefresh: '↺ Actualizar', btnLoading: '↺ Cargando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · activo', statusError: 'API no disponible',
     statDomains: 'Dominios', statDomainsHint: 'espacios de nombres activos',
@@ -713,6 +822,15 @@ const LANGS = {
     emptyKnowledge: 'No hay elementos de conocimiento aún', emptyDomains: 'No hay dominios registrados aún',
     emptyDomainsCoverage: 'No hay dominios registrados', emptySources: 'No hay fuentes ingeridas aún',
     emptyEpisodes: 'No hay episodios registrados aún', emptyProposed: 'No hay elementos propuestos — todo limpio',
+    phCodebaseSub: 'Repositorios indexados — busque cualquier función, símbolo o patrón entre sesiones',
+    codeStatRepos: 'Repos', codeStatReposHint: 'bases de código indexadas',
+    codeStatFiles: 'Archivos', codeStatFilesHint: 'archivos fuente',
+    codeStatChunks: 'Bloques', codeStatChunksHint: 'bloques buscables',
+    chCodeSearch: 'Buscar Código', chRepos: 'Repositorios Indexados',
+    codeSearchPlaceholder: 'Buscar funciones, símbolos, rutas de archivo…',
+    codeSearchBtn: 'Buscar',
+    codeNoResults: 'Sin resultados', codeSearchPrompt: 'Escribe una consulta y presiona Buscar',
+    repoFiles: 'archivos', repoChunks: 'bloques', repoIndexed: 'indexado',
     phSettingsSub: 'Idioma, información de conexión y detalles del proyecto',
     settingsLang: 'Idioma', settingsConnection: 'Conexión',
     settingsAbout: 'Acerca de', settingsDashURL: 'URL del Panel',
@@ -721,9 +839,9 @@ const LANGS = {
   },
   zh: {
     topbarSub: '知识控制台',
-    navGroupOverview: '概览', navGroupKnowledge: '知识', navGroupAgent: '智能体', navGroupSystem: '系统',
+    navGroupOverview: '概览', navGroupKnowledge: '知识', navGroupAgent: '智能体', navGroupCode: '代码库', navGroupSystem: '系统',
     navDashboard: '控制台', navDomains: '域', navKnowledge: '知识',
-    navSources: '来源', navMemory: '智能体记忆', navTrust: '信任生命周期', navSettings: '设置',
+    navSources: '来源', navMemory: '智能体记忆', navTrust: '信任生命周期', navCodebase: '代码库', navSettings: '设置',
     btnRefresh: '↺ 刷新', btnLoading: '↺ 加载中…',
     statusConnecting: '连接中…', statusLive: 'klayer.db · 在线', statusError: 'API 不可达',
     statDomains: '域', statDomainsHint: '活跃命名空间',
@@ -757,6 +875,15 @@ const LANGS = {
     emptyKnowledge: '暂无知识条目', emptyDomains: '暂无注册域',
     emptyDomainsCoverage: '暂无注册域', emptySources: '暂无导入来源',
     emptyEpisodes: '暂无事件记录', emptyProposed: '暂无待议条目 — 一切正常',
+    phCodebaseSub: '已索引的代码库 — 跨会话搜索任意函数、符号或模式',
+    codeStatRepos: '仓库', codeStatReposHint: '已索引的代码库',
+    codeStatFiles: '文件', codeStatFilesHint: '源代码文件',
+    codeStatChunks: '块', codeStatChunksHint: '可搜索块',
+    chCodeSearch: '搜索代码', chRepos: '已索引仓库',
+    codeSearchPlaceholder: '搜索函数、符号、文件路径…',
+    codeSearchBtn: '搜索',
+    codeNoResults: '无结果', codeSearchPrompt: '输入查询并点击搜索',
+    repoFiles: '文件', repoChunks: '块', repoIndexed: '已索引',
     phSettingsSub: '语言、连接信息和项目详情',
     settingsLang: '语言', settingsConnection: '连接',
     settingsAbout: '关于', settingsDashURL: '控制台 URL',
@@ -765,9 +892,9 @@ const LANGS = {
   },
   pl: {
     topbarSub: 'panel wiedzy',
-    navGroupOverview: 'Przegląd', navGroupKnowledge: 'Wiedza', navGroupAgent: 'Agent', navGroupSystem: 'System',
+    navGroupOverview: 'Przegląd', navGroupKnowledge: 'Wiedza', navGroupAgent: 'Agent', navGroupCode: 'Kod', navGroupSystem: 'System',
     navDashboard: 'Panel', navDomains: 'Domeny', navKnowledge: 'Wiedza',
-    navSources: 'Źródła', navMemory: 'Pamięć Agenta', navTrust: 'Cykl Zaufania', navSettings: 'Ustawienia',
+    navSources: 'Źródła', navMemory: 'Pamięć Agenta', navTrust: 'Cykl Zaufania', navCodebase: 'Baza Kodu', navSettings: 'Ustawienia',
     btnRefresh: '↺ Odśwież', btnLoading: '↺ Ładowanie…',
     statusConnecting: 'łączenie…', statusLive: 'klayer.db · aktywny', statusError: 'API niedostępne',
     statDomains: 'Domeny', statDomainsHint: 'aktywne przestrzenie nazw',
@@ -801,6 +928,15 @@ const LANGS = {
     emptyKnowledge: 'Brak elementów wiedzy', emptyDomains: 'Brak zarejestrowanych domen',
     emptyDomainsCoverage: 'Brak zarejestrowanych domen', emptySources: 'Brak zaindeksowanych źródeł',
     emptyEpisodes: 'Brak zarejestrowanych epizodów', emptyProposed: 'Brak proponowanych elementów — wszystko w porządku',
+    phCodebaseSub: 'Zaindeksowane repozytoria — wyszukuj dowolne funkcje, symbole i wzorce między sesjami',
+    codeStatRepos: 'Repoz.', codeStatReposHint: 'zaindeksowane bazy kodu',
+    codeStatFiles: 'Pliki', codeStatFilesHint: 'pliki źródłowe',
+    codeStatChunks: 'Fragmenty', codeStatChunksHint: 'przeszukiwalne fragmenty',
+    chCodeSearch: 'Szukaj Kodu', chRepos: 'Zaindeksowane Repozytoria',
+    codeSearchPlaceholder: 'Szukaj funkcji, symboli, ścieżek pliku…',
+    codeSearchBtn: 'Szukaj',
+    codeNoResults: 'Brak wyników', codeSearchPrompt: 'Wpisz zapytanie i naciśnij Szukaj',
+    repoFiles: 'pliki', repoChunks: 'fragmenty', repoIndexed: 'zaindeksowano',
     phSettingsSub: 'Język, informacje o połączeniu i szczegóły projektu',
     settingsLang: 'Język', settingsConnection: 'Połączenie',
     settingsAbout: 'O projekcie', settingsDashURL: 'URL panelu',
@@ -834,6 +970,9 @@ function applyLang(skipRender = false) {
     const key = el.dataset.i18n;
     el.textContent = t(key);
   });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
 
   // Render settings language grid
   const langGrid = document.getElementById('lang-grid');
@@ -863,7 +1002,7 @@ function setLang(code) {
 }
 
 // ── Global state ────────────────────────────────────────────────────────────
-let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [] };
+let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [] };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const trustBadge = v => {
@@ -1024,6 +1163,47 @@ function renderTrust() {
     : `<tr><td colspan="5" class="empty">${t('emptyProposed')}</td></tr>`;
 }
 
+function renderCodebase() {
+  if (!G.codeStats) return;
+  const s = G.codeStats;
+  const reposEl  = document.getElementById('cs-repos');
+  const filesEl  = document.getElementById('cs-files');
+  const chunksEl = document.getElementById('cs-chunks');
+  if (reposEl)  reposEl.textContent  = s.repos  ?? 0;
+  if (filesEl)  filesEl.textContent  = s.files  ?? 0;
+  if (chunksEl) chunksEl.textContent = s.chunks ?? 0;
+
+  const reposCount = document.getElementById('repos-count');
+  if (reposCount) reposCount.textContent = G.codeRepos.length;
+
+  const list = document.getElementById('repos-list');
+  if (!list) return;
+  if (!G.codeRepos.length) {
+    list.innerHTML = `<div class="empty" style="padding:1.5rem;text-align:center;color:var(--muted)">—</div>`;
+    return;
+  }
+  list.innerHTML = G.codeRepos.map(r => `
+    <div class="repo-row">
+      <span class="repo-icon">⬡</span>
+      <div style="flex:1;min-width:0">
+        <div class="repo-name">${escHtml(r.name)}</div>
+        <div class="repo-path">${escHtml(r.path)}</div>
+      </div>
+      <div class="repo-stats">
+        <span>${r.file_count} ${t('repoFiles')}</span>
+        <span>${r.chunk_count} ${t('repoChunks')}</span>
+        <span>${t('repoIndexed')} ${r.indexed_at ? r.indexed_at.slice(0,10) : '—'}</span>
+      </div>
+    </div>`).join('');
+}
+
+function renderSettings() {
+  const portEl = document.getElementById('settings-port-val');
+  if (portEl) portEl.textContent = window.location.port || '80';
+  const urlEl = document.getElementById('settings-url-val');
+  if (urlEl) { urlEl.textContent = window.location.origin; urlEl.href = window.location.origin; }
+}
+
 function renderAll() {
   document.getElementById('nb-domains').textContent   = G.domains.length;
   document.getElementById('nb-knowledge').textContent = G.knowledge.length;
@@ -1032,6 +1212,7 @@ function renderAll() {
   applyLang(true);
   renderOverview(); renderDomains(); renderKnowledge();
   renderSources(); renderEpisodes(); renderTrust();
+  renderCodebase(); renderSettings();
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -1040,15 +1221,17 @@ async function loadData() {
   btn.classList.add('spinning');
   btn.textContent = t('btnLoading');
   try {
-    const [stats, domains, knowledge, sources, episodes, preferences] = await Promise.all([
+    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos] = await Promise.all([
       fetch('/api/stats').then(r=>r.json()),
       fetch('/api/domains').then(r=>r.json()),
       fetch('/api/knowledge').then(r=>r.json()),
       fetch('/api/sources').then(r=>r.json()),
       fetch('/api/episodes').then(r=>r.json()),
       fetch('/api/preferences').then(r=>r.json()),
+      fetch('/api/code/stats').then(r=>r.json()),
+      fetch('/api/code/repos').then(r=>r.json()),
     ]);
-    G = { stats, domains, knowledge, sources, episodes, preferences };
+    G = { stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos };
     const dot = document.getElementById('status-dot');
     dot.classList.add('live');
     updateStatusText(t('statusLive'));
@@ -1062,6 +1245,37 @@ async function loadData() {
     btn.textContent = t('btnRefresh');
   }
 }
+
+async function runCodeSearch() {
+  const query = document.getElementById('code-search-input').value.trim();
+  const results = document.getElementById('code-search-results');
+  if (!results) return;
+  if (!query) { results.innerHTML = `<div class="empty" style="padding:1rem;text-align:center;color:var(--muted)">${t('codeSearchPrompt')}</div>`; return; }
+  results.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--muted)">…</div>';
+  try {
+    const hits = await fetch(`/api/code/search?q=${encodeURIComponent(query)}&limit=20`).then(r=>r.json());
+    if (!hits.length) {
+      results.innerHTML = `<div class="empty" style="padding:1rem;text-align:center;color:var(--muted)">${t('codeNoResults')}</div>`;
+      return;
+    }
+    results.innerHTML = hits.map(h => `
+      <div class="code-hit">
+        <div class="code-hit-header">
+          <span class="code-hit-file">${escHtml(h.rel_path)}</span>
+          ${h.symbol_name ? `<span class="code-hit-file" style="opacity:.7">${escHtml(h.symbol_name)}</span>` : ''}
+          <span class="code-lang-tag">${escHtml(h.language || '')}</span>
+          <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${escHtml(h.repo_name || '')}</span>
+        </div>
+        <pre class="code-snippet">${escHtml(h.snippet || h.content || '')}</pre>
+      </div>`).join('');
+  } catch(e) {
+    results.innerHTML = `<div class="empty" style="padding:1rem;color:var(--danger)">${escHtml(String(e))}</div>`;
+  }
+}
+
+document.getElementById('code-search-input')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') runCodeSearch();
+});
 
 async function promoteItem(id, btn) {
   btn.disabled = true; btn.textContent = '…';

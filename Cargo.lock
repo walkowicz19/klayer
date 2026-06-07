@@ -880,6 +880,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kl-code"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "kl-core"
 version = "0.1.0"
 dependencies = [
@@ -905,6 +916,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "kl-code",
  "kl-core",
  "kl-ingest",
  "kl-search",

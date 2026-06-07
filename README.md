@@ -56,6 +56,15 @@ severity badges and a Promote button.
 |---------|--------------|
 | ![Sources](docs/screenshots/sources.png) | ![Agent Memory](docs/screenshots/agent-memory.png) |
 
+### Codebase & Settings
+
+**Codebase** shows indexed repository stats and lets you search across all indexed code with full-text search.
+**Settings** lets you switch the UI language, view connection info, and see project details.
+
+| Codebase | Settings |
+|----------|----------|
+| ![Codebase](docs/screenshots/codebase.png) | ![Settings](docs/screenshots/settings.png) |
+
 ### Dashboard port & REST API
 
 The default port is **7474** (`KLAYER_DASHBOARD_PORT` to override).
@@ -118,6 +127,10 @@ only reviewed + user are ENFORCED.
 | `clear_domain` | Fully delete a domain and all its data; `chunks_only=true` keeps promoted rules |
 | `log_episode` | Record one step of an agentic run for auditability |
 | `compile_skill` | Regenerate the SKILL.md router from the current registries |
+| `index_codebase` | Walk a directory and index all source files into the codebase DB for semantic search |
+| `search_code` | Full-text + semantic search across all indexed codebases; returns matching snippets with file paths |
+| `list_repos` | List all indexed repositories with file/chunk counts and last-indexed timestamps |
+| `forget_repo` | Remove a previously indexed repository (all files and chunks) from the codebase DB |
 
 ## Quick start (pre-built binary)
 
@@ -146,7 +159,8 @@ No Rust toolchain or model downloads required — just download and run.
 
 | Variable | Default | Description |
 |---|---|---|
-| `KLAYER_DB` | `klayer.db` | Path to the SQLite database |
+| `KLAYER_DB` | `klayer.db` | Path to the knowledge SQLite database |
+| `KLAYER_CODE_DB` | `klayer_code.db` | Path to the codebase memory SQLite database |
 | `KLAYER_SKILL` | `skills/klayer/SKILL.md` | Path where `compile_skill` writes the router |
 | `KLAYER_DASHBOARD_PORT` | `7474` | Port for the live dashboard HTTP server |
 | `KLAYER_SEARCH` | `auto` | Search engine: `auto` · `duckduckgo` · `bing` · `brave` |

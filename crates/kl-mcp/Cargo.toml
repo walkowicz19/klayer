@@ -20,6 +20,7 @@ kl-store.workspace = true
 kl-ingest.workspace = true
 kl-search.workspace = true
 kl-skill.workspace = true
+kl-code.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
