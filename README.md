@@ -146,7 +146,8 @@ No Rust toolchain or model downloads required — just download and run.
     "klayer": {
       "command": "C:\\path\\to\\klayer.exe",
       "env": {
-        "KLAYER_DB": "C:\\path\\to\\klayer.db"
+        "KLAYER_DB": "C:\\path\\to\\klayer.db",
+        "KLAYER_CODE_DB": "C:\\path\\to\\klayer_code.db"
       }
     }
   }
