@@ -89,7 +89,7 @@
     .skeleton { background: var(--border); border-radius: 4px; animation: shimmer 1.4s infinite; }
 
     /* ── Grid ── */
-    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; align-items: start; }
 
     /* ── Card ── */
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--sh); overflow: hidden; }
@@ -269,21 +269,15 @@
         <div class="ph-sub" id="overview-sub">Loading…</div>
       </div>
       <div class="stats">
-        <div class="stat accent"><div class="stat-lbl">Domains</div><div class="stat-val" id="s-domains"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div></div>
+        <div class="stat accent"><div class="stat-lbl">Domains</div><div class="stat-val" id="s-domains"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div><div class="stat-hint">active namespaces</div></div>
         <div class="stat"><div class="stat-lbl">Documents</div><div class="stat-val" id="s-docs"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div><div class="stat-hint" id="s-docs-hint"></div></div>
         <div class="stat"><div class="stat-lbl">Rules</div><div class="stat-val" id="s-rules"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div><div class="stat-hint" id="s-rules-hint"></div></div>
-        <div class="stat"><div class="stat-lbl">Episodes</div><div class="stat-val" id="s-eps"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div></div>
-        <div class="stat"><div class="stat-lbl">Preferences</div><div class="stat-val" id="s-prefs"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div></div>
+        <div class="stat"><div class="stat-lbl">Episodes</div><div class="stat-val" id="s-eps"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div><div class="stat-hint">agentic steps</div></div>
+        <div class="stat"><div class="stat-lbl">Preferences</div><div class="stat-val" id="s-prefs"><span class="skeleton" style="width:36px;height:28px;display:block"></span></div><div class="stat-hint">user-authored</div></div>
       </div>
-      <div class="g2">
-        <div class="card">
-          <div class="ch"><svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L2 4v4c0 3.2 2.5 5.8 6 6.5 3.5-.7 6-3.3 6-6.5V4L8 1.5z" stroke="#2B6EE8" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="ch-title">Trust Lifecycle</span></div>
-          <div class="tflow" id="tflow-overview"></div>
-        </div>
-        <div class="card">
-          <div class="ch"><svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9H3V2z" stroke="#2B6EE8" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="ch-title">Recent Knowledge</span><span class="ch-count" id="rk-count"></span></div>
-          <div class="tw"><table><thead><tr><th>Title</th><th>Domain</th><th>Trust</th></tr></thead><tbody id="tb-recent"></tbody></table></div>
-        </div>
+      <div class="card" style="margin-bottom:18px;">
+        <div class="ch"><svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L2 4v4c0 3.2 2.5 5.8 6 6.5 3.5-.7 6-3.3 6-6.5V4L8 1.5z" stroke="#2B6EE8" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="ch-title">Trust Lifecycle</span></div>
+        <div class="tflow" id="tflow-overview"></div>
       </div>
       <div class="g2">
         <div class="card">
@@ -294,6 +288,10 @@
           <div class="ch"><svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="#2B6EE8" stroke-width="1.5"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8" stroke="#2B6EE8" stroke-width="1.4" stroke-linecap="round"/></svg><span class="ch-title">Recent Episodes</span><span class="ch-count" id="ep-ov-count"></span></div>
           <div class="cb"><div class="ep-list" id="ep-overview"></div></div>
         </div>
+      </div>
+      <div class="card" style="margin-bottom:18px;">
+        <div class="ch"><svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9H3V2z" stroke="#2B6EE8" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="ch-title">Recent Knowledge</span><span class="ch-count" id="rk-count"></span></div>
+        <div class="tw"><table><thead><tr><th>Title</th><th>Domain</th><th>Trust</th></tr></thead><tbody id="tb-recent"></tbody></table></div>
       </div>
     </div>
 
