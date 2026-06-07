@@ -78,7 +78,7 @@ The default port is **7474** (`KLAYER_DASHBOARD_PORT` to override).
   klayer keeps the skill a _thin router_ and pulls data on demand via `recall`.
 - **MCP install friction.** One static binary, one command, one config block.
 - **Trust.** Ingested content is _untrusted data_, never instructions. Only
-  `reviewed`/`user` knowledge is ever enforced. This is the safety spine, in code.
+  `reviewed`/`user` knowledge is ever enforced. This is the safety spine.
 
 ## Architecture
 
