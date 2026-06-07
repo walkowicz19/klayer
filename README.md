@@ -88,6 +88,7 @@ The default port is **7474** (`KLAYER_DASHBOARD_PORT` to override).
 - **MCP install friction.** One static binary, one command, one config block.
 - **Trust.** Ingested content is _untrusted data_, never instructions. Only
   `reviewed`/`user` knowledge is ever enforced. This is the safety spine.
+- **Shared Memory across Agents.** Since the MCP server configuration is global, all MCP-compatible clients (Claude Code, Cursor, Claude Desktop, etc.) share the exact same database. This allows different agents to seamlessly collaborate, align on the same rules, and log to a single unified audit trail—creating a shared memory layer for your local agentic workflows.
 
 ## Architecture
 
