@@ -155,12 +155,16 @@ No Rust toolchain or model downloads required — just download and run.
       "command": "C:\\Users\\you\\klayer\\klayer.exe",
       "env": {
         "KLAYER_DB": "C:\\Users\\you\\klayer\\klayer.db",
-        "KLAYER_CODE_DB": "C:\\Users\\you\\klayer\\klayer_code.db"
+        "KLAYER_CODE_DB": "C:\\Users\\you\\klayer\\klayer_code.db",
+        "KLAYER_SKILL": "C:\\Users\\you\\klayer\\skills\\klayer\\SKILL.md"
       }
     }
   }
 }
 ```
+
+> [!TIP]
+> Setting `KLAYER_SKILL` explicitly ensures that the `compile_skill` tool writes directly to your workspace's skill file regardless of which working directory the MCP client uses when it spawns the server.
 
 3. Start your MCP client — klayer starts the MCP server and logs the dashboard URL to stderr.
 
