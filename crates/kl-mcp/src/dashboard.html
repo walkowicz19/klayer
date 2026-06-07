@@ -502,6 +502,7 @@
       <div class="ph">
         <div class="ph-title" data-i18n="navDomains"></div>
         <div class="ph-sub" data-i18n="phDomainsSub"></div>
+        <button onclick="clearDomains()" style="margin-top:.75rem;padding:.35rem .9rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="domainsClearBtn"></button>
       </div>
       <div class="domain-grid" id="domain-grid"></div>
     </div>
@@ -730,10 +731,12 @@ const LANGS = {
     codeSearchBtn: 'Search',
     codeNoResults: 'No results', codeSearchPrompt: 'Type a query and press Search',
     repoFiles: 'files', repoChunks: 'chunks', repoIndexed: 'indexed',
+    domainsClearBtn: 'Clear all domains (cascades)',
     codeClearBtn: 'Clear all codebase memory',
     knowledgeClearBtn: 'Clear all knowledge',
     sourcesClearBtn: 'Clear all sources',
     episodesClearBtn: 'Clear all episodes',
+    domainsClearWarning: 'WARNING: This will delete ALL domains and ALL their data — knowledge, rules, sources, and chunks.\n\nThis is a full wipe and cannot be undone.\n\nType "delete" to confirm:',
     phSettingsSub: 'Language, connection info, and project details',
     settingsLang: 'Language', settingsConnection: 'Connection',
     settingsAbout: 'About', settingsDashURL: 'Dashboard URL',
@@ -787,10 +790,12 @@ const LANGS = {
     codeSearchBtn: 'Buscar',
     codeNoResults: 'Sem resultados', codeSearchPrompt: 'Digite uma consulta e pressione Buscar',
     repoFiles: 'arquivos', repoChunks: 'blocos', repoIndexed: 'indexado',
+    domainsClearBtn: 'Limpar todos os domínios (cascata)',
     codeClearBtn: 'Limpar toda a memória de código',
     knowledgeClearBtn: 'Limpar todo o conhecimento',
     sourcesClearBtn: 'Limpar todas as fontes',
     episodesClearBtn: 'Limpar todos os episódios',
+    domainsClearWarning: 'AVISO: Isso irá deletar TODOS os domínios e TODOS os seus dados — conhecimento, regras, fontes e fragmentos.\n\nIsso é uma limpeza completa e não pode ser desfeita.\n\nDigite "delete" para confirmar:',
     phSettingsSub: 'Idioma, informações de conexão e detalhes do projeto',
     settingsLang: 'Idioma', settingsConnection: 'Conexão',
     settingsAbout: 'Sobre', settingsDashURL: 'URL do Painel',
@@ -844,10 +849,12 @@ const LANGS = {
     codeSearchBtn: 'Buscar',
     codeNoResults: 'Sin resultados', codeSearchPrompt: 'Escribe una consulta y presiona Buscar',
     repoFiles: 'archivos', repoChunks: 'bloques', repoIndexed: 'indexado',
+    domainsClearBtn: 'Borrar todos los dominios (en cascada)',
     codeClearBtn: 'Borrar toda la memoria de código',
     knowledgeClearBtn: 'Borrar todo el conocimiento',
     sourcesClearBtn: 'Borrar todas las fuentes',
     episodesClearBtn: 'Borrar todos los episodios',
+    domainsClearWarning: 'ADVERTENCIA: Esto eliminará TODOS los dominios y TODOS sus datos — conocimiento, reglas, fuentes y fragmentos.\n\nEsto es un borrado completo y no se puede deshacer.\n\nEscribe "delete" para confirmar:',
     phSettingsSub: 'Idioma, información de conexión y detalles del proyecto',
     settingsLang: 'Idioma', settingsConnection: 'Conexión',
     settingsAbout: 'Acerca de', settingsDashURL: 'URL del Panel',
@@ -901,10 +908,12 @@ const LANGS = {
     codeSearchBtn: '搜索',
     codeNoResults: '无结果', codeSearchPrompt: '输入查询并点击搜索',
     repoFiles: '文件', repoChunks: '块', repoIndexed: '已索引',
+    domainsClearBtn: '清除所有域（级联）',
     codeClearBtn: '清除所有代码库记忆',
     knowledgeClearBtn: '清除所有知识',
     sourcesClearBtn: '清除所有来源',
     episodesClearBtn: '清除所有事件',
+    domainsClearWarning: '警告：这将删除所有域及其所有数据——知识、规则、来源和块。\n\n这是完全清除，无法撤销。\n\n输入 "delete" 以确认：',
     phSettingsSub: '语言、连接信息和项目详情',
     settingsLang: '语言', settingsConnection: '连接',
     settingsAbout: '关于', settingsDashURL: '控制台 URL',
@@ -958,10 +967,12 @@ const LANGS = {
     codeSearchBtn: 'Szukaj',
     codeNoResults: 'Brak wyników', codeSearchPrompt: 'Wpisz zapytanie i naciśnij Szukaj',
     repoFiles: 'pliki', repoChunks: 'fragmenty', repoIndexed: 'zaindeksowano',
+    domainsClearBtn: 'Wyczyść wszystkie domeny (kaskadowo)',
     codeClearBtn: 'Wyczyść całą pamięć kodu',
     knowledgeClearBtn: 'Wyczyść całą wiedzę',
     sourcesClearBtn: 'Wyczyść wszystkie źródła',
     episodesClearBtn: 'Wyczyść wszystkie epizody',
+    domainsClearWarning: 'OSTRZEŻENIE: Spowoduje to usunięcie WSZYSTKICH domen i WSZYSTKICH ich danych — wiedzy, reguł, źródeł i fragmentów.\n\nJest to pełne czyszczenie i nie można go cofnąć.\n\nWpisz "delete", aby potwierdzić:',
     phSettingsSub: 'Język, informacje o połączeniu i szczegóły projektu',
     settingsLang: 'Język', settingsConnection: 'Połączenie',
     settingsAbout: 'O projekcie', settingsDashURL: 'URL panelu',
@@ -1307,6 +1318,17 @@ async function clearCodebase() {
   if (!confirm('Clear ALL indexed codebase memory? This cannot be undone.')) return;
   try {
     const r = await fetch('/api/code/clear').then(res => res.json());
+    if (r.ok) { await loadData(); }
+    else alert('Clear failed: ' + (r.error || 'unknown error'));
+  } catch(e) { alert('Clear failed: ' + e); }
+}
+
+async function clearDomains() {
+  const answer = prompt(t('domainsClearWarning'));
+  if (answer === null) return;
+  if (answer.trim().toLowerCase() !== 'delete') { alert('Cancelled — you must type "delete" exactly.'); return; }
+  try {
+    const r = await fetch('/api/domains/clear').then(res => res.json());
     if (r.ok) { await loadData(); }
     else alert('Clear failed: ' + (r.error || 'unknown error'));
   } catch(e) { alert('Clear failed: ' + e); }

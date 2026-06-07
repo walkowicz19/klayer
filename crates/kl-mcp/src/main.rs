@@ -361,6 +361,13 @@ async fn dash_code_clear(State(cs): State<Arc<CodeStore>>) -> Json<serde_json::V
     }
 }
 
+async fn dash_domains_clear(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
+    match store.clear_all_domains() {
+        Ok(n)  => Json(serde_json::json!({ "ok": true, "deleted": n })),
+        Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
+    }
+}
+
 async fn dash_knowledge_clear(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
     match store.clear_all_knowledge() {
         Ok(n)  => Json(serde_json::json!({ "ok": true, "deleted": n })),
@@ -410,6 +417,7 @@ async fn start_dashboard(
         .route("/api/code/repos",    get(dash_code_repos))
         .route("/api/code/search",   get(dash_code_search))
         .route("/api/code/clear",      get(dash_code_clear))
+        .route("/api/domains/clear",   get(dash_domains_clear))
         .route("/api/knowledge/clear", get(dash_knowledge_clear))
         .route("/api/sources/clear",   get(dash_sources_clear))
         .route("/api/episodes/clear",  get(dash_episodes_clear))
@@ -651,6 +659,12 @@ impl Klayer {
     fn clear_codebase(&self) -> Result<CallToolResult, McpError> {
         self.code_store.clear_all().map_err(err)?;
         text_ok("Codebase memory cleared. All indexed repositories, files, and chunks have been removed.")
+    }
+
+    #[tool(description = "Clear ALL domains and ALL cascading data — knowledge, sources, chunks, and domain registrations. This is a full wipe of the knowledge store. Use clear_domain() to remove a single domain instead.")]
+    fn clear_domains(&self) -> Result<CallToolResult, McpError> {
+        self.store.clear_all_domains().map_err(err)?;
+        text_ok("All domains cleared. Knowledge, sources, chunks, and domain registrations have been removed.")
     }
 
     #[tool(description = "Clear ALL knowledge items (facts, rules, procedures) across every domain. Domain registrations and ingested sources are kept. This cannot be undone — use forget() to remove a single item instead.")]

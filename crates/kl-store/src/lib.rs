@@ -424,6 +424,19 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// Wipe every domain and all cascading data: knowledge, chunks, sources, domains.
+    pub fn clear_all_domains(&self) -> Result<u64> {
+        let mut c = self.conn.lock().unwrap();
+        let tx = c.transaction()?;
+        tx.execute("DELETE FROM chunks_fts", [])?;
+        tx.execute("DELETE FROM chunks", [])?;
+        tx.execute("DELETE FROM sources", [])?;
+        tx.execute("DELETE FROM knowledge", [])?;
+        let n = tx.execute("DELETE FROM domains", [])?;
+        tx.commit()?;
+        Ok(n as u64)
+    }
+
     pub fn clear_all_knowledge(&self) -> Result<u64> {
         let c = self.conn.lock().unwrap();
         let n = c.execute("DELETE FROM knowledge", [])?;
