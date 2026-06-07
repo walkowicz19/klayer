@@ -424,6 +424,29 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    pub fn clear_all_knowledge(&self) -> Result<u64> {
+        let c = self.conn.lock().unwrap();
+        let n = c.execute("DELETE FROM knowledge", [])?;
+        Ok(n as u64)
+    }
+
+    pub fn clear_all_sources(&self) -> Result<u64> {
+        let mut c = self.conn.lock().unwrap();
+        let tx = c.transaction()?;
+        tx.execute("DELETE FROM chunks_fts", [])?;
+        tx.execute("DELETE FROM chunks", [])?;
+        let n = tx.execute("DELETE FROM sources", [])?;
+        tx.execute("UPDATE domains SET doc_count = 0", [])?;
+        tx.commit()?;
+        Ok(n as u64)
+    }
+
+    pub fn clear_all_episodes(&self) -> Result<u64> {
+        let c = self.conn.lock().unwrap();
+        let n = c.execute("DELETE FROM episodes", [])?;
+        Ok(n as u64)
+    }
+
     pub fn domain_exists(&self, name: &str) -> Result<bool> {
         let c = self.conn.lock().unwrap();
         let found: Option<String> = c

@@ -511,6 +511,7 @@
       <div class="ph">
         <div class="ph-title" data-i18n="navKnowledge"></div>
         <div class="ph-sub" data-i18n="phKnowledgeSub"></div>
+        <button onclick="clearKnowledge()" style="margin-top:.75rem;padding:.35rem .9rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="knowledgeClearBtn"></button>
       </div>
       <div class="card"><div class="tw"><table>
         <thead><tr>
@@ -526,6 +527,7 @@
       <div class="ph">
         <div class="ph-title" data-i18n="navSources"></div>
         <div class="ph-sub" data-i18n="phSourcesSub"></div>
+        <button onclick="clearSources()" style="margin-top:.75rem;padding:.35rem .9rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="sourcesClearBtn"></button>
       </div>
       <div class="card"><div class="cb" id="sources-list"></div></div>
     </div>
@@ -535,6 +537,7 @@
       <div class="ph">
         <div class="ph-title" data-i18n="navMemory"></div>
         <div class="ph-sub" data-i18n="phMemorySub"></div>
+        <button onclick="clearEpisodes()" style="margin-top:.75rem;padding:.35rem .9rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="episodesClearBtn"></button>
       </div>
       <div class="card"><div class="cb"><div class="ep-list" id="ep-all"></div></div></div>
     </div>
@@ -728,6 +731,9 @@ const LANGS = {
     codeNoResults: 'No results', codeSearchPrompt: 'Type a query and press Search',
     repoFiles: 'files', repoChunks: 'chunks', repoIndexed: 'indexed',
     codeClearBtn: 'Clear all codebase memory',
+    knowledgeClearBtn: 'Clear all knowledge',
+    sourcesClearBtn: 'Clear all sources',
+    episodesClearBtn: 'Clear all episodes',
     phSettingsSub: 'Language, connection info, and project details',
     settingsLang: 'Language', settingsConnection: 'Connection',
     settingsAbout: 'About', settingsDashURL: 'Dashboard URL',
@@ -782,6 +788,9 @@ const LANGS = {
     codeNoResults: 'Sem resultados', codeSearchPrompt: 'Digite uma consulta e pressione Buscar',
     repoFiles: 'arquivos', repoChunks: 'blocos', repoIndexed: 'indexado',
     codeClearBtn: 'Limpar toda a memória de código',
+    knowledgeClearBtn: 'Limpar todo o conhecimento',
+    sourcesClearBtn: 'Limpar todas as fontes',
+    episodesClearBtn: 'Limpar todos os episódios',
     phSettingsSub: 'Idioma, informações de conexão e detalhes do projeto',
     settingsLang: 'Idioma', settingsConnection: 'Conexão',
     settingsAbout: 'Sobre', settingsDashURL: 'URL do Painel',
@@ -836,6 +845,9 @@ const LANGS = {
     codeNoResults: 'Sin resultados', codeSearchPrompt: 'Escribe una consulta y presiona Buscar',
     repoFiles: 'archivos', repoChunks: 'bloques', repoIndexed: 'indexado',
     codeClearBtn: 'Borrar toda la memoria de código',
+    knowledgeClearBtn: 'Borrar todo el conocimiento',
+    sourcesClearBtn: 'Borrar todas las fuentes',
+    episodesClearBtn: 'Borrar todos los episodios',
     phSettingsSub: 'Idioma, información de conexión y detalles del proyecto',
     settingsLang: 'Idioma', settingsConnection: 'Conexión',
     settingsAbout: 'Acerca de', settingsDashURL: 'URL del Panel',
@@ -890,6 +902,9 @@ const LANGS = {
     codeNoResults: '无结果', codeSearchPrompt: '输入查询并点击搜索',
     repoFiles: '文件', repoChunks: '块', repoIndexed: '已索引',
     codeClearBtn: '清除所有代码库记忆',
+    knowledgeClearBtn: '清除所有知识',
+    sourcesClearBtn: '清除所有来源',
+    episodesClearBtn: '清除所有事件',
     phSettingsSub: '语言、连接信息和项目详情',
     settingsLang: '语言', settingsConnection: '连接',
     settingsAbout: '关于', settingsDashURL: '控制台 URL',
@@ -944,6 +959,9 @@ const LANGS = {
     codeNoResults: 'Brak wyników', codeSearchPrompt: 'Wpisz zapytanie i naciśnij Szukaj',
     repoFiles: 'pliki', repoChunks: 'fragmenty', repoIndexed: 'zaindeksowano',
     codeClearBtn: 'Wyczyść całą pamięć kodu',
+    knowledgeClearBtn: 'Wyczyść całą wiedzę',
+    sourcesClearBtn: 'Wyczyść wszystkie źródła',
+    episodesClearBtn: 'Wyczyść wszystkie epizody',
     phSettingsSub: 'Język, informacje o połączeniu i szczegóły projektu',
     settingsLang: 'Język', settingsConnection: 'Połączenie',
     settingsAbout: 'O projekcie', settingsDashURL: 'URL panelu',
@@ -1289,6 +1307,33 @@ async function clearCodebase() {
   if (!confirm('Clear ALL indexed codebase memory? This cannot be undone.')) return;
   try {
     const r = await fetch('/api/code/clear').then(res => res.json());
+    if (r.ok) { await loadData(); }
+    else alert('Clear failed: ' + (r.error || 'unknown error'));
+  } catch(e) { alert('Clear failed: ' + e); }
+}
+
+async function clearKnowledge() {
+  if (!confirm('Clear ALL knowledge items across every domain? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/knowledge/clear').then(res => res.json());
+    if (r.ok) { await loadData(); }
+    else alert('Clear failed: ' + (r.error || 'unknown error'));
+  } catch(e) { alert('Clear failed: ' + e); }
+}
+
+async function clearSources() {
+  if (!confirm('Clear ALL ingested sources and chunks across every domain? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/sources/clear').then(res => res.json());
+    if (r.ok) { await loadData(); }
+    else alert('Clear failed: ' + (r.error || 'unknown error'));
+  } catch(e) { alert('Clear failed: ' + e); }
+}
+
+async function clearEpisodes() {
+  if (!confirm('Clear ALL episodes from the audit trail? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/episodes/clear').then(res => res.json());
     if (r.ok) { await loadData(); }
     else alert('Clear failed: ' + (r.error || 'unknown error'));
   } catch(e) { alert('Clear failed: ' + e); }
