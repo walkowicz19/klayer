@@ -175,7 +175,31 @@ fn text_ok(s: impl Into<String>) -> Result<CallToolResult, McpError> {
 
 // ----- dashboard HTTP server -----------------------------------------------
 
-const DASHBOARD_HTML: &str = include_str!("dashboard.html");
+const DASHBOARD_HTML_EMBEDDED: &str = include_str!("dashboard.html");
+
+/// Load dashboard HTML: env override → file next to binary → embedded fallback.
+/// Leaks into `'static` so the axum handler can return it without cloning.
+fn load_dashboard_html() -> &'static str {
+    // 1. Explicit path override.
+    if let Ok(path) = std::env::var("KLAYER_DASHBOARD_HTML") {
+        if let Ok(s) = std::fs::read_to_string(&path) {
+            tracing::info!("dashboard HTML loaded from {path}");
+            return Box::leak(s.into_boxed_str());
+        }
+    }
+    // 2. dashboard.html sitting next to the binary — edit & refresh, no recompile.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let p = dir.join("dashboard.html");
+            if let Ok(s) = std::fs::read_to_string(&p) {
+                tracing::info!("dashboard HTML loaded from {}", p.display());
+                return Box::leak(s.into_boxed_str());
+            }
+        }
+    }
+    // 3. Compiled-in fallback (always works, design frozen at build time).
+    DASHBOARD_HTML_EMBEDDED
+}
 
 // Query param structs for API endpoints (distinct from MCP param structs above).
 #[derive(Deserialize)]
@@ -195,8 +219,18 @@ struct ApiRunFilter {
     run_id: Option<String>,
 }
 
-async fn dash_index() -> Html<&'static str> {
-    Html(DASHBOARD_HTML)
+#[derive(Clone)]
+struct DashState {
+    store: Arc<Store>,
+    html: &'static str,
+}
+
+impl axum::extract::FromRef<DashState> for Arc<Store> {
+    fn from_ref(s: &DashState) -> Self { s.store.clone() }
+}
+
+async fn dash_index(State(s): State<DashState>) -> Html<&'static str> {
+    Html(s.html)
 }
 
 async fn dash_stats(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
@@ -266,7 +300,8 @@ async fn dash_preferences(State(store): State<Arc<Store>>) -> Json<Vec<String>> 
     Json(store.list_preferences().unwrap_or_default())
 }
 
-async fn start_dashboard(store: Arc<Store>, port: u16) {
+async fn start_dashboard(store: Arc<Store>, port: u16, html: &'static str) {
+    let state = DashState { store, html };
     let app = Router::new()
         .route("/", get(dash_index))
         .route("/api/stats", get(dash_stats))
@@ -276,13 +311,12 @@ async fn start_dashboard(store: Arc<Store>, port: u16) {
         .route("/api/episodes", get(dash_episodes))
         .route("/api/preferences", get(dash_preferences))
         .layer(CorsLayer::permissive())
-        .with_state(store);
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
         .await
         .unwrap_or_else(|e| panic!("dashboard: cannot bind port {port}: {e}"));
 
-    tracing::info!("klayer dashboard → http://localhost:{port}");
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -491,7 +525,7 @@ impl ServerHandler for Klayer {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .with_writer(std::io::stderr) // stdout is the MCP channel — keep logs on stderr
+        .with_writer(std::io::stderr)
         .with_ansi(false)
         .init();
 
@@ -506,11 +540,24 @@ async fn main() -> Result<()> {
     store.migrate()?;
     tracing::info!("klayer store ready at {db}");
 
-    // Spawn the dashboard HTTP server as a background task.
-    tokio::spawn(start_dashboard(Arc::clone(&store), port));
+    let html = load_dashboard_html();
+
+    // --dashboard  →  standalone HTTP dashboard only (no MCP/stdio).
+    // Run with:  klayer.exe --dashboard
+    // Stop with: Ctrl+C  (or close the terminal).
+    let dashboard_only = std::env::args().any(|a| a == "--dashboard");
+    if dashboard_only {
+        tracing::info!("running in dashboard-only mode (no MCP server)");
+        tracing::info!("klayer dashboard  →  http://localhost:{port}");
+        eprintln!("\n  klayer dashboard  →  http://localhost:{port}\n  Press Ctrl+C to stop.\n");
+        start_dashboard(store, port, html).await;
+        return Ok(());
+    }
+
+    // Default mode: MCP server over stdio + dashboard HTTP in background.
+    tokio::spawn(start_dashboard(Arc::clone(&store), port, html));
     tracing::info!("klayer dashboard  →  http://localhost:{port}");
 
-    // Run MCP server over stdio until the client disconnects.
     let service = Klayer::new(store, skill).serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
