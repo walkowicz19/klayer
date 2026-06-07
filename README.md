@@ -3,7 +3,7 @@
 <br>
 
 <p align="center">
-  <img src="logo.svg" alt="klayer logo" width="200" />
+  <img src="logo.svg" alt="klayer logo" width="200" style="display: block; margin: 0 auto;" />
 </p>
 
 <br>
@@ -143,7 +143,8 @@ only reviewed + user are ENFORCED.
 A compiled Windows binary is included at `target/release/klayer.exe`.
 No Rust toolchain or model downloads required — just download and run.
 
-> **Tip — create a dedicated folder for klayer.**
+> [!TIP]
+> **Create a dedicated folder for klayer.**
 > Because the MCP server config is global (applied across all workspaces), klayer sees and stores knowledge from every project you work in. Keep the binary and both database files together in one permanent place (e.g. `C:\Users\you\klayer\`) so the dashboard and all stored memory are always accessible — no matter which workspace you currently have open in your editor.
 
 1. Download `target/release/klayer.exe` from this repository and place it in your dedicated klayer folder.
