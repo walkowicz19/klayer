@@ -8,21 +8,20 @@
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      /* ── Design system (Ollama-inspired minimal) ── */
+      /* ── klayer palette ── */
       --canvas:       #ffffff;
-      --soft:         #fafafa;
-      --hairline:     #e5e5e5;
-      --hairline-strong: #d4d4d4;
-      --ink:          #000000;
-      --ink-deep:     #090909;
-      --charcoal:     #525252;
-      --body:         #737373;
-      --mute:         #a3a3a3;
-      --surface-dark: #171717;
+      --soft:         #F0F2F7;
+      --hairline:     #E2E8F0;
+      --hairline-strong: #CBD5E1;
+      --ink:          #1A2742;
+      --navy:         #0D1B3E;
+      --charcoal:     #3D4F6E;
+      --body:         #6B7A99;
+      --mute:         #9BA8C0;
       --on-dark:      #ffffff;
       --on-dark-mute: rgba(255,255,255,0.7);
 
-      /* ── klayer accent (data layer only) ── */
+      /* ── klayer accent ── */
       --blue:         #2B6EE8;
       --blue-lt:      #EEF3FD;
       --green:        #1DB87E;
@@ -81,7 +80,7 @@
       font-family: 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, sans-serif;
       font-size: 18px;
       font-weight: 700;
-      color: var(--ink);
+      color: var(--navy);
       letter-spacing: -0.5px;
     }
 
@@ -123,7 +122,7 @@
       font-size: 12px;
       font-weight: 500;
       color: var(--on-dark);
-      background: var(--ink);
+      background: var(--navy);
       border: none;
       border-radius: var(--r-full);
       padding: 5px 14px;
@@ -132,7 +131,7 @@
       transition: background .12s;
       white-space: nowrap;
     }
-    .refresh-btn:hover { background: var(--ink-deep); }
+    .refresh-btn:hover { background: #162550; }
     .refresh-btn.spinning { opacity: .6; pointer-events: none; }
 
     /* ── Sidebar ── */
@@ -169,8 +168,8 @@
       text-align: left;
       transition: background .12s, color .12s;
     }
-    .nav-btn:hover { background: var(--soft); color: var(--ink); }
-    .nav-btn.active { background: var(--ink); color: var(--canvas); }
+    .nav-btn:hover { background: var(--blue-lt); color: var(--blue); }
+    .nav-btn.active { background: var(--navy); color: var(--canvas); }
     .nav-badge {
       margin-left: auto;
       font-size: 11px;
@@ -182,9 +181,9 @@
       border: 1px solid var(--hairline);
     }
     .nav-btn.active .nav-badge {
-      background: rgba(255,255,255,.12);
-      color: rgba(255,255,255,.7);
-      border-color: rgba(255,255,255,.15);
+      background: rgba(255,255,255,.15);
+      color: rgba(255,255,255,.75);
+      border-color: rgba(255,255,255,.18);
     }
 
     /* ── Main ── */
@@ -198,7 +197,7 @@
       font-family: 'SF Pro Rounded', 'Nunito', system-ui, -apple-system, sans-serif;
       font-size: 22px;
       font-weight: 700;
-      color: var(--ink);
+      color: var(--navy);
       letter-spacing: -0.4px;
     }
     .ph-sub { font-size: 13px; color: var(--body); margin-top: 3px; }
@@ -216,7 +215,7 @@
       border-radius: var(--r-lg);
       padding: 16px 18px;
     }
-    .stat.accent { border-top: 2px solid var(--ink); }
+    .stat.accent { border-top: 2px solid var(--blue); }
     .stat-lbl {
       font-size: 10px;
       font-weight: 700;
@@ -229,7 +228,7 @@
       font-family: 'SF Pro Rounded', 'Nunito', system-ui, sans-serif;
       font-size: 28px;
       font-weight: 700;
-      color: var(--ink);
+      color: var(--navy);
       letter-spacing: -1.5px;
       line-height: 1;
     }
@@ -254,7 +253,7 @@
       align-items: center;
       gap: 8px;
     }
-    .ch-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+    .ch-title { font-size: 13px; font-weight: 600; color: var(--navy); }
     .ch-count { margin-left: auto; font-size: 12px; color: var(--mute); }
     .cb { padding: 14px 18px; }
 
@@ -288,20 +287,20 @@
       transition: border-color .15s;
     }
     .dcard:hover { border-color: var(--hairline-strong); }
-    .dcard-name { font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+    .dcard-name { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
     .dcard-desc { font-size: 12px; color: var(--body); margin-bottom: 14px; line-height: 1.45; }
     .dcard-row { display: flex; gap: 20px; }
     .dcard-stat-val {
       font-family: 'SF Pro Rounded', 'Nunito', system-ui, sans-serif;
       font-size: 20px;
       font-weight: 700;
-      color: var(--ink);
+      color: var(--blue);
       letter-spacing: -.5px;
       line-height: 1;
     }
     .dcard-stat-lbl { font-size: 10px; color: var(--mute); margin-top: 2px; }
     .dbar { margin-top: 14px; height: 2px; border-radius: 2px; background: var(--hairline); overflow: hidden; }
-    .dbar-fill { height: 100%; background: var(--ink); border-radius: 2px; }
+    .dbar-fill { height: 100%; background: var(--blue); border-radius: 2px; }
 
     /* ── Badges ── */
     .badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: var(--r-full); font-size: 11px; font-weight: 600; white-space: nowrap; }
@@ -334,7 +333,7 @@
     tbody tr:last-child { border-bottom: none; }
     tbody tr:hover { background: var(--soft); }
     td { padding: 10px 16px; vertical-align: middle; }
-    .td-main { font-weight: 600; color: var(--ink); max-width: 300px; }
+    .td-main { font-weight: 600; color: var(--navy); max-width: 300px; }
     .td-dim  { color: var(--mute); font-size: 12px; white-space: nowrap; }
     .td-mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; font-size: 11px; color: var(--mute); }
 
@@ -344,7 +343,7 @@
     .ep-item:last-child { border-bottom: none; }
     .ep-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
     .ep-body { flex: 1; min-width: 0; }
-    .ep-action { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ep-action { font-size: 13px; font-weight: 600; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ep-meta { font-size: 11px; color: var(--mute); margin-top: 1px; }
     .ep-out { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--r-full); white-space: nowrap; flex-shrink: 0; }
     .eo-ok   { background: rgba(29,184,126,.10); color: #059669; }
@@ -362,7 +361,7 @@
     /* ── Domain glance bars ── */
     .dglance-item { margin-bottom: 12px; }
     .dglance-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
-    .dglance-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+    .dglance-name { font-size: 13px; font-weight: 600; color: var(--navy); }
     .dglance-hint { font-size: 11px; color: var(--mute); }
 
     /* ── Promote button ── */
@@ -370,14 +369,14 @@
       font-size: 11px;
       font-weight: 600;
       color: var(--on-dark);
-      background: var(--ink);
+      background: var(--blue);
       border: none;
       border-radius: var(--r-full);
       padding: 3px 10px;
       cursor: pointer;
       transition: background .12s;
     }
-    .promote-btn:hover { background: var(--ink-deep); }
+    .promote-btn:hover { background: #1f5bc4; }
 
     /* ── Empty state ── */
     .empty { text-align: center; padding: 32px 20px; color: var(--mute); font-size: 13px; }
@@ -413,9 +412,9 @@
     <a class="logo" href="#">
       <!-- SVG: three stacked offset bars (klayer layers motif) -->
       <svg class="logo-svg" width="26" height="18" viewBox="0 0 26 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect x="0"  y="0"  width="26" height="3.5" rx="1.75" fill="#000"/>
-        <rect x="3"  y="7"  width="20" height="3.5" rx="1.75" fill="#000"/>
-        <rect x="6"  y="14" width="14" height="3.5" rx="1.75" fill="#000"/>
+        <rect x="0"  y="0"  width="26" height="3.5" rx="1.75" fill="#2B6EE8"/>
+        <rect x="3"  y="7"  width="20" height="3.5" rx="1.75" fill="#0D1B3E"/>
+        <rect x="6"  y="14" width="14" height="3.5" rx="1.75" fill="#2B6EE8" opacity=".6"/>
       </svg>
       <span class="logo-word">klayer</span>
     </a>
