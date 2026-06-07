@@ -16,7 +16,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use axum::{
     extract::{Query, State},
-    response::Html,
+    http::header,
+    response::{Html, IntoResponse, Response},
     routing::get,
     Json, Router,
 };
@@ -269,8 +270,11 @@ impl axum::extract::FromRef<DashState> for Arc<CodeStore> {
     fn from_ref(s: &DashState) -> Self { s.code_store.clone() }
 }
 
-async fn dash_index(State(s): State<DashState>) -> Html<&'static str> {
-    Html(s.html)
+async fn dash_index(State(s): State<DashState>) -> Response {
+    (
+        [(header::CACHE_CONTROL, "no-store")],
+        Html(s.html),
+    ).into_response()
 }
 
 async fn dash_stats(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {

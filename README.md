@@ -137,17 +137,20 @@ only reviewed + user are ENFORCED.
 A compiled Windows binary is included at `target/release/klayer.exe`.
 No Rust toolchain or model downloads required — just download and run.
 
-1. Download `target/release/klayer.exe` from this repository.
-2. Wire it into your MCP client config:
+> **Tip — create a dedicated folder for klayer.**
+> Because the MCP server config is global (applied across all workspaces), klayer sees and stores knowledge from every project you work in. Keep the binary and both database files together in one permanent place (e.g. `C:\Users\you\klayer\`) so the dashboard and all stored memory are always accessible — no matter which workspace you currently have open in your editor.
+
+1. Download `target/release/klayer.exe` from this repository and place it in your dedicated klayer folder.
+2. Wire it into your MCP client config, pointing the DB paths at that same folder:
 
 ```json
 {
   "mcpServers": {
     "klayer": {
-      "command": "C:\\path\\to\\klayer.exe",
+      "command": "C:\\Users\\you\\klayer\\klayer.exe",
       "env": {
-        "KLAYER_DB": "C:\\path\\to\\klayer.db",
-        "KLAYER_CODE_DB": "C:\\path\\to\\klayer_code.db"
+        "KLAYER_DB": "C:\\Users\\you\\klayer\\klayer.db",
+        "KLAYER_CODE_DB": "C:\\Users\\you\\klayer\\klayer_code.db"
       }
     }
   }
