@@ -25,11 +25,29 @@
       --red:             #EF4444;
       --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-full: 9999px;
     }
+    body.dark {
+      --canvas:          #0F172A;
+      --soft:            #020617;
+      --hairline:        #1E293B;
+      --hairline-strong: #334155;
+      --ink:             #F8FAFC;
+      --navy:            #E2E8F0;
+      --charcoal:        #94A3B8;
+      --body:            #64748B;
+      --mute:            #475569;
+      --on-dark:         #ffffff;
+      --blue:            #3B82F6;
+      --blue-lt:         rgba(59, 130, 246, 0.15);
+      --green:           #10B981;
+      --amber:           #F59E0B;
+      --red:             #EF4444;
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'SF Pro Text', ui-sans-serif, system-ui, -apple-system, sans-serif;
       background: var(--soft); color: var(--ink); font-size: 14px;
       line-height: 1.5; min-height: 100vh;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
     }
 
     /* ── Layout ── */
@@ -67,7 +85,8 @@
       display: flex; align-items: center; gap: 6px;
       font-size: 12px; color: var(--body);
       background: var(--soft); border: 1px solid var(--hairline);
-      border-radius: var(--r-full); padding: 4px 10px;
+      border-radius: var(--r-full); padding: 0 12px; height: 30px;
+      box-sizing: border-box;
     }
     .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mute); flex-shrink: 0; }
     .status-dot.live { background: var(--green); box-shadow: 0 0 0 2px rgba(29,184,126,.2); }
@@ -78,8 +97,36 @@
       padding: 5px 14px; height: 30px; cursor: pointer;
       transition: background .12s; white-space: nowrap;
     }
-    .refresh-btn:hover { background: #162550; }
+    .refresh-btn:hover { opacity: 0.9; }
     .refresh-btn.spinning { opacity: .6; pointer-events: none; }
+
+    .theme-toggle-btn {
+      width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--hairline); background: var(--soft); color: var(--body);
+      border-radius: var(--r-full); cursor: pointer; transition: background .12s, color .12s, border-color .12s;
+      padding: 0; flex-shrink: 0;
+    }
+    .theme-toggle-btn:hover { background: var(--blue-lt); color: var(--blue); border-color: var(--blue); }
+    .theme-toggle-btn svg { width: 14px; height: 14px; }
+
+    body.dark .theme-toggle-btn .sun-ico { display: block !important; }
+    body.dark .theme-toggle-btn .moon-ico { display: none !important; }
+    body:not(.dark) .theme-toggle-btn .sun-ico { display: none !important; }
+    body:not(.dark) .theme-toggle-btn .moon-ico { display: block !important; }
+
+    /* Dark mode overrides */
+    .logo-mid-bar { fill: var(--navy); }
+    body.dark .tn-raw { background: var(--hairline); }
+    body.dark .eo-ok   { color: #34d399; background: rgba(52,211,153,.15); }
+    body.dark .eo-warn { color: #fbbf24; background: rgba(251,191,36,.15); }
+    body.dark .eo-blk  { color: #f87171; background: rgba(248,113,113,.15); }
+    body.dark .b-user { color: #34d399; background: rgba(52,211,153,.12); }
+    body.dark .b-reviewed { color: #60a5fa; background: rgba(96,165,250,.12); }
+    body.dark .b-proposed { color: #fbbf24; background: rgba(251,191,36,.12); }
+    body.dark .b-untrusted { color: var(--charcoal); background: var(--hairline); }
+    body.dark .kt-rule { color: #60a5fa; background: rgba(96,165,250,.10); }
+    body.dark .kt-fact { color: #34d399; background: rgba(52,211,153,.10); }
+    body.dark .kt-note { color: var(--charcoal); background: var(--hairline); }
 
     /* ── Sidebar ── */
     .sidebar { background: var(--canvas); border-right: 1px solid var(--hairline); padding: 16px 0; overflow-y: auto; }
@@ -217,6 +264,27 @@
     /* ── Empty state ── */
     .empty { text-align: center; padding: 32px 20px; color: var(--mute); font-size: 13px; }
 
+    /* ── Settings ── */
+    .settings-section { margin-bottom: 20px; }
+    .settings-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--mute); margin-bottom: 10px; }
+    .lang-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr)); gap: 8px; }
+    .lang-opt {
+      display: flex; align-items: center; gap: 9px;
+      padding: 10px 14px; border-radius: var(--r-md);
+      border: 1px solid var(--hairline); background: var(--canvas);
+      cursor: pointer; font-size: 13px; font-weight: 500; color: var(--body);
+      transition: border-color .12s, background .12s; text-align: left;
+    }
+    .lang-opt:hover { border-color: var(--blue); background: var(--blue-lt); color: var(--blue); }
+    .lang-opt.active { border-color: var(--blue); background: var(--blue-lt); color: var(--blue); font-weight: 700; }
+    .lang-flag { font-size: 18px; line-height: 1; }
+    .info-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--hairline); font-size: 13px; }
+    .info-row:last-child { border-bottom: none; }
+    .info-lbl { color: var(--body); }
+    .info-val { font-weight: 600; color: var(--navy); font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; }
+    .info-link { color: var(--blue); text-decoration: none; font-weight: 600; font-size: 13px; }
+    .info-link:hover { text-decoration: underline; }
+
     /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -240,7 +308,7 @@
     <a class="logo" href="#">
       <svg width="26" height="18" viewBox="0 0 26 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <rect x="0"  y="0"  width="26" height="3.5" rx="1.75" fill="#2B6EE8"/>
-        <rect x="3"  y="7"  width="20" height="3.5" rx="1.75" fill="#0D1B3E"/>
+        <rect x="3"  y="7"  width="20" height="3.5" rx="1.75" fill="currentColor" class="logo-mid-bar"/>
         <rect x="6"  y="14" width="14" height="3.5" rx="1.75" fill="#2B6EE8" opacity=".55"/>
       </svg>
       <span class="logo-word">klayer</span>
@@ -248,18 +316,18 @@
     <div class="topbar-divider"></div>
     <span class="topbar-sub" data-i18n="topbarSub"></span>
     <div class="topbar-end">
-      <select class="lang-select" id="lang-select" onchange="setLang(this.value)" title="Language">
-        <option value="en">🇬🇧 EN</option>
-        <option value="pt">🇧🇷 PT</option>
-        <option value="es">🇪🇸 ES</option>
-        <option value="zh">🇨🇳 ZH</option>
-        <option value="pl">🇵🇱 PL</option>
-      </select>
+
       <div class="status-pill">
         <div class="status-dot" id="status-dot"></div>
         <span id="status-text"></span>
       </div>
       <button class="refresh-btn" id="refresh-btn" onclick="loadData()" data-i18n="btnRefresh"></button>
+      <button class="theme-toggle-btn" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">
+        <!-- Sun icon (for dark mode -> switch to light) -->
+        <svg class="ico sun-ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.5v1.4M8 13.1v1.4M1.5 8h1.4M13.1 8h1.4M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <!-- Moon icon (for light mode -> switch to dark) -->
+        <svg class="ico moon-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      </button>
     </div>
   </header>
 
@@ -300,6 +368,13 @@
       <button class="nav-btn" data-page="trust">
         <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L2 4v4c0 3.2 2.5 5.8 6 6.5 3.5-.7 6-3.3 6-6.5V4L8 1.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.5 8l2 2 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span data-i18n="navTrust"></span>
+      </button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label" data-i18n="navGroupSystem"></div>
+      <button class="nav-btn" data-page="settings">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <span data-i18n="navSettings"></span>
       </button>
     </div>
   </nav>
@@ -446,6 +521,66 @@
       </div>
     </div>
 
+    <!-- Settings -->
+    <div id="page-settings" class="page">
+      <div class="ph">
+        <div class="ph-title" data-i18n="navSettings"></div>
+        <div class="ph-sub" data-i18n="phSettingsSub"></div>
+      </div>
+
+      <div class="card card-fw">
+        <div class="ch">
+          <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span class="ch-title" data-i18n="settingsLang"></span>
+        </div>
+        <div class="cb">
+          <div class="lang-grid" id="lang-grid"></div>
+        </div>
+      </div>
+
+      <div class="card card-fw">
+        <div class="ch">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          <span class="ch-title" data-i18n="settingsConnection"></span>
+        </div>
+        <div class="cb">
+          <div class="info-row">
+            <span class="info-lbl" data-i18n="settingsDashURL"></span>
+            <a class="info-link" href="http://localhost:7474" target="_blank">http://localhost:7474</a>
+          </div>
+          <div class="info-row">
+            <span class="info-lbl" data-i18n="settingsPort"></span>
+            <span class="info-val">7474</span>
+          </div>
+          <div class="info-row">
+            <span class="info-lbl" data-i18n="settingsStatus"></span>
+            <span id="settings-status-val"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-fw">
+        <div class="ch">
+          <svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 7v4M8 5.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span class="ch-title" data-i18n="settingsAbout"></span>
+        </div>
+        <div class="cb">
+          <div class="info-row">
+            <span class="info-lbl" data-i18n="settingsProject"></span>
+            <span class="info-val">klayer</span>
+          </div>
+          <div class="info-row">
+            <span class="info-lbl" data-i18n="settingsTransport"></span>
+            <span class="info-val">MCP · stdio + HTTP</span>
+          </div>
+          <div class="info-row">
+            <span class="info-lbl">GitHub</span>
+            <a class="info-link" href="https://github.com/walkowicz19/klayer" target="_blank">walkowicz19/klayer</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -454,9 +589,9 @@
 const LANGS = {
   en: {
     topbarSub: 'knowledge dashboard',
-    navGroupOverview: 'Overview', navGroupKnowledge: 'Knowledge', navGroupAgent: 'Agent',
+    navGroupOverview: 'Overview', navGroupKnowledge: 'Knowledge', navGroupAgent: 'Agent', navGroupSystem: 'System',
     navDashboard: 'Dashboard', navDomains: 'Domains', navKnowledge: 'Knowledge',
-    navSources: 'Sources', navMemory: 'Agent Memory', navTrust: 'Trust Lifecycle',
+    navSources: 'Sources', navMemory: 'Agent Memory', navTrust: 'Trust Lifecycle', navSettings: 'Settings',
     btnRefresh: '↺ Refresh', btnLoading: '↺ Loading…',
     statusConnecting: 'connecting…', statusLive: 'klayer.db · live', statusError: 'API unreachable',
     statDomains: 'Domains', statDomainsHint: 'active namespaces',
@@ -490,12 +625,17 @@ const LANGS = {
     emptyKnowledge: 'No knowledge items yet', emptyDomains: 'No domains registered yet',
     emptyDomainsCoverage: 'No domains registered', emptySources: 'No sources ingested yet',
     emptyEpisodes: 'No episodes logged yet', emptyProposed: 'No proposed items — all clear',
+    phSettingsSub: 'Language, connection info, and project details',
+    settingsLang: 'Language', settingsConnection: 'Connection',
+    settingsAbout: 'About', settingsDashURL: 'Dashboard URL',
+    settingsPort: 'Port', settingsStatus: 'Status',
+    settingsProject: 'Project', settingsTransport: 'Transport',
   },
   pt: {
     topbarSub: 'painel de conhecimento',
-    navGroupOverview: 'Visão Geral', navGroupKnowledge: 'Conhecimento', navGroupAgent: 'Agente',
+    navGroupOverview: 'Visão Geral', navGroupKnowledge: 'Conhecimento', navGroupAgent: 'Agente', navGroupSystem: 'Sistema',
     navDashboard: 'Painel', navDomains: 'Domínios', navKnowledge: 'Conhecimento',
-    navSources: 'Fontes', navMemory: 'Memória do Agente', navTrust: 'Ciclo de Confiança',
+    navSources: 'Fontes', navMemory: 'Memória do Agente', navTrust: 'Ciclo de Confiança', navSettings: 'Configurações',
     btnRefresh: '↺ Atualizar', btnLoading: '↺ Carregando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · ativo', statusError: 'API inacessível',
     statDomains: 'Domínios', statDomainsHint: 'namespaces ativos',
@@ -529,12 +669,17 @@ const LANGS = {
     emptyKnowledge: 'Nenhum item de conhecimento ainda', emptyDomains: 'Nenhum domínio registrado ainda',
     emptyDomainsCoverage: 'Nenhum domínio registrado', emptySources: 'Nenhuma fonte ingerida ainda',
     emptyEpisodes: 'Nenhum episódio registrado ainda', emptyProposed: 'Nenhum item proposto — tudo limpo',
+    phSettingsSub: 'Idioma, informações de conexão e detalhes do projeto',
+    settingsLang: 'Idioma', settingsConnection: 'Conexão',
+    settingsAbout: 'Sobre', settingsDashURL: 'URL do Painel',
+    settingsPort: 'Porta', settingsStatus: 'Status',
+    settingsProject: 'Projeto', settingsTransport: 'Transporte',
   },
   es: {
     topbarSub: 'panel de conocimiento',
-    navGroupOverview: 'Resumen', navGroupKnowledge: 'Conocimiento', navGroupAgent: 'Agente',
+    navGroupOverview: 'Resumen', navGroupKnowledge: 'Conocimiento', navGroupAgent: 'Agente', navGroupSystem: 'Sistema',
     navDashboard: 'Panel', navDomains: 'Dominios', navKnowledge: 'Conocimiento',
-    navSources: 'Fuentes', navMemory: 'Memoria del Agente', navTrust: 'Ciclo de Confianza',
+    navSources: 'Fuentes', navMemory: 'Memoria del Agente', navTrust: 'Ciclo de Confianza', navSettings: 'Configuración',
     btnRefresh: '↺ Actualizar', btnLoading: '↺ Cargando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · activo', statusError: 'API no disponible',
     statDomains: 'Dominios', statDomainsHint: 'espacios de nombres activos',
@@ -568,12 +713,17 @@ const LANGS = {
     emptyKnowledge: 'No hay elementos de conocimiento aún', emptyDomains: 'No hay dominios registrados aún',
     emptyDomainsCoverage: 'No hay dominios registrados', emptySources: 'No hay fuentes ingeridas aún',
     emptyEpisodes: 'No hay episodios registrados aún', emptyProposed: 'No hay elementos propuestos — todo limpio',
+    phSettingsSub: 'Idioma, información de conexión y detalles del proyecto',
+    settingsLang: 'Idioma', settingsConnection: 'Conexión',
+    settingsAbout: 'Acerca de', settingsDashURL: 'URL del Panel',
+    settingsPort: 'Puerto', settingsStatus: 'Estado',
+    settingsProject: 'Proyecto', settingsTransport: 'Transporte',
   },
   zh: {
     topbarSub: '知识控制台',
-    navGroupOverview: '概览', navGroupKnowledge: '知识', navGroupAgent: '智能体',
+    navGroupOverview: '概览', navGroupKnowledge: '知识', navGroupAgent: '智能体', navGroupSystem: '系统',
     navDashboard: '控制台', navDomains: '域', navKnowledge: '知识',
-    navSources: '来源', navMemory: '智能体记忆', navTrust: '信任生命周期',
+    navSources: '来源', navMemory: '智能体记忆', navTrust: '信任生命周期', navSettings: '设置',
     btnRefresh: '↺ 刷新', btnLoading: '↺ 加载中…',
     statusConnecting: '连接中…', statusLive: 'klayer.db · 在线', statusError: 'API 不可达',
     statDomains: '域', statDomainsHint: '活跃命名空间',
@@ -607,12 +757,17 @@ const LANGS = {
     emptyKnowledge: '暂无知识条目', emptyDomains: '暂无注册域',
     emptyDomainsCoverage: '暂无注册域', emptySources: '暂无导入来源',
     emptyEpisodes: '暂无事件记录', emptyProposed: '暂无待议条目 — 一切正常',
+    phSettingsSub: '语言、连接信息和项目详情',
+    settingsLang: '语言', settingsConnection: '连接',
+    settingsAbout: '关于', settingsDashURL: '控制台 URL',
+    settingsPort: '端口', settingsStatus: '状态',
+    settingsProject: '项目', settingsTransport: '传输',
   },
   pl: {
     topbarSub: 'panel wiedzy',
-    navGroupOverview: 'Przegląd', navGroupKnowledge: 'Wiedza', navGroupAgent: 'Agent',
+    navGroupOverview: 'Przegląd', navGroupKnowledge: 'Wiedza', navGroupAgent: 'Agent', navGroupSystem: 'System',
     navDashboard: 'Panel', navDomains: 'Domeny', navKnowledge: 'Wiedza',
-    navSources: 'Źródła', navMemory: 'Pamięć Agenta', navTrust: 'Cykl Zaufania',
+    navSources: 'Źródła', navMemory: 'Pamięć Agenta', navTrust: 'Cykl Zaufania', navSettings: 'Ustawienia',
     btnRefresh: '↺ Odśwież', btnLoading: '↺ Ładowanie…',
     statusConnecting: 'łączenie…', statusLive: 'klayer.db · aktywny', statusError: 'API niedostępne',
     statDomains: 'Domeny', statDomainsHint: 'aktywne przestrzenie nazw',
@@ -646,6 +801,11 @@ const LANGS = {
     emptyKnowledge: 'Brak elementów wiedzy', emptyDomains: 'Brak zarejestrowanych domen',
     emptyDomainsCoverage: 'Brak zarejestrowanych domen', emptySources: 'Brak zaindeksowanych źródeł',
     emptyEpisodes: 'Brak zarejestrowanych epizodów', emptyProposed: 'Brak proponowanych elementów — wszystko w porządku',
+    phSettingsSub: 'Język, informacje o połączeniu i szczegóły projektu',
+    settingsLang: 'Język', settingsConnection: 'Połączenie',
+    settingsAbout: 'O projekcie', settingsDashURL: 'URL panelu',
+    settingsPort: 'Port', settingsStatus: 'Status',
+    settingsProject: 'Projekt', settingsTransport: 'Transport',
   },
 };
 
@@ -653,15 +813,47 @@ const LANGS = {
 let LANG = localStorage.getItem('klayer-lang') || 'en';
 const t = key => LANGS[LANG][key] ?? LANGS.en[key] ?? key;
 
-function applyLang() {
+function updateStatusText(text) {
+  document.getElementById('status-text').textContent = text;
+  const val = document.getElementById('settings-status-val');
+  if (val) val.textContent = text;
+}
+
+function toggleTheme() {
+  document.body.classList.toggle('dark');
+  const isDark = document.body.classList.contains('dark');
+  localStorage.setItem('klayer-theme', isDark ? 'dark' : 'light');
+}
+
+function applyLang(skipRender = false) {
   document.documentElement.lang = LANG;
-  document.getElementById('lang-select').value = LANG;
-  document.getElementById('status-text').textContent = t('statusConnecting');
+  const langSelect = document.getElementById('lang-select');
+  if (langSelect) langSelect.value = LANG;
+  updateStatusText(t('statusConnecting'));
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.dataset.i18n;
     el.textContent = t(key);
   });
-  if (G.stats) renderAll();
+
+  // Render settings language grid
+  const langGrid = document.getElementById('lang-grid');
+  if (langGrid) {
+    const opts = [
+      { code: 'en', flag: '🇬🇧', label: 'English' },
+      { code: 'pt', flag: '🇧🇷', label: 'Português' },
+      { code: 'es', flag: '🇪🇸', label: 'Español' },
+      { code: 'zh', flag: '🇨🇳', label: '中文' },
+      { code: 'pl', flag: '🇵🇱', label: 'Polski' }
+    ];
+    langGrid.innerHTML = opts.map(o => `
+      <button class="lang-opt${LANG === o.code ? ' active' : ''}" onclick="setLang('${o.code}')">
+        <span class="lang-flag">${o.flag}</span>
+        <span>${o.label}</span>
+      </button>
+    `).join('');
+  }
+
+  if (G.stats && !skipRender) renderAll();
 }
 
 function setLang(code) {
@@ -837,7 +1029,7 @@ function renderAll() {
   document.getElementById('nb-knowledge').textContent = G.knowledge.length;
   document.getElementById('nb-sources').textContent   = G.sources.length;
   document.getElementById('nb-episodes').textContent  = G.episodes.length;
-  applyLang();
+  applyLang(true);
   renderOverview(); renderDomains(); renderKnowledge();
   renderSources(); renderEpisodes(); renderTrust();
 }
@@ -859,11 +1051,11 @@ async function loadData() {
     G = { stats, domains, knowledge, sources, episodes, preferences };
     const dot = document.getElementById('status-dot');
     dot.classList.add('live');
-    document.getElementById('status-text').textContent = t('statusLive');
+    updateStatusText(t('statusLive'));
     renderAll();
   } catch(e) {
     document.getElementById('status-dot').style.background = '#EF4444';
-    document.getElementById('status-text').textContent = t('statusError');
+    updateStatusText(t('statusError'));
     console.error('klayer API error:', e);
   } finally {
     btn.classList.remove('spinning');
@@ -878,12 +1070,18 @@ async function promoteItem(id, btn) {
 }
 
 // ── Navigation ───────────────────────────────────────────────────────────────
+function showPage(pageId) {
+  document.querySelectorAll('.page').forEach(p => {
+    p.classList.toggle('active', p.id === 'page-' + pageId);
+  });
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.page === pageId);
+  });
+}
+
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('page-' + btn.dataset.page).classList.add('active');
-    btn.classList.add('active');
+    showPage(btn.dataset.page);
   });
 });
 
@@ -892,6 +1090,10 @@ function escHtml(s) {
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
+const currentTheme = localStorage.getItem('klayer-theme') || 'light';
+if (currentTheme === 'dark') {
+  document.body.classList.add('dark');
+}
 applyLang();
 loadData();
 </script>

@@ -1,8 +1,12 @@
 # klayer
 
+<br>
+
 <p align="center">
   <img src="logo.svg" alt="klayer logo" width="260" />
 </p>
+
+<br>
 
 A domain-agnostic, **grounded knowledge layer** for LLMs, shipped as a single
 Rust MCP server. One binary gives any MCP-compatible client (Claude Code, Claude
@@ -16,7 +20,7 @@ The binary automatically starts a live web dashboard on **http://localhost:7474*
 (logged to stderr on startup — click the link or paste it in your browser).
 All pages fetch real-time data from the store via a built-in REST API.
 
-The dashboard is fully localised — use the language selector pill in the top-right corner to switch between **English**, **Portuguese (PT)**, **Spanish (ES)**, **Mandarin (ZH)**, and **Polish (PL)**. Your selection is saved in `localStorage`.
+The dashboard is fully localised — switch language in the **Settings** page (accessed via the System section in the sidebar) between **English**, **Portuguese (PT)**, **Spanish (ES)**, **Mandarin (ZH)**, and **Polish (PL)**. You can also toggle between light and dark themes using the mode switcher button in the top-right corner of the topbar. All selections are saved in `localStorage`.
 
 ![Dashboard overview](docs/screenshots/dashboard.png)
 
