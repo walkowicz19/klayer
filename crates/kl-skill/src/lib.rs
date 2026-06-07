@@ -71,8 +71,7 @@ pub fn render(inp: &RouterInputs) -> String {
             s.push_str(&format!("- **{}** — {}\n", st.name, desc));
         }
     }
-    s.push_str("> SDLC phases are one taxonomy; an agent loop (plan -> act -> observe) is another.\n");
-    s.push_str("> If no stage is known, infer the domain(s) from the task and recall those.\n\n");
+    s.push('\n');
 
     s.push_str(RETRIEVAL_PROTOCOL);
     s.push_str(ACTION_GATING);

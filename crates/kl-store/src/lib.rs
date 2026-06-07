@@ -396,6 +396,30 @@ impl Store {
         Ok(c.last_insert_rowid())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn log_episode_auto(
+        &self,
+        run_id: &str,
+        stage: Option<&str>,
+        action: Option<&str>,
+        observation: Option<&str>,
+        outcome: Option<&str>,
+    ) -> Result<i64> {
+        let now = Utc::now().timestamp();
+        let c = self.conn.lock().unwrap();
+        let step: i64 = c.query_row(
+            "SELECT COALESCE(MAX(step), 0) + 1 FROM episodes WHERE run_id = ?1",
+            params![run_id],
+            |r| r.get(0),
+        ).unwrap_or(1);
+        c.execute(
+            "INSERT INTO episodes (run_id, step, stage, action, observation, outcome, ts)
+             VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![run_id, step, stage, action, observation, outcome, now],
+        )?;
+        Ok(c.last_insert_rowid())
+    }
+
     /// List ingested sources for a domain (or all domains if None). Newest first, limit 100.
     pub fn list_sources(&self, domain: Option<&str>) -> Result<Vec<SourceRow>> {
         let c = self.conn.lock().unwrap();

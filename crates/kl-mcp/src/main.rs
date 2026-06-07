@@ -44,6 +44,7 @@ struct Klayer {
     search:      Arc<dyn SearchBackend>,
     skill_path:  String,
     tool_router: ToolRouter<Self>,
+    session_run_id: String,
 }
 
 // ----- tool parameter types ------------------------------------------------
@@ -436,12 +437,17 @@ async fn start_dashboard(
 #[tool_router]
 impl Klayer {
     fn new(store: Arc<Store>, code_store: Arc<CodeStore>, skill_path: String) -> Self {
+        let session_run_id = std::env::var("KLAYER_RUN_ID").unwrap_or_else(|_| {
+            let now = chrono::Utc::now();
+            format!("run-{}", now.format("%Y%m%d-%H%M%S"))
+        });
         Self {
             store,
             code_store,
             search: Arc::from(build_search()),
             skill_path,
             tool_router: Self::tool_router(),
+            session_run_id,
         }
     }
 
@@ -450,6 +456,14 @@ impl Klayer {
         let kind = p.kind.as_deref().and_then(Kind::parse);
         let k = p.k.unwrap_or(6) as usize;
         let hits = self.store.recall(&p.domain, &p.query, kind, k).map_err(err)?;
+        let observation = format!("returned {} hits", hits.len());
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("recall"),
+            Some(&format!("recall domain={} query={}", p.domain, p.query)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         json_ok(&hits)
     }
 
@@ -457,6 +471,14 @@ impl Klayer {
     async fn search_web(&self, Parameters(p): Parameters<SearchParams>) -> Result<CallToolResult, McpError> {
         let limit = p.limit.unwrap_or(5) as usize;
         let results = self.search.search(&p.query, limit).await.map_err(err)?;
+        let observation = format!("returned {} results", results.len());
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("search_web"),
+            Some(&format!("search_web query={}", p.query)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         json_ok(&results)
     }
 
@@ -467,6 +489,13 @@ impl Klayer {
         let (title, text) = kl_ingest::extract(&fetched);
         let chunks = kl_ingest::chunk(&text, 800);
         if chunks.is_empty() {
+            self.store.log_episode_auto(
+                &self.session_run_id,
+                Some("ingest"),
+                Some(&format!("ingest url={} domain={}", p.url, p.domain)),
+                Some("no extractable text"),
+                Some("error"),
+            ).ok();
             return text_ok(format!("No extractable text at {}", p.url));
         }
         let source_id = self
@@ -474,6 +503,14 @@ impl Klayer {
             .add_source("web", Some(&p.url), Some(&title), &p.domain)
             .map_err(err)?;
         let n = self.store.add_chunks(source_id, &p.domain, &chunks).map_err(err)?;
+        let observation = format!("ingested {} chunks from \"{}\"", n, title);
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("ingest"),
+            Some(&format!("ingest url={} domain={}", p.url, p.domain)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         text_ok(format!(
             "Ingested {n} chunks from \"{title}\" into domain '{}' (source #{source_id}, type={content_type}, trust=untrusted).",
             p.domain
@@ -483,6 +520,14 @@ impl Klayer {
     #[tool(description = "Store a user-authored fact. Trust='user' (highest), immediately enforceable.")]
     fn remember(&self, Parameters(p): Parameters<RememberParams>) -> Result<CallToolResult, McpError> {
         let id = self.store.remember(&p.domain, &p.statement).map_err(err)?;
+        let observation = format!("remembered fact #{} (trust=user)", id);
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("remember"),
+            Some(&format!("remember domain={} statement={}", p.domain, p.statement)),
+            Some(&observation),
+            Some("success"),
+          ).ok();
         text_ok(format!("Remembered fact #{id} in '{}' (trust=user).", p.domain))
     }
 
@@ -504,12 +549,32 @@ impl Klayer {
                 None,
             )
             .map_err(err)?;
+        let observation = format!("proposed candidate {} #{}", p.kind, id);
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("propose"),
+            Some(&format!("propose domain={} kind={} title={}", p.domain, p.kind, p.title)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         text_ok(format!("Proposed {} #{id} in '{}' (trust=proposed, not enforced).", p.kind, p.domain))
     }
 
     #[tool(description = "Validation gate: promote a proposed item to 'reviewed' (enforceable). This is the only path from suggestion to enforced rule.")]
     fn promote(&self, Parameters(p): Parameters<IdParams>) -> Result<CallToolResult, McpError> {
         let ok = self.store.promote(p.id).map_err(err)?;
+        let observation = if ok {
+            format!("promoted knowledge #{} to trust=reviewed", p.id)
+        } else {
+            format!("no proposed item #{} found to promote", p.id)
+        };
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("promote"),
+            Some(&format!("promote id={}", p.id)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         if ok {
             text_ok(format!("Promoted knowledge #{} to trust=reviewed.", p.id))
         } else {
@@ -520,6 +585,18 @@ impl Klayer {
     #[tool(description = "Delete a knowledge item by id.")]
     fn forget(&self, Parameters(p): Parameters<IdParams>) -> Result<CallToolResult, McpError> {
         let ok = self.store.forget(p.id).map_err(err)?;
+        let observation = if ok {
+            format!("deleted knowledge item #{}", p.id)
+        } else {
+            format!("no knowledge item #{} found to delete", p.id)
+        };
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("forget"),
+            Some(&format!("forget id={}", p.id)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         text_ok(if ok { format!("Forgot knowledge #{}.", p.id) } else { format!("No item #{}.", p.id) })
     }
 
@@ -527,6 +604,14 @@ impl Klayer {
     fn set_preference(&self, Parameters(p): Parameters<PreferenceParams>) -> Result<CallToolResult, McpError> {
         let scope = p.scope.as_deref().unwrap_or("global");
         let id = self.store.set_preference(scope, &p.statement).map_err(err)?;
+        let observation = format!("stored preference #{} (scope={})", id, scope);
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("set_preference"),
+            Some(&format!("set_preference scope={} statement={}", scope, p.statement)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         text_ok(format!("Stored preference #{id} (scope={scope})."))
     }
 
@@ -541,6 +626,14 @@ impl Klayer {
         self.store
             .register_domain(&p.name, p.description.as_deref(), p.query_hint.as_deref())
             .map_err(err)?;
+        let observation = format!("registered/updated domain '{}'", p.name);
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("register_domain"),
+            Some(&format!("register_domain name={}", p.name)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         text_ok(format!("Registered domain '{}'.", p.name))
     }
 
@@ -581,6 +674,14 @@ impl Klayer {
         } else {
             format!("{knowledge} knowledge items deleted")
         };
+        let observation = format!("cleared domain '{}': {} chunks deleted, {}", p.domain, chunks, knowledge_msg);
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("clear_domain"),
+            Some(&format!("clear_domain name={} chunks_only={}", p.domain, chunks_only)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         text_ok(format!(
             "Cleared domain '{}': {chunks} chunks deleted, {knowledge_msg}.",
             p.domain
@@ -602,6 +703,14 @@ impl Klayer {
             std::fs::create_dir_all(parent).map_err(err)?;
         }
         std::fs::write(&self.skill_path, &rendered).map_err(err)?;
+        let observation = format!("wrote router to {}", self.skill_path);
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("compile_skill"),
+            Some(&format!("compile_skill taxonomy={}", taxonomy)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         text_ok(format!("Wrote router to {}\n\n{}", self.skill_path, rendered))
     }
 
@@ -619,6 +728,14 @@ impl Klayer {
             .await
             .map_err(err)?
             .map_err(err)?;
+        let observation = format!("indexed repo '{}': {} files, {} chunks", p.path, stats.files, stats.chunks);
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("indexing"),
+            Some(&format!("index_codebase path={}", p.path)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         text_ok(format!(
             "Indexed '{}': {} files, {} chunks ({} skipped). \
              Use search_code() to recall any symbol or pattern.",
@@ -633,6 +750,14 @@ impl Klayer {
     ) -> Result<CallToolResult, McpError> {
         let limit = p.limit.unwrap_or(8) as usize;
         let hits  = self.code_store.search(&p.query, p.repo.as_deref(), limit).map_err(err)?;
+        let observation = format!("returned {} code hits", hits.len());
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("code_search"),
+            Some(&format!("search_code query={}", p.query)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         json_ok(&hits)
     }
 
@@ -648,6 +773,18 @@ impl Klayer {
         Parameters(p): Parameters<ForgetRepoParams>,
     ) -> Result<CallToolResult, McpError> {
         let ok = self.code_store.forget_repo(&p.path).map_err(err)?;
+        let observation = if ok {
+            format!("removed repo '{}' from codebase memory", p.path)
+        } else {
+            format!("no repo found at '{}'", p.path)
+        };
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("indexing"),
+            Some(&format!("forget_repo path={}", p.path)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
         if ok {
             text_ok(format!("Removed '{}' from code memory.", p.path))
         } else {
@@ -658,30 +795,65 @@ impl Klayer {
     #[tool(description = "Clear ALL indexed codebase memory — removes every repository, file, and chunk from the code store. Use forget_repo() to remove a single repository instead.")]
     fn clear_codebase(&self) -> Result<CallToolResult, McpError> {
         self.code_store.clear_all().map_err(err)?;
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("indexing"),
+            Some("clear_codebase"),
+            Some("codebase memory cleared"),
+            Some("success"),
+        ).ok();
         text_ok("Codebase memory cleared. All indexed repositories, files, and chunks have been removed.")
     }
 
     #[tool(description = "Clear ALL domains and ALL cascading data — knowledge, sources, chunks, and domain registrations. Codebase memory (indexed repos) is NOT affected — use clear_codebase() for that. This is a full wipe of the knowledge store. Use clear_domain() to remove a single domain instead.")]
     fn clear_domains(&self) -> Result<CallToolResult, McpError> {
         self.store.clear_all_domains().map_err(err)?;
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("clear_domains"),
+            Some("clear_domains"),
+            Some("all domains cleared"),
+            Some("success"),
+        ).ok();
         text_ok("All domains cleared. Knowledge, sources, chunks, and domain registrations have been removed. Codebase memory is unaffected.")
     }
 
     #[tool(description = "Clear ALL knowledge items (facts, rules, procedures) across every domain. Domain registrations and ingested sources are kept. This cannot be undone — use forget() to remove a single item instead.")]
     fn clear_knowledge(&self) -> Result<CallToolResult, McpError> {
         self.store.clear_all_knowledge().map_err(err)?;
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("clear_knowledge"),
+            Some("clear_knowledge"),
+            Some("all knowledge items cleared"),
+            Some("success"),
+        ).ok();
         text_ok("All knowledge items cleared. Domain registrations and sources are unaffected.")
     }
 
     #[tool(description = "Clear ALL ingested sources and their reference chunks across every domain. Knowledge items (facts, rules) and domain registrations are kept. This cannot be undone — use clear_domain(chunks_only=true) to clear a single domain's sources instead.")]
     fn clear_sources(&self) -> Result<CallToolResult, McpError> {
         self.store.clear_all_sources().map_err(err)?;
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("clear_sources"),
+            Some("clear_sources"),
+            Some("all sources and chunks cleared"),
+            Some("success"),
+        ).ok();
         text_ok("All sources and reference chunks cleared. Knowledge items and domain registrations are unaffected.")
     }
 
     #[tool(description = "Clear ALL agentic run episodes from the audit trail. Knowledge, sources, and domain registrations are unaffected. This cannot be undone.")]
     fn clear_episodes(&self) -> Result<CallToolResult, McpError> {
         self.store.clear_all_episodes().map_err(err)?;
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("clear_episodes"),
+            Some("clear_episodes"),
+            Some("all episodes cleared"),
+            Some("success"),
+        ).ok();
         text_ok("All episodes cleared from the audit trail. Knowledge and sources are unaffected.")
     }
 }
