@@ -6,7 +6,7 @@
 //! Transport: stdio (works with Claude Code, Claude Desktop, Cursor, etc.).
 //! Storage:   single SQLite file (path via KLAYER_DB, default ./klayer.db).
 //! Skill out: KLAYER_SKILL (default ./skills/klayer/SKILL.md).
-//! Dashboard: HTTP on KLAYER_DASHBOARD_PORT (default 7474), auto-opened in browser.
+//! Dashboard: HTTP on KLAYER_DASHBOARD_PORT (default 7474). URL logged to stderr on start.
 
 use std::sync::Arc;
 
@@ -508,12 +508,7 @@ async fn main() -> Result<()> {
 
     // Spawn the dashboard HTTP server as a background task.
     tokio::spawn(start_dashboard(Arc::clone(&store), port));
-
-    // Open the dashboard in the default browser (non-blocking, best-effort).
-    let url = format!("http://localhost:{port}");
-    std::thread::spawn(move || {
-        let _ = open::that(url);
-    });
+    tracing::info!("klayer dashboard  →  http://localhost:{port}");
 
     // Run MCP server over stdio until the client disconnects.
     let service = Klayer::new(store, skill).serve(stdio()).await?;
