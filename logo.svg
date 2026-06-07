@@ -1,0 +1,8 @@
+<svg width="220" height="56" viewBox="0 0 220 56" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="klayer">
+  <!-- Stacked layer bars -->
+  <rect x="0"  y="0"  width="44" height="8" rx="4" fill="#2B6EE8"/>
+  <rect x="5"  y="14" width="34" height="8" rx="4" fill="#0D1B3E"/>
+  <rect x="10" y="28" width="24" height="8" rx="4" fill="#2B6EE8" opacity="0.55"/>
+  <!-- wordmark -->
+  <text x="60" y="32" font-family="-apple-system, 'Segoe UI', system-ui, sans-serif" font-size="30" font-weight="700" fill="#0D1B3E" letter-spacing="-0.8">klayer</text>
+</svg>

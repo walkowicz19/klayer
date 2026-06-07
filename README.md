@@ -1,7 +1,7 @@
 # klayer
 
 <p align="center">
-  <img src="logo-v2.jpg" alt="klayer logo" width="200" />
+  <img src="logo.svg" alt="klayer logo" width="260" />
 </p>
 
 A domain-agnostic, **grounded knowledge layer** for LLMs, shipped as a single
@@ -13,8 +13,10 @@ for agentic runs — without fat SKILL.md files and without per-server install p
 ## Dashboard
 
 The binary automatically starts a live web dashboard on **http://localhost:7474**
-and opens it in your default browser every time the MCP server starts.
+(logged to stderr on startup — click the link or paste it in your browser).
 All pages fetch real-time data from the store via a built-in REST API.
+
+The dashboard is fully localised — use the language selector pill in the top-right corner to switch between **English**, **Portuguese (PT)**, **Spanish (ES)**, **Mandarin (ZH)**, and **Polish (PL)**. Your selection is saved in `localStorage`.
 
 ![Dashboard overview](docs/screenshots/dashboard.png)
 
@@ -135,7 +137,7 @@ No Rust toolchain or model downloads required — just download and run.
 }
 ```
 
-3. Start your MCP client — klayer starts the MCP server and opens the dashboard automatically.
+3. Start your MCP client — klayer starts the MCP server and logs the dashboard URL to stderr.
 
 ## Environment variables
 
