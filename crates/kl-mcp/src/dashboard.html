@@ -1268,10 +1268,16 @@ function renderAll() {
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────
-async function loadData() {
+// Signature of the last rendered dataset. A silent poll that yields identical
+// data skips re-render, so live polling never disrupts expanded rows or scroll
+// position unless something actually changed.
+let lastSig = null;
+
+// loadData({ silent }) — silent polls hide the spinner and skip no-op renders.
+async function loadData(opts = {}) {
+  const silent = opts.silent === true;
   const btn = document.getElementById('refresh-btn');
-  btn.classList.add('spinning');
-  btn.textContent = t('btnLoading');
+  if (btn && !silent) { btn.classList.add('spinning'); btn.textContent = t('btnLoading'); }
   try {
     const ok = v => v.status === 'fulfilled' ? v.value : null;
     const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos] =
@@ -1286,22 +1292,28 @@ async function loadData() {
         fetch('/api/code/repos').then(r=>r.json()),
       ])).map(ok);
     const live = !!stats;
-    G = {
-      stats:       stats      ?? G.stats,
-      domains:     domains    ?? G.domains,
-      knowledge:   knowledge  ?? G.knowledge,
-      sources:     sources    ?? G.sources,
-      episodes:    episodes   ?? G.episodes,
-      preferences: preferences ?? G.preferences,
-      codeStats:   codeStats  ?? G.codeStats,
-      codeRepos:   codeRepos  ?? G.codeRepos,
-    };
     const dot = document.getElementById('status-dot');
     dot.style.background = '';
     dot.classList.toggle('live',  live);
     dot.classList.toggle('error', !live);
     updateStatusText(t(live ? 'statusLive' : 'statusError'));
-    if (live) { try { renderAll(); } catch(re) { console.error('render error:', re); } }
+    if (!live) return;  // backend unreachable — keep the last good render
+
+    const next = {
+      stats,
+      domains:     domains     ?? G.domains,
+      knowledge:   knowledge   ?? G.knowledge,
+      sources:     sources     ?? G.sources,
+      episodes:    episodes    ?? G.episodes,
+      preferences: preferences ?? G.preferences,
+      codeStats:   codeStats   ?? G.codeStats,
+      codeRepos:   codeRepos   ?? G.codeRepos,
+    };
+    const sig = JSON.stringify(next);
+    if (silent && sig === lastSig) return;  // nothing changed — don't disrupt UI
+    lastSig = sig;
+    G = next;
+    try { renderAll(); } catch(re) { console.error('render error:', re); }
   } catch(e) {
     const dot = document.getElementById('status-dot');
     dot.classList.remove('live');
@@ -1309,8 +1321,7 @@ async function loadData() {
     updateStatusText(t('statusError'));
     console.error('klayer fetch error:', e);
   } finally {
-    btn.classList.remove('spinning');
-    btn.textContent = t('btnRefresh');
+    if (btn && !silent) { btn.classList.remove('spinning'); btn.textContent = t('btnRefresh'); }
   }
 }
 
@@ -1418,6 +1429,23 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Live polling ──────────────────────────────────────────────────────────────
+// Every page reflects the store in near-real-time: poll silently on an interval,
+// pause while the tab is hidden, and refresh immediately when it regains focus.
+const POLL_MS = 4000;
+let pollTimer = null;
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(() => loadData({ silent: true }), POLL_MS);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { stopPolling(); }
+  else { loadData({ silent: true }); startPolling(); }
+});
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 const currentTheme = localStorage.getItem('klayer-theme') || 'light';
 if (currentTheme === 'dark') {
@@ -1425,6 +1453,7 @@ if (currentTheme === 'dark') {
 }
 applyLang();
 loadData();
+startPolling();
 </script>
 </body>
 </html>
