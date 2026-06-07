@@ -201,15 +201,40 @@ impl Store {
             }
         }
 
-        // 2) curated knowledge via LIKE (kind optional)
-        let like = format!("%{}%", query.replace('%', "").replace('_', ""));
-        let mut sql = String::from(
+        // 2) curated knowledge via LIKE — match ANY query term, not the whole
+        // phrase. Natural-language queries are the intended input to recall(), so
+        // a single `%full query%` substring would almost never hit a curated rule.
+        // Tokenize like the FTS pass and OR a per-term (title OR body) LIKE.
+        let terms: Vec<String> = query
+            .split_whitespace()
+            .map(|t| t.replace('%', "").replace('_', ""))
+            .filter(|t| !t.is_empty())
+            .map(|t| format!("%{t}%"))
+            .collect();
+        let terms = if terms.is_empty() {
+            vec![format!("%{}%", query.replace('%', "").replace('_', ""))]
+        } else {
+            terms
+        };
+
+        // Positional params: ?1 = domain, ?2.. = one per term, then optional kind.
+        let mut bind: Vec<String> = vec![domain.to_string()];
+        let mut clauses = Vec::with_capacity(terms.len());
+        for term in &terms {
+            let idx = bind.len() + 1;
+            clauses.push(format!("(title LIKE ?{idx} OR body LIKE ?{idx})"));
+            bind.push(term.clone());
+        }
+        let mut sql = format!(
             "SELECT kind, title, body, trust, source_id, created_at
                FROM knowledge
-              WHERE domain = ?1 AND (title LIKE ?2 OR body LIKE ?2)",
+              WHERE domain = ?1 AND ({})",
+            clauses.join(" OR ")
         );
-        if kind.is_some() {
-            sql.push_str(" AND kind = ?3");
+        if let Some(kd) = kind {
+            let idx = bind.len() + 1;
+            sql.push_str(&format!(" AND kind = ?{idx}"));
+            bind.push(kd.as_str().to_string());
         }
         sql.push_str(" ORDER BY (CASE trust WHEN 'user' THEN 3 WHEN 'reviewed' THEN 2 WHEN 'proposed' THEN 1 ELSE 0 END) DESC, updated_at DESC LIMIT 50");
 
@@ -229,13 +254,9 @@ impl Store {
                 score: 0.0,
             })
         };
-        let rows = if let Some(kd) = kind {
-            stmt.query_map(params![domain, like, kd.as_str()], map)?
-                .collect::<rusqlite::Result<Vec<_>>>()?
-        } else {
-            stmt.query_map(params![domain, like], map)?
-                .collect::<rusqlite::Result<Vec<_>>>()?
-        };
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(bind.iter()), map)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         hits.extend(rows);
 
         // trust first, then bm25 score for chunks
