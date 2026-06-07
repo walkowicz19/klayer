@@ -94,8 +94,7 @@ kl-mcp     the `klayer` binary: rmcp MCP server + axum dashboard HTTP server
 Trust lifecycle (the one invariant across every use case):
 
 ```
-untrusted ──(LLM extracts)──> proposed ──(promote = validation gate)──> reviewed
-                                                              user (authored)
+untrusted ──(LLM extracts)──> proposed ──(promote = validation gate)──> reviewed - user (authored)
 only reviewed + user are ENFORCED.
 ```
 
