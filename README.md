@@ -3,7 +3,7 @@
 <br>
 
 <p align="center">
-  <img src="logo.svg" alt="klayer logo" width="260" />
+  <img src="logo.svg" alt="klayer logo" width="200" />
 </p>
 
 <br>
