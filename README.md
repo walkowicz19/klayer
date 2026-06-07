@@ -132,7 +132,7 @@ only reviewed + user are ENFORCED.
 | `list_repos` | List all indexed repositories with file/chunk counts and last-indexed timestamps |
 | `forget_repo` | Remove a previously indexed repository (all files and chunks) from the codebase DB |
 | `clear_codebase` | Wipe ALL indexed codebase memory — every repository, file, and chunk |
-| `clear_domains` | Wipe ALL domains and ALL cascading data — knowledge, sources, chunks, and registrations |
+| `clear_domains` | Wipe ALL domains and ALL cascading data — knowledge, sources, chunks, and registrations. Codebase memory is unaffected |
 | `clear_knowledge` | Wipe ALL knowledge items across every domain (domains and sources kept) |
 | `clear_sources` | Wipe ALL ingested sources and chunks across every domain (knowledge kept) |
 | `clear_episodes` | Wipe ALL agentic run episodes from the audit trail |

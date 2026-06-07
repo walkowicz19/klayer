@@ -661,10 +661,10 @@ impl Klayer {
         text_ok("Codebase memory cleared. All indexed repositories, files, and chunks have been removed.")
     }
 
-    #[tool(description = "Clear ALL domains and ALL cascading data — knowledge, sources, chunks, and domain registrations. This is a full wipe of the knowledge store. Use clear_domain() to remove a single domain instead.")]
+    #[tool(description = "Clear ALL domains and ALL cascading data — knowledge, sources, chunks, and domain registrations. Codebase memory (indexed repos) is NOT affected — use clear_codebase() for that. This is a full wipe of the knowledge store. Use clear_domain() to remove a single domain instead.")]
     fn clear_domains(&self) -> Result<CallToolResult, McpError> {
         self.store.clear_all_domains().map_err(err)?;
-        text_ok("All domains cleared. Knowledge, sources, chunks, and domain registrations have been removed.")
+        text_ok("All domains cleared. Knowledge, sources, chunks, and domain registrations have been removed. Codebase memory is unaffected.")
     }
 
     #[tool(description = "Clear ALL knowledge items (facts, rules, procedures) across every domain. Domain registrations and ingested sources are kept. This cannot be undone — use forget() to remove a single item instead.")]
