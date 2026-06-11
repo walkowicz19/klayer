@@ -29,10 +29,11 @@ impl Default for DuckDuckGo {
 #[async_trait]
 impl SearchBackend for DuckDuckGo {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let clean_query = query.trim().trim_matches('"').trim_matches('\'').trim();
         let body = self
             .client
             .post("https://html.duckduckgo.com/html/")
-            .form(&[("q", query)])
+            .form(&[("q", clean_query)])
             .send()
             .await?
             .error_for_status()?
@@ -87,9 +88,10 @@ impl Default for Bing {
 #[async_trait]
 impl SearchBackend for Bing {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let clean_query = query.trim().trim_matches('"').trim_matches('\'').trim();
         let url = format!(
             "https://www.bing.com/search?q={}&count={}",
-            urlencoding::encode(query),
+            urlencoding::encode(clean_query),
             limit
         );
         let body = self
@@ -146,9 +148,10 @@ impl Brave {
 #[async_trait]
 impl SearchBackend for Brave {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let clean_query = query.trim().trim_matches('"').trim_matches('\'').trim();
         let url = format!(
             "https://api.search.brave.com/res/v1/web/search?q={}&count={}",
-            urlencoding::encode(query),
+            urlencoding::encode(clean_query),
             limit.min(20)
         );
         let body = self

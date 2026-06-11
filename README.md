@@ -14,6 +14,102 @@ Desktop, Cursor, …) the ability to ingest sources, recall them with provenance
 enforce only validated rules, honor user preferences, and keep an audit trail
 for agentic runs — without fat SKILL.md files and without per-server install pain.
 
+---
+
+## ⚡ Quick Start: MCP Installation
+
+You can install and use klayer on any machine either by **downloading the pre-built binary** (recommended, no Git clone/Rust toolchain required) or by **building from source**.
+
+> [!IMPORTANT]
+> **Do I need to clone this repository?**
+> - **No, if you just want to run the MCP server**: You do NOT need to clone the Git repository. You only need the single executable file (`klayer.exe` for Windows).
+> - **Yes, if you want to modify or compile the code**: Clone this repository and follow the [Build from source](#build-from-source) section.
+
+### Option A: Use the Pre-built Binary (Recommended)
+
+1. **Download the executable**: Go to the repository's **Releases** page on GitHub and download the appropriate binary for your OS:
+   - **Windows**: `klayer-windows-x86_64.exe`
+   - **Linux**: `klayer-linux-x86_64`
+   - **macOS (Intel)**: `klayer-macos-x86_64`
+   - **macOS (Apple Silicon M1/M2/M3)**: `klayer-macos-arm64`
+   
+   > [!NOTE]
+   > You cannot easily download raw binaries directly from the Git source tree without cloning, so always download them from the **Releases** page.
+
+2. **Create a dedicated folder & prepare the binary**:
+   - Create a permanent folder for klayer (e.g. `C:\Users\you\klayer\` on Windows, or `~/klayer/` on Linux/macOS). Put the downloaded binary in it.
+   - **Linux/macOS only**: Make the binary executable by running:
+     ```bash
+     chmod +x ~/klayer/klayer-macos-arm64 # (or matching filename)
+     ```
+   
+   > [!TIP]
+   > **Keep klayer in a single, permanent folder.**
+   > Because the MCP server config is global across all workspaces, keeping the binary and both database files (`klayer.db` and `klayer_code.db`) in one permanent place ensures all workspaces share the same memory and the dashboard is always accessible.
+
+3. **Configure your MCP Client**: Add the server block to your MCP client config (e.g., `claude_desktop_config.json` or Cursor settings) for your operating system:
+
+#### 🖥️ Windows Configuration
+```json
+{
+  "mcpServers": {
+    "klayer": {
+      "command": "C:\\Users\\you\\klayer\\klayer-windows-x86_64.exe",
+      "env": {
+        "KLAYER_DB": "C:\\Users\\you\\klayer\\klayer.db",
+        "KLAYER_CODE_DB": "C:\\Users\\you\\klayer\\klayer_code.db",
+        "KLAYER_SKILL": "C:\\Users\\you\\klayer\\skills\\klayer\\SKILL.md"
+      }
+    }
+  }
+}
+```
+
+#### 🍎 macOS Configuration
+```json
+{
+  "mcpServers": {
+    "klayer": {
+      "command": "/Users/you/klayer/klayer-macos-arm64",
+      "env": {
+        "KLAYER_DB": "/Users/you/klayer/klayer.db",
+        "KLAYER_CODE_DB": "/Users/you/klayer/klayer_code.db",
+        "KLAYER_SKILL": "/Users/you/klayer/skills/klayer/SKILL.md"
+      }
+    }
+  }
+}
+```
+
+#### 🐧 Linux Configuration
+```json
+{
+  "mcpServers": {
+    "klayer": {
+      "command": "/home/you/klayer/klayer-linux-x86_64",
+      "env": {
+        "KLAYER_DB": "/home/you/klayer/klayer.db",
+        "KLAYER_CODE_DB": "/home/you/klayer/klayer_code.db",
+        "KLAYER_SKILL": "/home/you/klayer/skills/klayer/SKILL.md"
+      }
+    }
+  }
+}
+```
+
+> [!TIP]
+> Setting `KLAYER_SKILL` explicitly ensures that the `compile_skill` tool writes directly to your workspace's skill file regardless of which working directory the MCP client uses when it spawns the server.
+
+4. **Start your client**: When you launch your IDE or Claude client, klayer will start automatically.
+   
+   > [!NOTE]
+   > The Live Web Dashboard (`http://localhost:7474`) runs inside the MCP server process. The dashboard will stop working when you close the IDE/MCP client — this is completely normal.
+
+### Option B: Build from Source
+If you are on other CPU architectures or want to build/modify klayer yourself, follow the instructions in the [Build from source](#build-from-source) section.
+
+---
+
 ## Dashboard
 
 The binary automatically starts a live web dashboard on **http://localhost:7474**
@@ -138,37 +234,9 @@ only reviewed + user are ENFORCED.
 | `clear_sources` | Wipe ALL ingested sources and chunks across every domain (knowledge kept) |
 | `clear_episodes` | Wipe ALL agentic run episodes from the audit trail |
 
-## Quick start (pre-built binary)
+## Quick start
 
-A compiled Windows binary is included at `target/release/klayer.exe`.
-No Rust toolchain or model downloads required — just download and run.
-
-> [!TIP]
-> **Create a dedicated folder for klayer.**
-> Because the MCP server config is global (applied across all workspaces), klayer sees and stores knowledge from every project you work in. Keep the binary and both database files together in one permanent place (e.g. `C:\Users\you\klayer\`) so the dashboard and all stored memory are always accessible — no matter which workspace you currently have open in your editor.
-
-1. Download `target/release/klayer.exe` from this repository and place it in your dedicated klayer folder.
-2. Wire it into your MCP client config, pointing the DB paths at that same folder:
-
-```json
-{
-  "mcpServers": {
-    "klayer": {
-      "command": "C:\\Users\\you\\klayer\\klayer.exe",
-      "env": {
-        "KLAYER_DB": "C:\\Users\\you\\klayer\\klayer.db",
-        "KLAYER_CODE_DB": "C:\\Users\\you\\klayer\\klayer_code.db",
-        "KLAYER_SKILL": "C:\\Users\\you\\klayer\\skills\\klayer\\SKILL.md"
-      }
-    }
-  }
-}
-```
-
-> [!TIP]
-> Setting `KLAYER_SKILL` explicitly ensures that the `compile_skill` tool writes directly to your workspace's skill file regardless of which working directory the MCP client uses when it spawns the server.
-
-3. Start your MCP client — klayer starts the MCP server and logs the dashboard URL to stderr.
+Please refer to the [Quick Start: MCP Installation](#-quick-start-mcp-installation) section at the top of this document.
 
 ## Environment variables
 
