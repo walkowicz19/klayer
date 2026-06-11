@@ -22,7 +22,7 @@ You can install and use klayer on any machine either by **downloading the pre-bu
 
 > [!IMPORTANT]
 > **Do I need to clone this repository?**
-> - **No, if you just want to run the MCP server**: You do NOT need to clone the Git repository. You only need the single executable file (`klayer.exe` for Windows).
+> - **No, if you just want to run the MCP server**: You do NOT need to clone the Git repository. You only need the single executable file (`klayer.exe`).
 > - **Yes, if you want to modify or compile the code**: Clone this repository and follow the [Build from source](#build-from-source) section.
 
 ### Option A: Use the Pre-built Binary (Recommended)
