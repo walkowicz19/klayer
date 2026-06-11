@@ -887,6 +887,28 @@ impl ServerHandler for Klayer {
 
 // ----- entry point ---------------------------------------------------------
 
+fn get_claude_config_path() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let appdata = std::env::var("APPDATA").ok()?;
+        Some(std::path::PathBuf::from(appdata).join("Claude").join("claude_desktop_config.json"))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var("HOME").ok()?;
+        Some(std::path::PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("Claude")
+            .join("claude_desktop_config.json"))
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let home = std::env::var("HOME").ok()?;
+        Some(std::path::PathBuf::from(home).join(".config").join("Claude").join("claude_desktop_config.json"))
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -894,6 +916,87 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .with_ansi(false)
         .init();
+
+    let print_config = std::env::args().any(|a| a == "--print-mcp-config");
+    let install_config = std::env::args().any(|a| a == "--install" || a == "--install-mcp");
+
+    if print_config || install_config {
+        let exe_path = std::env::current_exe()?;
+        let parent = exe_path.parent().ok_or_else(|| anyhow::anyhow!("No parent directory"))?;
+        
+        let (exe_str, db_str, code_db_str, skill_str) = if cfg!(target_os = "windows") {
+            (
+                exe_path.to_string_lossy().replace("/", "\\"),
+                parent.join("klayer.db").to_string_lossy().replace("/", "\\"),
+                parent.join("klayer_code.db").to_string_lossy().replace("/", "\\"),
+                parent.join("skills").join("klayer").join("SKILL.md").to_string_lossy().replace("/", "\\"),
+            )
+        } else {
+            (
+                exe_path.to_string_lossy().replace("\\", "/"),
+                parent.join("klayer.db").to_string_lossy().replace("\\", "/"),
+                parent.join("klayer_code.db").to_string_lossy().replace("\\", "/"),
+                parent.join("skills").join("klayer").join("SKILL.md").to_string_lossy().replace("\\", "/"),
+            )
+        };
+
+        if print_config {
+            let config = serde_json::json!({
+                "mcpServers": {
+                    "klayer": {
+                        "command": exe_str,
+                        "env": {
+                            "KLAYER_DB": db_str,
+                            "KLAYER_CODE_DB": code_db_str,
+                            "KLAYER_SKILL": skill_str
+                        }
+                    }
+                }
+            });
+            println!("{}", serde_json::to_string_pretty(&config)?);
+            return Ok(());
+        }
+
+        if install_config {
+            let config_path = get_claude_config_path();
+            if let Some(path) = config_path {
+                let mut root: serde_json::Value = if path.exists() {
+                    let s = std::fs::read_to_string(&path)?;
+                    serde_json::from_str(&s).unwrap_or(serde_json::json!({}))
+                } else {
+                    serde_json::json!({})
+                };
+
+                if !root.is_object() {
+                    root = serde_json::json!({});
+                }
+                if root.get("mcpServers").is_none() {
+                    root["mcpServers"] = serde_json::json!({});
+                }
+
+                root["mcpServers"]["klayer"] = serde_json::json!({
+                    "command": exe_str,
+                    "env": {
+                        "KLAYER_DB": db_str,
+                        "KLAYER_CODE_DB": code_db_str,
+                        "KLAYER_SKILL": skill_str
+                    }
+                });
+
+                if let Some(p) = path.parent() {
+                    std::fs::create_dir_all(p)?;
+                }
+
+                let pretty = serde_json::to_string_pretty(&root)?;
+                std::fs::write(&path, pretty)?;
+                println!("Successfully configured Claude Desktop MCP server in:");
+                println!("  {}", path.display());
+            } else {
+                return Err(anyhow::anyhow!("Could not detect Claude Desktop config directory on this OS."));
+            }
+            return Ok(());
+        }
+    }
 
     let db      = std::env::var("KLAYER_DB").unwrap_or_else(|_| "klayer.db".to_string());
     let code_db = std::env::var("KLAYER_CODE_DB").unwrap_or_else(|_| "klayer_code.db".to_string());

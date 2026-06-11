@@ -47,7 +47,18 @@ You can install and use klayer on any machine either by **downloading the pre-bu
 > **Keep klayer in a single, permanent folder.**
 > Because the MCP server config is global across all workspaces, keeping the binary and both database files (`klayer.db` and `klayer_code.db`) in one permanent place ensures all workspaces share the same memory and the dashboard is always accessible.
 
-3. **Configure your MCP Client**: Add the server block to your MCP client config (e.g., `claude_desktop_config.json` or Cursor settings) for your operating system:
+3. **Configure automatically (Recommended for users & LLMs)**:
+   You can let `klayer` configure itself automatically! Open your terminal, navigate to your klayer folder, and run:
+   ```bash
+   # Automatically merge klayer config into Claude Desktop:
+   ./klayer-windows-x86_64.exe --install
+
+   # Or print the pre-configured JSON block for copy/pasting:
+   ./klayer-windows-x86_64.exe --print-mcp-config
+   ```
+   *(On macOS/Linux, replace `./klayer-windows-x86_64.exe` with your downloaded binary name, e.g., `./klayer-macos-arm64`).*
+
+4. **Configure manually (Alternative)**: Add the server block manually to your MCP client config (e.g., `claude_desktop_config.json` or Cursor settings) for your operating system:
 
 #### 🖥️ Windows Configuration
 ```json
