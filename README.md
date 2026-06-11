@@ -331,6 +331,14 @@ Default build is **keyword-only** (FTS5/BM25) — zero extra native dependencies
 The vector extension point:
 
 - `Embedder` trait in `kl-core`.
-- Add `chunks_vec` virtual table via `sqlite-vec` + a local CPU embedder
-  (e.g. `fastembed`, bge-small-384), fuse FTS + vector with RRF in `Store::recall`.
+- Add `chunks_vec` virtual table via `sqlite-vec` + a local CPU embedder (e.g. `fastembed`, bge-small-384), fuse FTS + vector with RRF in `Store::recall`.
 - Gate behind the `embed-local` feature flag in `kl-mcp`.
+
+## 📜 License & Modification Note
+
+This project is licensed under the [MIT License](LICENSE).
+
+> [!NOTE]
+> **Attribution Requirement**
+> Anyone is free to use, modify, adapt, or distribute this project and its source code. The only condition is that you **must give credit** to the original repository ([walkowicz19/klayer](https://github.com/walkowicz19/klayer)) and its original author.
+
