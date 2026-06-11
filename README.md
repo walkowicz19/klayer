@@ -245,10 +245,6 @@ only reviewed + user are ENFORCED.
 | `clear_sources` | Wipe ALL ingested sources and chunks across every domain (knowledge kept) |
 | `clear_episodes` | Wipe ALL agentic run episodes from the audit trail |
 
-## Quick start
-
-Please refer to the [Quick Start: MCP Installation](#-quick-start-mcp-installation) section at the top of this document.
-
 ## Environment variables
 
 | Variable | Default | Description |
