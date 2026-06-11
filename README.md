@@ -32,9 +32,9 @@ You can install and use klayer on any machine either by **downloading the pre-bu
    - **Linux**: `klayer-linux-x86_64`
    - **macOS (Intel)**: `klayer-macos-x86_64`
    - **macOS (Apple Silicon M1/M2/M3)**: `klayer-macos-arm64`
-   
-   > [!NOTE]
-   > You cannot easily download raw binaries directly from the Git source tree without cloning, so always download them from the **Releases** page.
+
+> [!NOTE]
+> You cannot easily download raw binaries directly from the Git source tree without cloning, so always download them from the **Releases** page.
 
 2. **Create a dedicated folder & prepare the binary**:
    - Create a permanent folder for klayer (e.g. `C:\Users\you\klayer\` on Windows, or `~/klayer/` on Linux/macOS). Put the downloaded binary in it.
@@ -42,10 +42,10 @@ You can install and use klayer on any machine either by **downloading the pre-bu
      ```bash
      chmod +x ~/klayer/klayer-macos-arm64 # (or matching filename)
      ```
-   
-   > [!TIP]
-   > **Keep klayer in a single, permanent folder.**
-   > Because the MCP server config is global across all workspaces, keeping the binary and both database files (`klayer.db` and `klayer_code.db`) in one permanent place ensures all workspaces share the same memory and the dashboard is always accessible.
+
+> [!TIP]
+> **Keep klayer in a single, permanent folder.**
+> Because the MCP server config is global across all workspaces, keeping the binary and both database files (`klayer.db` and `klayer_code.db`) in one permanent place ensures all workspaces share the same memory and the dashboard is always accessible.
 
 3. **Configure your MCP Client**: Add the server block to your MCP client config (e.g., `claude_desktop_config.json` or Cursor settings) for your operating system:
 
@@ -101,9 +101,9 @@ You can install and use klayer on any machine either by **downloading the pre-bu
 > Setting `KLAYER_SKILL` explicitly ensures that the `compile_skill` tool writes directly to your workspace's skill file regardless of which working directory the MCP client uses when it spawns the server.
 
 4. **Start your client**: When you launch your IDE or Claude client, klayer will start automatically.
-   
-   > [!NOTE]
-   > The Live Web Dashboard (`http://localhost:7474`) runs inside the MCP server process. The dashboard will stop working when you close the IDE/MCP client — this is completely normal.
+
+> [!NOTE]
+> The Live Web Dashboard (`http://localhost:7474`) runs inside the MCP server process. The dashboard will stop working when you close the IDE/MCP client — this is completely normal.
 
 ### Option B: Build from Source
 If you are on other CPU architectures or want to build/modify klayer yourself, follow the instructions in the [Build from source](#build-from-source) section.
