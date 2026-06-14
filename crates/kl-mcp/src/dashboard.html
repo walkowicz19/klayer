@@ -23,24 +23,32 @@
       --green:           #1DB87E;
       --amber:           #F59E0B;
       --red:             #EF4444;
+      /* Brand-blue filled buttons (from the logo) — same hue in both themes. */
+      --brand:           #2B6EE8;
+      --brand-hover:     #2257BF;
+      --on-brand:        #ffffff;
       --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-full: 9999px;
     }
     body.dark {
-      --canvas:          #0F172A;
-      --soft:            #020617;
-      --hairline:        #1E293B;
-      --hairline-strong: #334155;
-      --ink:             #F8FAFC;
-      --navy:            #E2E8F0;
-      --charcoal:        #94A3B8;
-      --body:            #64748B;
-      --mute:            #475569;
+      /* Neutral, non-blue dark palette — easy on the eyes, no cool/slate tint. */
+      --canvas:          #1D1D1D;
+      --soft:            #141414;
+      --hairline:        #2C2C2C;
+      --hairline-strong: #3A3A3A;
+      --ink:             #E8E8E8;
+      --navy:            #F1F1F1;
+      --charcoal:        #B2B2B2;
+      --body:            #8A8A8A;
+      --mute:            #6A6A6A;
       --on-dark:         #ffffff;
-      --blue:            #3B82F6;
-      --blue-lt:         rgba(59, 130, 246, 0.15);
+      --blue:            #2B6EE8;
+      --blue-lt:         rgba(43, 110, 232, 0.16);
       --green:           #10B981;
       --amber:           #F59E0B;
       --red:             #EF4444;
+      --brand:           #2B6EE8;
+      --brand-hover:     #4F86EF;
+      --on-brand:        #ffffff;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -93,12 +101,12 @@
     .status-dot.error { background: #EF4444; box-shadow: 0 0 0 2px rgba(239,68,68,.2); }
 
     .refresh-btn {
-      font-size: 12px; font-weight: 500; color: var(--on-dark);
-      background: var(--navy); border: none; border-radius: var(--r-full);
+      font-size: 12px; font-weight: 600; color: var(--on-brand);
+      background: var(--brand); border: none; border-radius: var(--r-full);
       padding: 5px 14px; height: 30px; cursor: pointer;
       transition: background .12s; white-space: nowrap;
     }
-    .refresh-btn:hover { opacity: 0.9; }
+    .refresh-btn:hover { background: var(--brand-hover); }
     .refresh-btn.spinning { opacity: .6; pointer-events: none; }
 
     .theme-toggle-btn {
@@ -143,7 +151,7 @@
       cursor: pointer; text-align: left; transition: background .12s, color .12s;
     }
     .nav-btn:hover { background: var(--blue-lt); color: var(--blue); }
-    .nav-btn.active { background: var(--navy); color: var(--canvas); }
+    .nav-btn.active { background: var(--brand); color: var(--on-brand); }
     .nav-badge {
       margin-left: auto; font-size: 11px; font-weight: 600;
       padding: 1px 7px; border-radius: var(--r-full);
@@ -261,8 +269,8 @@
     .dglance-hint { font-size: 11px; color: var(--mute); }
 
     /* ── Promote button ── */
-    .promote-btn { font-size: 11px; font-weight: 600; color: var(--on-dark); background: var(--blue); border: none; border-radius: var(--r-full); padding: 3px 10px; cursor: pointer; transition: background .12s; }
-    .promote-btn:hover { background: #1f5bc4; }
+    .promote-btn { font-size: 11px; font-weight: 600; color: var(--on-brand); background: var(--brand); border: none; border-radius: var(--r-full); padding: 3px 10px; cursor: pointer; transition: background .12s; }
+    .promote-btn:hover { background: var(--brand-hover); }
 
     /* ── Empty state ── */
     .empty { text-align: center; padding: 32px 20px; color: var(--mute); font-size: 13px; }
@@ -278,11 +286,11 @@
     .code-search-input:focus { border-color: var(--blue); }
     .code-search-btn {
       height: 36px; padding: 0 16px; border-radius: var(--r-full);
-      background: var(--navy); color: var(--on-dark); border: none;
-      font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+      background: var(--brand); color: var(--on-brand); border: none;
+      font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
       transition: background .12s;
     }
-    .code-search-btn:hover { background: #162550; }
+    .code-search-btn:hover { background: var(--brand-hover); }
     .code-hit { padding: 12px 0; border-bottom: 1px solid var(--hairline); }
     .code-hit:last-child { border-bottom: none; }
     .code-hit-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
