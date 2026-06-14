@@ -184,6 +184,8 @@ total / proposed / reviewed / user counts. Only **reviewed** and **user** rows a
 ever exported — proposed rows and unanswered stubs never leak into a dataset. See
 [Training data layer](#training-data-layer-kl-train) for the full pipeline.
 
+![Training Data](docs/screenshots/training.png)
+
 ### Dashboard port & REST API
 
 The default port is **7474** (`KLAYER_DASHBOARD_PORT` to override).
