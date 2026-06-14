@@ -923,6 +923,7 @@ dependencies = [
  "kl-search",
  "kl-skill",
  "kl-store",
+ "kl-train",
  "rmcp",
  "serde",
  "serde_json",
@@ -960,6 +961,19 @@ dependencies = [
  "chrono",
  "kl-core",
  "rusqlite",
+]
+
+[[package]]
+name = "kl-train"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "kl-core",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

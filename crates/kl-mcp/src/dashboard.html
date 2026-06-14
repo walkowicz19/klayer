@@ -404,6 +404,14 @@
       </button>
     </div>
     <div class="nav-group">
+      <div class="nav-group-label" data-i18n="navGroupTraining"></div>
+      <button class="nav-btn" data-page="training">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 12V4M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="4" y="7" width="2.2" height="3.5" stroke="currentColor" stroke-width="1.3"/><rect x="7.5" y="5" width="2.2" height="5.5" stroke="currentColor" stroke-width="1.3"/><rect x="11" y="8" width="2.2" height="2.5" stroke="currentColor" stroke-width="1.3"/></svg>
+        <span data-i18n="navTraining"></span>
+        <span class="nav-badge" id="nb-training">—</span>
+      </button>
+    </div>
+    <div class="nav-group">
       <div class="nav-group-label" data-i18n="navGroupAgent"></div>
       <button class="nav-btn" data-page="memory">
         <svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -642,6 +650,56 @@
       </div>
     </div>
 
+    <!-- Training -->
+    <div id="page-training" class="page">
+      <div class="ph">
+        <div class="ph-title" data-i18n="navTraining"></div>
+        <div class="ph-sub" data-i18n="phTrainingSub"></div>
+        <button onclick="clearTraining()" style="margin-top:.75rem;padding:.35rem .9rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="trainClearBtn"></button>
+      </div>
+
+      <div class="code-stats-row">
+        <div class="stat accent">
+          <div class="stat-lbl" data-i18n="trainStatTotal"></div>
+          <div class="stat-val" id="ts-total">—</div>
+          <div class="stat-hint" data-i18n="trainStatTotalHint"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl" data-i18n="trainStatProposed"></div>
+          <div class="stat-val" id="ts-proposed">—</div>
+          <div class="stat-hint" data-i18n="trainStatProposedHint"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl" data-i18n="trainStatReviewed"></div>
+          <div class="stat-val" id="ts-reviewed">—</div>
+          <div class="stat-hint" data-i18n="trainStatReviewedHint"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl" data-i18n="trainStatUser"></div>
+          <div class="stat-val" id="ts-user">—</div>
+          <div class="stat-hint" data-i18n="trainStatUserHint"></div>
+        </div>
+      </div>
+
+      <div class="card card-fw">
+        <div class="ch">
+          <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 12V4M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="4" y="7" width="2.2" height="3.5" stroke="currentColor" stroke-width="1.3"/><rect x="7.5" y="5" width="2.2" height="5.5" stroke="currentColor" stroke-width="1.3"/><rect x="11" y="8" width="2.2" height="2.5" stroke="currentColor" stroke-width="1.3"/></svg>
+          <span class="ch-title" data-i18n="chTraining"></span>
+          <span class="ch-count" id="training-count"></span>
+        </div>
+        <div class="tw"><table>
+          <thead><tr>
+            <th data-i18n="thUser"></th>
+            <th data-i18n="thDomain"></th>
+            <th data-i18n="thLabel"></th>
+            <th data-i18n="thProvenance"></th>
+            <th data-i18n="thTrust"></th>
+          </tr></thead>
+          <tbody id="tb-training"></tbody>
+        </table></div>
+      </div>
+    </div>
+
     <!-- Settings -->
     <div id="page-settings" class="page">
       <div class="ph">
@@ -710,9 +768,9 @@
 const LANGS = {
   en: {
     topbarSub: 'knowledge dashboard',
-    navGroupOverview: 'Overview', navGroupKnowledge: 'Knowledge', navGroupAgent: 'Agent', navGroupCode: 'Codebase', navGroupSystem: 'System',
+    navGroupOverview: 'Overview', navGroupKnowledge: 'Knowledge', navGroupAgent: 'Agent', navGroupCode: 'Codebase', navGroupTraining: 'Training', navGroupSystem: 'System',
     navDashboard: 'Dashboard', navDomains: 'Domains', navKnowledge: 'Knowledge',
-    navSources: 'Sources', navMemory: 'Agent Memory', navTrust: 'Trust Lifecycle', navCodebase: 'Codebase', navSettings: 'Settings',
+    navSources: 'Sources', navMemory: 'Agent Memory', navTrust: 'Trust Lifecycle', navCodebase: 'Codebase', navTraining: 'Training Data', navSettings: 'Settings',
     btnRefresh: '↺ Refresh', btnLoading: '↺ Loading…',
     statusConnecting: 'connecting…', statusLive: 'klayer.db · live', statusError: 'API unreachable',
     statDomains: 'Domains', statDomainsHint: 'active namespaces',
@@ -755,12 +813,23 @@ const LANGS = {
     codeSearchBtn: 'Search',
     codeNoResults: 'No results', codeSearchPrompt: 'Type a query and press Search',
     repoFiles: 'files', repoChunks: 'chunks', repoIndexed: 'indexed',
+    phTrainingSub: 'Trust-gated training examples — only reviewed and user rows are ever exported',
+    trainStatTotal: 'Examples', trainStatTotalHint: 'training rows',
+    trainStatProposed: 'Proposed', trainStatProposedHint: 'awaiting promotion',
+    trainStatReviewed: 'Reviewed', trainStatReviewedHint: 'exportable',
+    trainStatUser: 'User', trainStatUserHint: 'human-authored',
+    chTraining: 'Training Examples',
+    thUser: 'User turn', thLabel: 'Label', thProvenance: 'Provenance',
+    trainStub: '(stub — awaiting answer)',
+    trainClearBtn: 'Clear all training data',
+    trainClearWarning: 'Clear ALL training examples across every domain? This cannot be undone.',
+    emptyTraining: 'No training examples yet',
     domainsClearBtn: 'Clear all domains (cascades)',
     codeClearBtn: 'Clear all codebase memory',
     knowledgeClearBtn: 'Clear all knowledge',
     sourcesClearBtn: 'Clear all sources',
     episodesClearBtn: 'Clear all episodes',
-    domainsClearWarning: 'WARNING: This will delete ALL domains and ALL their data — knowledge, rules, sources, and chunks.\n\nCodebase memory (indexed repos) is NOT affected.\n\nThis cannot be undone. Type "delete" to confirm:',
+    domainsClearWarning: 'WARNING: This will delete ALL domains and ALL their data — knowledge, rules, sources, and chunks.\n\nCodebase memory (indexed repos) and training data are NOT affected.\n\nThis cannot be undone. Type "delete" to confirm:',
     phSettingsSub: 'Language, connection info, and project details',
     settingsLang: 'Language', settingsConnection: 'Connection',
     settingsAbout: 'About', settingsDashURL: 'Dashboard URL',
@@ -771,9 +840,9 @@ const LANGS = {
   },
   pt: {
     topbarSub: 'painel de conhecimento',
-    navGroupOverview: 'Visão Geral', navGroupKnowledge: 'Conhecimento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupSystem: 'Sistema',
+    navGroupOverview: 'Visão Geral', navGroupKnowledge: 'Conhecimento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupTraining: 'Treinamento', navGroupSystem: 'Sistema',
     navDashboard: 'Painel', navDomains: 'Domínios', navKnowledge: 'Conhecimento',
-    navSources: 'Fontes', navMemory: 'Memória do Agente', navTrust: 'Ciclo de Confiança', navCodebase: 'Base de Código', navSettings: 'Configurações',
+    navSources: 'Fontes', navMemory: 'Memória do Agente', navTrust: 'Ciclo de Confiança', navCodebase: 'Base de Código', navTraining: 'Dados de Treinamento', navSettings: 'Configurações',
     btnRefresh: '↺ Atualizar', btnLoading: '↺ Carregando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · ativo', statusError: 'API inacessível',
     statDomains: 'Domínios', statDomainsHint: 'namespaces ativos',
@@ -816,12 +885,23 @@ const LANGS = {
     codeSearchBtn: 'Buscar',
     codeNoResults: 'Sem resultados', codeSearchPrompt: 'Digite uma consulta e pressione Buscar',
     repoFiles: 'arquivos', repoChunks: 'blocos', repoIndexed: 'indexado',
+    phTrainingSub: 'Exemplos de treinamento sob controle de confiança — apenas linhas revisadas e do usuário são exportadas',
+    trainStatTotal: 'Exemplos', trainStatTotalHint: 'linhas de treinamento',
+    trainStatProposed: 'Propostos', trainStatProposedHint: 'aguardando promoção',
+    trainStatReviewed: 'Revisados', trainStatReviewedHint: 'exportáveis',
+    trainStatUser: 'Usuário', trainStatUserHint: 'autoral',
+    chTraining: 'Exemplos de Treinamento',
+    thUser: 'Turno do usuário', thLabel: 'Rótulo', thProvenance: 'Proveniência',
+    trainStub: '(rascunho — aguardando resposta)',
+    trainClearBtn: 'Limpar todos os dados de treinamento',
+    trainClearWarning: 'Limpar TODOS os exemplos de treinamento de todos os domínios? Esta ação não pode ser desfeita.',
+    emptyTraining: 'Nenhum exemplo de treinamento ainda',
     domainsClearBtn: 'Limpar todos os domínios (cascata)',
     codeClearBtn: 'Limpar toda a memória de código',
     knowledgeClearBtn: 'Limpar todo o conhecimento',
     sourcesClearBtn: 'Limpar todas as fontes',
     episodesClearBtn: 'Limpar todos os episódios',
-    domainsClearWarning: 'AVISO: Isso irá deletar TODOS os domínios e TODOS os seus dados — conhecimento, regras, fontes e fragmentos.\n\nA memória de código (repositórios indexados) NÃO é afetada.\n\nEsta ação não pode ser desfeita. Digite "delete" para confirmar:',
+    domainsClearWarning: 'AVISO: Isso irá deletar TODOS os domínios e TODOS os seus dados — conhecimento, regras, fontes e fragmentos.\n\nA memória de código (repositórios indexados) e os dados de treinamento NÃO são afetados.\n\nEsta ação não pode ser desfeita. Digite "delete" para confirmar:',
     phSettingsSub: 'Idioma, informações de conexão e detalhes do projeto',
     settingsLang: 'Idioma', settingsConnection: 'Conexão',
     settingsAbout: 'Sobre', settingsDashURL: 'URL do Painel',
@@ -832,9 +912,9 @@ const LANGS = {
   },
   es: {
     topbarSub: 'panel de conocimiento',
-    navGroupOverview: 'Resumen', navGroupKnowledge: 'Conocimiento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupSystem: 'Sistema',
+    navGroupOverview: 'Resumen', navGroupKnowledge: 'Conocimiento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupTraining: 'Entrenamiento', navGroupSystem: 'Sistema',
     navDashboard: 'Panel', navDomains: 'Dominios', navKnowledge: 'Conocimiento',
-    navSources: 'Fuentes', navMemory: 'Memoria del Agente', navTrust: 'Ciclo de Confianza', navCodebase: 'Base de Código', navSettings: 'Configuración',
+    navSources: 'Fuentes', navMemory: 'Memoria del Agente', navTrust: 'Ciclo de Confianza', navCodebase: 'Base de Código', navTraining: 'Datos de Entrenamiento', navSettings: 'Configuración',
     btnRefresh: '↺ Actualizar', btnLoading: '↺ Cargando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · activo', statusError: 'API no disponible',
     statDomains: 'Dominios', statDomainsHint: 'espacios de nombres activos',
@@ -877,12 +957,23 @@ const LANGS = {
     codeSearchBtn: 'Buscar',
     codeNoResults: 'Sin resultados', codeSearchPrompt: 'Escribe una consulta y presiona Buscar',
     repoFiles: 'archivos', repoChunks: 'bloques', repoIndexed: 'indexado',
+    phTrainingSub: 'Ejemplos de entrenamiento controlados por confianza — solo se exportan las filas revisadas y del usuario',
+    trainStatTotal: 'Ejemplos', trainStatTotalHint: 'filas de entrenamiento',
+    trainStatProposed: 'Propuestos', trainStatProposedHint: 'esperando promoción',
+    trainStatReviewed: 'Revisados', trainStatReviewedHint: 'exportables',
+    trainStatUser: 'Usuario', trainStatUserHint: 'de autoría humana',
+    chTraining: 'Ejemplos de Entrenamiento',
+    thUser: 'Turno del usuario', thLabel: 'Etiqueta', thProvenance: 'Procedencia',
+    trainStub: '(borrador — esperando respuesta)',
+    trainClearBtn: 'Borrar todos los datos de entrenamiento',
+    trainClearWarning: '¿Borrar TODOS los ejemplos de entrenamiento de todos los dominios? Esto no se puede deshacer.',
+    emptyTraining: 'Aún no hay ejemplos de entrenamiento',
     domainsClearBtn: 'Borrar todos los dominios (en cascada)',
     codeClearBtn: 'Borrar toda la memoria de código',
     knowledgeClearBtn: 'Borrar todo el conocimiento',
     sourcesClearBtn: 'Borrar todas las fuentes',
     episodesClearBtn: 'Borrar todos los episodios',
-    domainsClearWarning: 'ADVERTENCIA: Esto eliminará TODOS los dominios y TODOS sus datos — conocimiento, reglas, fuentes y fragmentos.\n\nLa memoria de código (repositorios indexados) NO se ve afectada.\n\nEsta acción no se puede deshacer. Escribe "delete" para confirmar:',
+    domainsClearWarning: 'ADVERTENCIA: Esto eliminará TODOS los dominios y TODOS sus datos — conocimiento, reglas, fuentes y fragmentos.\n\nLa memoria de código (repositorios indexados) y los datos de entrenamiento NO se ven afectados.\n\nEsta acción no se puede deshacer. Escribe "delete" para confirmar:',
     phSettingsSub: 'Idioma, información de conexión y detalles del proyecto',
     settingsLang: 'Idioma', settingsConnection: 'Conexión',
     settingsAbout: 'Acerca de', settingsDashURL: 'URL del Panel',
@@ -893,9 +984,9 @@ const LANGS = {
   },
   zh: {
     topbarSub: '知识控制台',
-    navGroupOverview: '概览', navGroupKnowledge: '知识', navGroupAgent: '智能体', navGroupCode: '代码库', navGroupSystem: '系统',
+    navGroupOverview: '概览', navGroupKnowledge: '知识', navGroupAgent: '智能体', navGroupCode: '代码库', navGroupTraining: '训练', navGroupSystem: '系统',
     navDashboard: '控制台', navDomains: '域', navKnowledge: '知识',
-    navSources: '来源', navMemory: '智能体记忆', navTrust: '信任生命周期', navCodebase: '代码库', navSettings: '设置',
+    navSources: '来源', navMemory: '智能体记忆', navTrust: '信任生命周期', navCodebase: '代码库', navTraining: '训练数据', navSettings: '设置',
     btnRefresh: '↺ 刷新', btnLoading: '↺ 加载中…',
     statusConnecting: '连接中…', statusLive: 'klayer.db · 在线', statusError: 'API 不可达',
     statDomains: '域', statDomainsHint: '活跃命名空间',
@@ -938,12 +1029,23 @@ const LANGS = {
     codeSearchBtn: '搜索',
     codeNoResults: '无结果', codeSearchPrompt: '输入查询并点击搜索',
     repoFiles: '文件', repoChunks: '块', repoIndexed: '已索引',
+    phTrainingSub: '受信任控制的训练样本 — 仅导出已审核和用户行',
+    trainStatTotal: '样本', trainStatTotalHint: '训练行',
+    trainStatProposed: '待定', trainStatProposedHint: '等待提升',
+    trainStatReviewed: '已审核', trainStatReviewedHint: '可导出',
+    trainStatUser: '用户', trainStatUserHint: '人工撰写',
+    chTraining: '训练样本',
+    thUser: '用户轮次', thLabel: '标签', thProvenance: '来源',
+    trainStub: '（草稿 — 等待回答）',
+    trainClearBtn: '清除所有训练数据',
+    trainClearWarning: '清除所有域的全部训练样本？此操作无法撤销。',
+    emptyTraining: '暂无训练样本',
     domainsClearBtn: '清除所有域（级联）',
     codeClearBtn: '清除所有代码库记忆',
     knowledgeClearBtn: '清除所有知识',
     sourcesClearBtn: '清除所有来源',
     episodesClearBtn: '清除所有事件',
-    domainsClearWarning: '警告：这将删除所有域及其所有数据——知识、规则、来源和块。\n\n代码库记忆（已索引的仓库）不受影响。\n\n此操作无法撤销。输入 "delete" 以确认：',
+    domainsClearWarning: '警告：这将删除所有域及其所有数据——知识、规则、来源和块。\n\n代码库记忆（已索引的仓库）和训练数据不受影响。\n\n此操作无法撤销。输入 "delete" 以确认：',
     phSettingsSub: '语言、连接信息和项目详情',
     settingsLang: '语言', settingsConnection: '连接',
     settingsAbout: '关于', settingsDashURL: '控制台 URL',
@@ -954,9 +1056,9 @@ const LANGS = {
   },
   pl: {
     topbarSub: 'panel wiedzy',
-    navGroupOverview: 'Przegląd', navGroupKnowledge: 'Wiedza', navGroupAgent: 'Agent', navGroupCode: 'Kod', navGroupSystem: 'System',
+    navGroupOverview: 'Przegląd', navGroupKnowledge: 'Wiedza', navGroupAgent: 'Agent', navGroupCode: 'Kod', navGroupTraining: 'Trening', navGroupSystem: 'System',
     navDashboard: 'Panel', navDomains: 'Domeny', navKnowledge: 'Wiedza',
-    navSources: 'Źródła', navMemory: 'Pamięć Agenta', navTrust: 'Cykl Zaufania', navCodebase: 'Baza Kodu', navSettings: 'Ustawienia',
+    navSources: 'Źródła', navMemory: 'Pamięć Agenta', navTrust: 'Cykl Zaufania', navCodebase: 'Baza Kodu', navTraining: 'Dane Treningowe', navSettings: 'Ustawienia',
     btnRefresh: '↺ Odśwież', btnLoading: '↺ Ładowanie…',
     statusConnecting: 'łączenie…', statusLive: 'klayer.db · aktywny', statusError: 'API niedostępne',
     statDomains: 'Domeny', statDomainsHint: 'aktywne przestrzenie nazw',
@@ -999,12 +1101,23 @@ const LANGS = {
     codeSearchBtn: 'Szukaj',
     codeNoResults: 'Brak wyników', codeSearchPrompt: 'Wpisz zapytanie i naciśnij Szukaj',
     repoFiles: 'pliki', repoChunks: 'fragmenty', repoIndexed: 'zaindeksowano',
+    phTrainingSub: 'Przykłady treningowe pod kontrolą zaufania — eksportowane są tylko wiersze zrecenzowane i użytkownika',
+    trainStatTotal: 'Przykłady', trainStatTotalHint: 'wiersze treningowe',
+    trainStatProposed: 'Proponowane', trainStatProposedHint: 'oczekują na promocję',
+    trainStatReviewed: 'Zrecenzowane', trainStatReviewedHint: 'eksportowalne',
+    trainStatUser: 'Użytkownik', trainStatUserHint: 'autorstwa człowieka',
+    chTraining: 'Przykłady Treningowe',
+    thUser: 'Tura użytkownika', thLabel: 'Etykieta', thProvenance: 'Pochodzenie',
+    trainStub: '(szkic — oczekuje na odpowiedź)',
+    trainClearBtn: 'Wyczyść wszystkie dane treningowe',
+    trainClearWarning: 'Wyczyścić WSZYSTKIE przykłady treningowe ze wszystkich domen? Tej operacji nie można cofnąć.',
+    emptyTraining: 'Brak przykładów treningowych',
     domainsClearBtn: 'Wyczyść wszystkie domeny (kaskadowo)',
     codeClearBtn: 'Wyczyść całą pamięć kodu',
     knowledgeClearBtn: 'Wyczyść całą wiedzę',
     sourcesClearBtn: 'Wyczyść wszystkie źródła',
     episodesClearBtn: 'Wyczyść wszystkie epizody',
-    domainsClearWarning: 'OSTRZEŻENIE: Spowoduje to usunięcie WSZYSTKICH domen i WSZYSTKICH ich danych — wiedzy, reguł, źródeł i fragmentów.\n\nPamięć kodu (zaindeksowane repozytoria) NIE jest usuwana.\n\nTej operacji nie można cofnąć. Wpisz "delete", aby potwierdzić:',
+    domainsClearWarning: 'OSTRZEŻENIE: Spowoduje to usunięcie WSZYSTKICH domen i WSZYSTKICH ich danych — wiedzy, reguł, źródeł i fragmentów.\n\nPamięć kodu (zaindeksowane repozytoria) i dane treningowe NIE są usuwane.\n\nTej operacji nie można cofnąć. Wpisz "delete", aby potwierdzić:',
     phSettingsSub: 'Język, informacje o połączeniu i szczegóły projektu',
     settingsLang: 'Język', settingsConnection: 'Połączenie',
     settingsAbout: 'O projekcie', settingsDashURL: 'URL panelu',
@@ -1072,7 +1185,7 @@ function setLang(code) {
 }
 
 // ── Global state ────────────────────────────────────────────────────────────
-let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [] };
+let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [], training: [], trainStats: null };
 
 // ── Filter state ─────────────────────────────────────────────────────────────
 let selectedDomainFilter = '';
@@ -1373,9 +1486,46 @@ function renderCodebase() {
       <div class="repo-stats">
         <span>${r.file_count} ${t('repoFiles')}</span>
         <span>${r.chunk_count} ${t('repoChunks')}</span>
-        <span>${t('repoIndexed')} ${r.indexed_at ? r.indexed_at.slice(0,10) : '—'}</span>
+        <span>${t('repoIndexed')} ${r.indexed_at ? new Date(r.indexed_at * 1000).toISOString().slice(0,10) : '—'}</span>
       </div>
     </div>`).join('');
+}
+
+const provBadge = v => {
+  const c = {teacher:'b-reviewed', human:'b-user', student:'b-proposed'}[v] || 'b-untrusted';
+  return `<span class="badge ${c}">${escHtml(v)}</span>`;
+};
+
+function renderTraining() {
+  const s = G.trainStats;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  if (s) {
+    set('ts-total', s.total ?? 0);
+    set('ts-proposed', s.proposed ?? 0);
+    set('ts-reviewed', s.reviewed ?? 0);
+    set('ts-user', s.user ?? 0);
+  }
+
+  const count = document.getElementById('training-count');
+  if (count) count.textContent = t('total')(G.training.length);
+
+  const body = document.getElementById('tb-training');
+  if (!body) return;
+  body.innerHTML = G.training.length
+    ? G.training.map(r => {
+        const user = (r.assistant_content && r.assistant_content.length)
+          ? escHtml(r.user_content)
+          : `${escHtml(r.user_content)} <span class="td-dim">${t('trainStub')}</span>`;
+        return `
+        <tr>
+          <td class="td-main">${user}</td>
+          <td>${domainTag(r.domain)}</td>
+          <td>${kindTag(r.label_type)}</td>
+          <td>${provBadge(r.provenance)}</td>
+          <td>${trustBadge(r.trust)}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="5" class="empty">${t('emptyTraining')}</td></tr>`;
 }
 
 function renderSettings() {
@@ -1391,12 +1541,13 @@ function renderAll() {
   document.getElementById('nb-sources').textContent   = G.sources.length;
   document.getElementById('nb-episodes').textContent  = G.episodes.length;
   document.getElementById('nb-repos').textContent     = G.codeRepos.length;
+  document.getElementById('nb-training').textContent  = G.training.length;
   populateSourcesFilter();
   populateKnowledgeFilter();
   applyLang(true);
   renderOverview(); renderDomains(); renderKnowledge();
   renderSources(); renderEpisodes(); renderTrust();
-  renderCodebase(); renderSettings();
+  renderCodebase(); renderTraining(); renderSettings();
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -1412,7 +1563,7 @@ async function loadData(opts = {}) {
   if (btn && !silent) { btn.classList.add('spinning'); btn.textContent = t('btnLoading'); }
   try {
     const ok = v => v.status === 'fulfilled' ? v.value : null;
-    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos] =
+    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos, training, trainStats] =
       (await Promise.allSettled([
         fetch('/api/stats').then(r=>r.json()),
         fetch('/api/domains').then(r=>r.json()),
@@ -1422,6 +1573,8 @@ async function loadData(opts = {}) {
         fetch('/api/preferences').then(r=>r.json()),
         fetch('/api/code/stats').then(r=>r.json()),
         fetch('/api/code/repos').then(r=>r.json()),
+        fetch('/api/training').then(r=>r.json()),
+        fetch('/api/training/stats').then(r=>r.json()),
       ])).map(ok);
     const live = !!stats;
     const dot = document.getElementById('status-dot');
@@ -1440,6 +1593,8 @@ async function loadData(opts = {}) {
       preferences: preferences ?? G.preferences,
       codeStats:   codeStats   ?? G.codeStats,
       codeRepos:   codeRepos   ?? G.codeRepos,
+      training:    training    ?? G.training,
+      trainStats:  trainStats  ?? G.trainStats,
     };
     const sig = JSON.stringify(next);
     if (silent && sig === lastSig) return;  // nothing changed — don't disrupt UI
@@ -1499,6 +1654,15 @@ async function clearEpisodes() {
   if (!confirm('Clear ALL episodes from the audit trail? This cannot be undone.')) return;
   try {
     const r = await fetch('/api/episodes/clear').then(res => res.json());
+    if (r.ok) { await loadData(); }
+    else alert('Clear failed: ' + (r.error || 'unknown error'));
+  } catch(e) { alert('Clear failed: ' + e); }
+}
+
+async function clearTraining() {
+  if (!confirm(t('trainClearWarning'))) return;
+  try {
+    const r = await fetch('/api/training/clear').then(res => res.json());
     if (r.ok) { await loadData(); }
     else alert('Clear failed: ' + (r.error || 'unknown error'));
   } catch(e) { alert('Clear failed: ' + e); }

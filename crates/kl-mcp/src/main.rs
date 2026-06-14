@@ -2,12 +2,15 @@
 //!
 //! Tools: recall, search_web, ingest, remember, propose, promote, forget,
 //! set_preference, list_domains, register_domain, log_episode, compile_skill,
-//! index_codebase, search_code, list_repos, forget_repo.
+//! index_codebase, search_code, list_repos, forget_repo, capture_example,
+//! author_example, promote_example, list_training, export_dataset, queue_weak,
+//! seed_from_topics.
 //!
 //! Transport: stdio (works with Claude Code, Claude Desktop, Cursor, etc.).
-//! Storage:   two SQLite files:
-//!   KLAYER_DB      (default ./klayer.db)      — knowledge, episodes, preferences
-//!   KLAYER_CODE_DB (default ./klayer_code.db) — indexed codebase memory
+//! Storage:   three SQLite files:
+//!   KLAYER_DB       (default ./klayer.db)       — knowledge, episodes, preferences
+//!   KLAYER_CODE_DB  (default ./klayer_code.db)  — indexed codebase memory
+//!   KLAYER_TRAIN_DB (default ./klayer_train.db) — trust-gated training examples
 //! Skill out: KLAYER_SKILL (default ./skills/klayer/SKILL.md).
 //! Dashboard: HTTP on KLAYER_DASHBOARD_PORT (default 7474). URL logged to stderr on start.
 
@@ -23,6 +26,7 @@ use axum::{
 };
 use kl_code::CodeStore;
 use kl_core::{DomainRow, EpisodeRow, Kind, KnowledgeRow, SearchBackend, SourceRow};
+use kl_train::{PromoteOutcome, TrainStore};
 use kl_search::from_env as build_search;
 use kl_skill::RouterInputs;
 use kl_store::Store;
@@ -41,6 +45,7 @@ use tracing_subscriber::EnvFilter;
 struct Klayer {
     store:       Arc<Store>,
     code_store:  Arc<CodeStore>,
+    train_store: Arc<TrainStore>,
     search:      Arc<dyn SearchBackend>,
     skill_path:  String,
     tool_router: ToolRouter<Self>,
@@ -191,6 +196,76 @@ struct ForgetRepoParams {
     path: String,
 }
 
+// ----- training store tool params -------------------------------------------
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct CaptureExampleParams {
+    #[schemars(description = "Domain this training pair belongs to (matches klayer's domain isolation).")]
+    domain: String,
+    #[schemars(description = "Optional system prompt for the chat sample.")]
+    system_prompt: Option<String>,
+    #[schemars(description = "The user turn (the question / instruction).")]
+    user_content: String,
+    #[schemars(description = "The assistant turn (the label). Omit for a question-stub awaiting a teacher answer.")]
+    assistant_content: Option<String>,
+    #[schemars(description = "'grounded' (a normal answer) or 'refusal' (a correct refusal). Default 'grounded'.")]
+    label_type: Option<String>,
+    #[schemars(description = "Who produced the assistant label: 'teacher' (a stronger model) or 'student' (the model being trained). Student rows can NEVER be promoted (model-collapse guard). Default 'teacher'.")]
+    provenance: Option<String>,
+    #[schemars(description = "Optional provenance pointer, e.g. 'knowledge:#42' or 'episode:run/step'.")]
+    retrieval_ref: Option<String>,
+    #[schemars(description = "Optional verifier output from the external teacher/verify project.")]
+    verify_log: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct AuthorExampleParams {
+    #[schemars(description = "Domain this training pair belongs to.")]
+    domain: String,
+    #[schemars(description = "Optional system prompt for the chat sample.")]
+    system_prompt: Option<String>,
+    #[schemars(description = "The user turn (the question / instruction).")]
+    user_content: String,
+    #[schemars(description = "The assistant turn (the label). Required — human-authored answers are exportable immediately.")]
+    assistant_content: String,
+    #[schemars(description = "'grounded' (a normal answer) or 'refusal' (a correct refusal). Default 'grounded'.")]
+    label_type: Option<String>,
+    #[schemars(description = "Optional provenance pointer, e.g. 'knowledge:#42'.")]
+    retrieval_ref: Option<String>,
+    #[schemars(description = "Optional verifier output.")]
+    verify_log: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ListTrainingParams {
+    #[schemars(description = "Filter by domain. Omit to list across all domains.")]
+    domain: Option<String>,
+    #[schemars(description = "Filter by trust tier: 'proposed' | 'reviewed' | 'user'. Omit for all tiers.")]
+    trust: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ExportDatasetParams {
+    #[schemars(description = "Restrict export to a single domain. Omit to export every domain (one JSONL file each).")]
+    domain: Option<String>,
+    #[schemars(description = "Output directory; one '<domain>.jsonl' file is written per domain. Created if missing.")]
+    out_dir: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct QueueWeakParams {
+    #[schemars(description = "Max hit count that counts as 'weak' — recalls returning this many hits or fewer become question-stubs. Default 0 (only zero-hit recalls).")]
+    threshold: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct SeedFromTopicsParams {
+    #[schemars(description = "Existing domain to seed question-stubs for. This NEVER creates the domain — it must already exist.")]
+    domain: String,
+    #[schemars(description = "Optional stage name to restrict seeding to one stage of the domain.")]
+    stage: Option<String>,
+}
+
 // ----- MCP helpers ---------------------------------------------------------
 
 fn err<E: std::fmt::Display>(e: E) -> McpError {
@@ -204,6 +279,14 @@ fn json_ok<T: serde::Serialize>(value: &T) -> Result<CallToolResult, McpError> {
 
 fn text_ok(s: impl Into<String>) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::success(vec![Content::text(s.into())]))
+}
+
+fn validate_label_type(label_type: &str) -> Result<(), McpError> {
+    if matches!(label_type, "grounded" | "refusal") {
+        Ok(())
+    } else {
+        Err(err("label_type must be 'grounded' or 'refusal'"))
+    }
 }
 
 // ----- dashboard HTTP server -----------------------------------------------
@@ -258,9 +341,10 @@ struct CodeSearchQuery {
 
 #[derive(Clone)]
 struct DashState {
-    store:      Arc<Store>,
-    code_store: Arc<CodeStore>,
-    html:       &'static str,
+    store:       Arc<Store>,
+    code_store:  Arc<CodeStore>,
+    train_store: Arc<TrainStore>,
+    html:        &'static str,
 }
 
 impl axum::extract::FromRef<DashState> for Arc<Store> {
@@ -269,6 +353,10 @@ impl axum::extract::FromRef<DashState> for Arc<Store> {
 
 impl axum::extract::FromRef<DashState> for Arc<CodeStore> {
     fn from_ref(s: &DashState) -> Self { s.code_store.clone() }
+}
+
+impl axum::extract::FromRef<DashState> for Arc<TrainStore> {
+    fn from_ref(s: &DashState) -> Self { s.train_store.clone() }
 }
 
 async fn dash_index(State(s): State<DashState>) -> Response {
@@ -399,13 +487,49 @@ async fn dash_code_search(
     Json(cs.search(&query, q.repo.as_deref(), limit).unwrap_or_default())
 }
 
+// ----- training store dashboard handlers ------------------------------------
+
+#[derive(Deserialize)]
+struct ApiTrainingQuery {
+    domain: Option<String>,
+    trust:  Option<String>,
+}
+
+async fn dash_training(
+    State(ts): State<Arc<TrainStore>>,
+    Query(q): Query<ApiTrainingQuery>,
+) -> Json<Vec<kl_train::TrainingRow>> {
+    Json(ts.list_training(q.domain.as_deref(), q.trust.as_deref()).unwrap_or_default())
+}
+
+async fn dash_training_stats(State(ts): State<Arc<TrainStore>>) -> Json<serde_json::Value> {
+    let s = ts.stats().unwrap_or(kl_train::TrainStats {
+        total: 0, proposed: 0, reviewed: 0, user: 0, stubs: 0,
+    });
+    Json(serde_json::json!({
+        "total":    s.total,
+        "proposed": s.proposed,
+        "reviewed": s.reviewed,
+        "user":     s.user,
+        "stubs":    s.stubs,
+    }))
+}
+
+async fn dash_training_clear(State(ts): State<Arc<TrainStore>>) -> Json<serde_json::Value> {
+    match ts.clear_all() {
+        Ok(n)  => Json(serde_json::json!({ "ok": true, "deleted": n })),
+        Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
+    }
+}
+
 async fn start_dashboard(
-    store:      Arc<Store>,
-    code_store: Arc<CodeStore>,
-    port:       u16,
-    html:       &'static str,
+    store:       Arc<Store>,
+    code_store:  Arc<CodeStore>,
+    train_store: Arc<TrainStore>,
+    port:        u16,
+    html:        &'static str,
 ) {
-    let state = DashState { store, code_store, html };
+    let state = DashState { store, code_store, train_store, html };
     let app = Router::new()
         .route("/", get(dash_index))
         .route("/api/stats",         get(dash_stats))
@@ -418,6 +542,9 @@ async fn start_dashboard(
         .route("/api/code/repos",    get(dash_code_repos))
         .route("/api/code/search",   get(dash_code_search))
         .route("/api/code/clear",      get(dash_code_clear))
+        .route("/api/training",        get(dash_training))
+        .route("/api/training/stats",  get(dash_training_stats))
+        .route("/api/training/clear",  get(dash_training_clear))
         .route("/api/domains/clear",   get(dash_domains_clear))
         .route("/api/knowledge/clear", get(dash_knowledge_clear))
         .route("/api/sources/clear",   get(dash_sources_clear))
@@ -436,7 +563,12 @@ async fn start_dashboard(
 
 #[tool_router]
 impl Klayer {
-    fn new(store: Arc<Store>, code_store: Arc<CodeStore>, skill_path: String) -> Self {
+    fn new(
+        store: Arc<Store>,
+        code_store: Arc<CodeStore>,
+        train_store: Arc<TrainStore>,
+        skill_path: String,
+    ) -> Self {
         let session_run_id = std::env::var("KLAYER_RUN_ID").unwrap_or_else(|_| {
             let now = chrono::Utc::now();
             format!("run-{}", now.format("%Y%m%d-%H%M%S"))
@@ -444,6 +576,7 @@ impl Klayer {
         Self {
             store,
             code_store,
+            train_store,
             search: Arc::from(build_search()),
             skill_path,
             tool_router: Self::tool_router(),
@@ -805,7 +938,7 @@ impl Klayer {
         text_ok("Codebase memory cleared. All indexed repositories, files, and chunks have been removed.")
     }
 
-    #[tool(description = "Clear ALL domains and ALL cascading data — knowledge, sources, chunks, and domain registrations. Codebase memory (indexed repos) is NOT affected — use clear_codebase() for that. This is a full wipe of the knowledge store. Use clear_domain() to remove a single domain instead.")]
+    #[tool(description = "Clear ALL domains and ALL cascading data — knowledge, sources, chunks, and domain registrations. Codebase memory (indexed repos) and training data (training examples) are NOT affected — they live in separate databases; use clear_codebase() for code memory. This is a full wipe of the knowledge store. Use clear_domain() to remove a single domain instead.")]
     fn clear_domains(&self) -> Result<CallToolResult, McpError> {
         self.store.clear_all_domains().map_err(err)?;
         self.store.log_episode_auto(
@@ -815,7 +948,7 @@ impl Klayer {
             Some("all domains cleared"),
             Some("success"),
         ).ok();
-        text_ok("All domains cleared. Knowledge, sources, chunks, and domain registrations have been removed. Codebase memory is unaffected.")
+        text_ok("All domains cleared. Knowledge, sources, chunks, and domain registrations have been removed. Codebase memory and training data are unaffected.")
     }
 
     #[tool(description = "Clear ALL knowledge items (facts, rules, procedures) across every domain. Domain registrations and ingested sources are kept. This cannot be undone — use forget() to remove a single item instead.")]
@@ -855,6 +988,144 @@ impl Klayer {
             Some("success"),
         ).ok();
         text_ok("All episodes cleared from the audit trail. Knowledge and sources are unaffected.")
+    }
+
+    // ----- training-data layer tools ---------------------------------------
+
+    #[tool(description = "Capture a candidate training example into the training store at trust='proposed'. Provenance must be 'teacher' (a stronger model) or 'student' (the model being trained). STUDENT rows can NEVER be promoted (model-collapse guard). Omit assistant_content to file a question-stub awaiting a teacher answer. klayer only stores rows — labeling/verification happen in a separate project.")]
+    fn capture_example(&self, Parameters(p): Parameters<CaptureExampleParams>) -> Result<CallToolResult, McpError> {
+        let label_type = p.label_type.as_deref().unwrap_or("grounded");
+        validate_label_type(label_type)?;
+        let provenance = p.provenance.as_deref().unwrap_or("teacher");
+        if !matches!(provenance, "teacher" | "student") {
+            return Err(err("provenance must be 'teacher' or 'student' (use author_example for human-authored rows)"));
+        }
+        let id = self.train_store.capture_example(
+            &p.domain,
+            p.system_prompt.as_deref(),
+            &p.user_content,
+            p.assistant_content.as_deref(),
+            label_type,
+            provenance,
+            p.retrieval_ref.as_deref(),
+            p.verify_log.as_deref(),
+        ).map_err(err)?;
+        let observation = format!("captured training example #{id} (provenance={provenance}, trust=proposed)");
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("capture_example"),
+            Some(&format!("capture_example domain={} provenance={}", p.domain, provenance)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
+        text_ok(format!("Captured training example #{id} in '{}' (provenance={provenance}, trust=proposed).", p.domain))
+    }
+
+    #[tool(description = "Author a human-written training example. Stored at trust='user', provenance='human' — exportable immediately (no promotion needed). assistant_content is required.")]
+    fn author_example(&self, Parameters(p): Parameters<AuthorExampleParams>) -> Result<CallToolResult, McpError> {
+        let label_type = p.label_type.as_deref().unwrap_or("grounded");
+        validate_label_type(label_type)?;
+        let id = self.train_store.author_example(
+            &p.domain,
+            p.system_prompt.as_deref(),
+            &p.user_content,
+            &p.assistant_content,
+            label_type,
+            p.retrieval_ref.as_deref(),
+            p.verify_log.as_deref(),
+        ).map_err(err)?;
+        let observation = format!("authored training example #{id} (trust=user)");
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("author_example"),
+            Some(&format!("author_example domain={}", p.domain)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
+        text_ok(format!("Authored training example #{id} in '{}' (trust=user, exportable).", p.domain))
+    }
+
+    #[tool(description = "Validation gate for training data: promote a proposed example to 'reviewed' (exportable). REFUSES any row with provenance='student' — this is the model-collapse guard. Only teacher- and human-origin rows can become training data.")]
+    fn promote_example(&self, Parameters(p): Parameters<IdParams>) -> Result<CallToolResult, McpError> {
+        let outcome = self.train_store.promote_example(p.id).map_err(err)?;
+        let (observation, message) = match outcome {
+            PromoteOutcome::Promoted => (
+                format!("promoted training example #{} to trust=reviewed", p.id),
+                format!("Promoted training example #{} to trust=reviewed.", p.id),
+            ),
+            PromoteOutcome::BlockedStudent => (
+                format!("REFUSED to promote #{}: provenance=student (collapse guard)", p.id),
+                format!("Refused: training example #{} has provenance='student' and can never be promoted (model-collapse guard). Capture a teacher-labeled version instead.", p.id),
+            ),
+            PromoteOutcome::NotFound => (
+                format!("no proposed training example #{} to promote", p.id),
+                format!("No proposed training example #{} to promote.", p.id),
+            ),
+        };
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("promote_example"),
+            Some(&format!("promote_example id={}", p.id)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
+        text_ok(message)
+    }
+
+    #[tool(description = "List training examples, newest first, optionally filtered by domain and trust ('proposed' | 'reviewed' | 'user'). Use trust='proposed' to review the worklist (including student question-stubs awaiting teacher answers).")]
+    fn list_training(&self, Parameters(p): Parameters<ListTrainingParams>) -> Result<CallToolResult, McpError> {
+        let rows = self.train_store.list_training(p.domain.as_deref(), p.trust.as_deref()).map_err(err)?;
+        json_ok(&rows)
+    }
+
+    #[tool(description = "Export the training dataset as chat JSONL — one '<domain>.jsonl' file per domain in out_dir. ONLY reviewed + user rows are exported (the enforcement gate); proposed rows and empty stubs are skipped. Each line is {\"messages\":[system?,user,assistant]}.")]
+    fn export_dataset(&self, Parameters(p): Parameters<ExportDatasetParams>) -> Result<CallToolResult, McpError> {
+        let files = self.train_store.export_dataset(p.domain.as_deref(), &p.out_dir).map_err(err)?;
+        let total: usize = files.iter().map(|f| f.rows).sum();
+        let observation = format!("exported {} rows across {} file(s) to {}", total, files.len(), p.out_dir);
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("export_dataset"),
+            Some(&format!("export_dataset out_dir={}", p.out_dir)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
+        json_ok(&files)
+    }
+
+    #[tool(description = "Capture faucet: scan the agentic audit trail for recall queries the knowledge base could not answer (<= threshold hits) and file them as proposed 'student' question-stubs for a teacher to answer later. Deduplicated against existing rows. Default threshold 0 (only zero-hit recalls).")]
+    fn queue_weak(&self, Parameters(p): Parameters<QueueWeakParams>) -> Result<CallToolResult, McpError> {
+        let threshold = p.threshold.unwrap_or(0);
+        let episodes = self.store.list_episodes(None).map_err(err)?;
+        let n = self.train_store.queue_weak(&episodes, threshold).map_err(err)?;
+        let observation = format!("queued {n} weak-query stubs (threshold={threshold})");
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("queue_weak"),
+            Some(&format!("queue_weak threshold={threshold}")),
+            Some(&observation),
+            Some("success"),
+        ).ok();
+        text_ok(format!("Queued {n} weak-query question-stubs (threshold={threshold}, trust=proposed, provenance=student)."))
+    }
+
+    #[tool(description = "Coverage faucet: enumerate an EXISTING domain's curated knowledge and stages into diverse proposed 'student' question-stubs (recall / application / debugging / what's-wrong). Does NOT create or register domains — the domain must already exist. Deduplicated against existing rows.")]
+    fn seed_from_topics(&self, Parameters(p): Parameters<SeedFromTopicsParams>) -> Result<CallToolResult, McpError> {
+        if !self.store.domain_exists(&p.domain).map_err(err)? {
+            return Err(err(format!("domain '{}' does not exist — seed_from_topics never creates domains; register it first", p.domain)));
+        }
+        let knowledge = self.store.list_knowledge(&p.domain, None, None).map_err(err)?;
+        let stages = self.store.list_stages("default").map_err(err)?;
+        let n = self.train_store.seed_from_topics(&p.domain, p.stage.as_deref(), &knowledge, &stages).map_err(err)?;
+        let observation = format!("seeded {n} topic stubs for domain '{}'", p.domain);
+        self.store.log_episode_auto(
+            &self.session_run_id,
+            Some("seed_from_topics"),
+            Some(&format!("seed_from_topics domain={} stage={:?}", p.domain, p.stage)),
+            Some(&observation),
+            Some("success"),
+        ).ok();
+        text_ok(format!("Seeded {n} question-stubs for '{}' (trust=proposed, provenance=student).", p.domain))
     }
 }
 
@@ -924,11 +1195,12 @@ async fn main() -> Result<()> {
         let exe_path = std::env::current_exe()?;
         let parent = exe_path.parent().ok_or_else(|| anyhow::anyhow!("No parent directory"))?;
         
-        let (exe_str, db_str, code_db_str, skill_str) = if cfg!(target_os = "windows") {
+        let (exe_str, db_str, code_db_str, train_db_str, skill_str) = if cfg!(target_os = "windows") {
             (
                 exe_path.to_string_lossy().replace("/", "\\"),
                 parent.join("klayer.db").to_string_lossy().replace("/", "\\"),
                 parent.join("klayer_code.db").to_string_lossy().replace("/", "\\"),
+                parent.join("klayer_train.db").to_string_lossy().replace("/", "\\"),
                 parent.join("skills").join("klayer").join("SKILL.md").to_string_lossy().replace("/", "\\"),
             )
         } else {
@@ -936,6 +1208,7 @@ async fn main() -> Result<()> {
                 exe_path.to_string_lossy().replace("\\", "/"),
                 parent.join("klayer.db").to_string_lossy().replace("\\", "/"),
                 parent.join("klayer_code.db").to_string_lossy().replace("\\", "/"),
+                parent.join("klayer_train.db").to_string_lossy().replace("\\", "/"),
                 parent.join("skills").join("klayer").join("SKILL.md").to_string_lossy().replace("\\", "/"),
             )
         };
@@ -948,6 +1221,7 @@ async fn main() -> Result<()> {
                         "env": {
                             "KLAYER_DB": db_str,
                             "KLAYER_CODE_DB": code_db_str,
+                            "KLAYER_TRAIN_DB": train_db_str,
                             "KLAYER_SKILL": skill_str
                         }
                     }
@@ -979,6 +1253,7 @@ async fn main() -> Result<()> {
                     "env": {
                         "KLAYER_DB": db_str,
                         "KLAYER_CODE_DB": code_db_str,
+                        "KLAYER_TRAIN_DB": train_db_str,
                         "KLAYER_SKILL": skill_str
                     }
                 });
@@ -998,9 +1273,10 @@ async fn main() -> Result<()> {
         }
     }
 
-    let db      = std::env::var("KLAYER_DB").unwrap_or_else(|_| "klayer.db".to_string());
-    let code_db = std::env::var("KLAYER_CODE_DB").unwrap_or_else(|_| "klayer_code.db".to_string());
-    let skill   = std::env::var("KLAYER_SKILL").unwrap_or_else(|_| "skills/klayer/SKILL.md".to_string());
+    let db       = std::env::var("KLAYER_DB").unwrap_or_else(|_| "klayer.db".to_string());
+    let code_db  = std::env::var("KLAYER_CODE_DB").unwrap_or_else(|_| "klayer_code.db".to_string());
+    let train_db = std::env::var("KLAYER_TRAIN_DB").unwrap_or_else(|_| "klayer_train.db".to_string());
+    let skill    = std::env::var("KLAYER_SKILL").unwrap_or_else(|_| "skills/klayer/SKILL.md".to_string());
     let port: u16 = std::env::var("KLAYER_DASHBOARD_PORT")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -1014,6 +1290,10 @@ async fn main() -> Result<()> {
     code_store.migrate()?;
     tracing::info!("klayer code store ready at {code_db}");
 
+    let train_store = Arc::new(TrainStore::open(&train_db)?);
+    train_store.migrate()?;
+    tracing::info!("klayer train store ready at {train_db}");
+
     let html = load_dashboard_html();
 
     let dashboard_only = std::env::args().any(|a| a == "--dashboard");
@@ -1021,14 +1301,20 @@ async fn main() -> Result<()> {
         tracing::info!("running in dashboard-only mode (no MCP server)");
         tracing::info!("klayer dashboard  →  http://localhost:{port}");
         eprintln!("\n  klayer dashboard  →  http://localhost:{port}\n  Press Ctrl+C to stop.\n");
-        start_dashboard(store, code_store, port, html).await;
+        start_dashboard(store, code_store, train_store, port, html).await;
         return Ok(());
     }
 
-    tokio::spawn(start_dashboard(Arc::clone(&store), Arc::clone(&code_store), port, html));
+    tokio::spawn(start_dashboard(
+        Arc::clone(&store),
+        Arc::clone(&code_store),
+        Arc::clone(&train_store),
+        port,
+        html,
+    ));
     tracing::info!("klayer dashboard  →  http://localhost:{port}");
 
-    let service = Klayer::new(store, code_store, skill).serve(stdio()).await?;
+    let service = Klayer::new(store, code_store, train_store, skill).serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
 }

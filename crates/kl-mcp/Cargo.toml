@@ -21,6 +21,7 @@ kl-ingest.workspace = true
 kl-search.workspace = true
 kl-skill.workspace = true
 kl-code.workspace = true
+kl-train.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 serde.workspace = true

@@ -45,7 +45,7 @@ You can install and use klayer on any machine either by **downloading the pre-bu
 
 > [!TIP]
 > **Keep klayer in a single, permanent folder.**
-> Because the MCP server config is global across all workspaces, keeping the binary and both database files (`klayer.db` and `klayer_code.db`) in one permanent place ensures all workspaces share the same memory and the dashboard is always accessible.
+> Because the MCP server config is global across all workspaces, keeping the binary and all three database files (`klayer.db`, `klayer_code.db`, and `klayer_train.db`) in one permanent place ensures all workspaces share the same memory and the dashboard is always accessible.
 
 3. **Configure automatically (Recommended for users & LLMs)**:
    You can let `klayer` configure itself automatically! Open your terminal, navigate to your klayer folder, and run:
@@ -69,6 +69,7 @@ You can install and use klayer on any machine either by **downloading the pre-bu
       "env": {
         "KLAYER_DB": "C:\\Users\\you\\klayer\\klayer.db",
         "KLAYER_CODE_DB": "C:\\Users\\you\\klayer\\klayer_code.db",
+        "KLAYER_TRAIN_DB": "C:\\Users\\you\\klayer\\klayer_train.db",
         "KLAYER_SKILL": "C:\\Users\\you\\klayer\\skills\\klayer\\SKILL.md"
       }
     }
@@ -85,6 +86,7 @@ You can install and use klayer on any machine either by **downloading the pre-bu
       "env": {
         "KLAYER_DB": "/Users/you/klayer/klayer.db",
         "KLAYER_CODE_DB": "/Users/you/klayer/klayer_code.db",
+        "KLAYER_TRAIN_DB": "/Users/you/klayer/klayer_train.db",
         "KLAYER_SKILL": "/Users/you/klayer/skills/klayer/SKILL.md"
       }
     }
@@ -101,6 +103,7 @@ You can install and use klayer on any machine either by **downloading the pre-bu
       "env": {
         "KLAYER_DB": "/home/you/klayer/klayer.db",
         "KLAYER_CODE_DB": "/home/you/klayer/klayer_code.db",
+        "KLAYER_TRAIN_DB": "/home/you/klayer/klayer_train.db",
         "KLAYER_SKILL": "/home/you/klayer/skills/klayer/SKILL.md"
       }
     }
@@ -172,6 +175,15 @@ severity badges and a Promote button.
 |----------|----------|
 | ![Codebase](docs/screenshots/codebase.png) | ![Settings](docs/screenshots/settings.png) |
 
+### Training Data
+
+The **Training** page shows every captured training example with its provenance
+(`student` / `teacher` / `human`) and trust tier, reusing the same colour-coding as
+Knowledge (`proposed` amber · `reviewed` blue · `user` green). Stat cards summarise
+total / proposed / reviewed / user counts. Only **reviewed** and **user** rows are
+ever exported — proposed rows and unanswered stubs never leak into a dataset. See
+[Training data layer](#training-data-layer-kl-train) for the full pipeline.
+
 ### Dashboard port & REST API
 
 The default port is **7474** (`KLAYER_DASHBOARD_PORT` to override).
@@ -185,6 +197,7 @@ The default port is **7474** (`KLAYER_DASHBOARD_PORT` to override).
 | `GET /api/sources` | `domain` | Ingested sources |
 | `GET /api/episodes` | `run_id` | Agentic run audit trail |
 | `GET /api/preferences` | — | User preferences |
+| `GET /api/training` | `domain`, `trust` | Training examples with provenance and trust |
 
 ---
 
@@ -205,6 +218,8 @@ kl-store   SQLite: schema, migrations, FTS5 retrieval, trust lifecycle
 kl-ingest  fetch (HTTP or local file) -> content-type dispatch -> chunk
 kl-search  SearchBackend trait + DuckDuckGo / Bing / Brave with auto-fallback
 kl-skill   renders the THIN SKILL.md router from registries only
+kl-code    SQLite codebase memory: FTS5 over code chunks (separate DB)
+kl-train   SQLite training-data layer: capture/gate/export fine-tuning sets (separate DB)
 kl-mcp     the `klayer` binary: rmcp MCP server + axum dashboard HTTP server
 ```
 
@@ -240,10 +255,17 @@ only reviewed + user are ENFORCED.
 | `list_repos` | List all indexed repositories with file/chunk counts and last-indexed timestamps |
 | `forget_repo` | Remove a previously indexed repository (all files and chunks) from the codebase DB |
 | `clear_codebase` | Wipe ALL indexed codebase memory — every repository, file, and chunk |
-| `clear_domains` | Wipe ALL domains and ALL cascading data — knowledge, sources, chunks, and registrations. Codebase memory is unaffected |
+| `clear_domains` | Wipe ALL domains and ALL cascading data — knowledge, sources, chunks, and registrations. Codebase memory and training data are unaffected (separate databases) |
 | `clear_knowledge` | Wipe ALL knowledge items across every domain (domains and sources kept) |
 | `clear_sources` | Wipe ALL ingested sources and chunks across every domain (knowledge kept) |
 | `clear_episodes` | Wipe ALL agentic run episodes from the audit trail |
+| `capture_example` | Capture a candidate training pair (`trust=proposed`); provenance `teacher`/`student`. Student rows can never be promoted (collapse guard) |
+| `author_example` | Author a human-written training pair (`trust=user`, `provenance=human`) — exportable immediately |
+| `promote_example` | Validation gate for training data: proposed → reviewed. Refuses `provenance=student` rows |
+| `list_training` | List training examples with provenance, trust, and ids; filter by domain/trust |
+| `export_dataset` | Export reviewed+user rows to chat JSONL, one `<domain>.jsonl` file per domain |
+| `queue_weak` | Capture faucet: turn low/zero-hit recall queries from the audit trail into proposed question-stubs |
+| `seed_from_topics` | Coverage faucet: enumerate an existing domain's knowledge/stages into varied proposed question-stubs (never creates domains) |
 
 ## Environment variables
 
@@ -251,6 +273,7 @@ only reviewed + user are ENFORCED.
 |---|---|---|
 | `KLAYER_DB` | `klayer.db` | Path to the knowledge SQLite database |
 | `KLAYER_CODE_DB` | `klayer_code.db` | Path to the codebase memory SQLite database |
+| `KLAYER_TRAIN_DB` | `klayer_train.db` | Path to the trust-gated training-data SQLite database |
 | `KLAYER_SKILL` | `skills/klayer/SKILL.md` | Path where `compile_skill` writes the router |
 | `KLAYER_DASHBOARD_PORT` | `7474` | Port for the live dashboard HTTP server |
 | `KLAYER_SEARCH` | `auto` | Search engine: `auto` · `duckduckgo` · `bing` · `brave` |
@@ -310,6 +333,53 @@ forget(id)                                   # delete one item
 clear_domain("my-domain")                    # wipe everything including the domain
 clear_domain("my-domain", chunks_only=true)  # keep rules, clear ingested docs only
 ```
+
+## Training data layer (kl-train)
+
+klayer can turn the knowledge you've already curated — plus its agentic audit
+trail — into **fine-tuning datasets**, gated by the same trust lifecycle as
+everything else. It lives in a separate database (`KLAYER_TRAIN_DB`, default
+`klayer_train.db`) and is **capture-only**: klayer never runs a teacher model or a
+code verifier itself. A separate project does the labelling/verification and
+deposits rows back through these tools.
+
+Every training row records **provenance** and **trust**:
+
+| Provenance | Meaning | Promotable? |
+|---|---|---|
+| `student` | drafted by the model being fine-tuned | **Never** — model-collapse guard |
+| `teacher` | labelled by a stronger model (external project) | Yes, via `promote_example` |
+| `human` | authored by a person (`author_example`) | Already `trust=user`, exportable |
+
+Two "faucets" generate candidate rows from what klayer already knows:
+
+- **`seed_from_topics(domain)`** — the *coverage* faucet. Enumerates a domain's
+  rules/facts/stages into diverse question-stubs (recall / application / debugging /
+  "what's wrong with this"). Never creates domains.
+- **`queue_weak(threshold)`** — the *capture* faucet. Scans the episode audit trail
+  for `recall` queries that returned few/no hits and files them as stubs to answer.
+
+Both emit `student` proposed stubs (a worklist). The gate (`promote_example`) and
+the export filter enforce the safety spine: **only `reviewed` + `user` rows are ever
+exported**, and a `student` row can never be promoted.
+
+```
+# Coverage: turn an existing domain's knowledge into question-stubs
+seed_from_topics("cybersecurity")            # → proposed student stubs
+
+# A teacher project answers stubs and deposits labelled pairs
+capture_example("cybersecurity", user, assistant, provenance="teacher")
+promote_example(id)                          # gate: proposed → reviewed (exportable)
+
+# Or author a pair by hand (trust=user, exportable immediately)
+author_example("cybersecurity", user, assistant)
+
+# Export reviewed + user rows as chat JSONL — one <domain>.jsonl per domain
+export_dataset(out_dir="./dataset_out")      # {"messages":[system?,user,assistant]}
+```
+
+Codebase memory and training data both live in their own databases, so
+`clear_domains` (the knowledge-store wipe) never touches them.
 
 ## Build from source
 
