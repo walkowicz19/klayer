@@ -385,7 +385,7 @@ Codebase memory and training data both live in their own databases, so
 
 ## Build from source
 
-Only needed to modify klayer or target a different OS. Requires `rustup`.
+Only needed to modify klayer. Requires `rustup`.
 
 ```bash
 cargo build --release
