@@ -440,33 +440,38 @@ fn collect_files(
 
 fn detect_language(path: &Path) -> Option<&'static str> {
     match path.extension()?.to_str()? {
-        "rs"                      => Some("rust"),
-        "py"                      => Some("python"),
-        "js" | "mjs" | "cjs"     => Some("javascript"),
-        "ts" | "mts"              => Some("typescript"),
-        "tsx"                     => Some("tsx"),
-        "jsx"                     => Some("jsx"),
-        "go"                      => Some("go"),
-        "java"                    => Some("java"),
-        "cpp" | "cc" | "cxx"     => Some("cpp"),
-        "c"                       => Some("c"),
-        "h" | "hpp"               => Some("cpp"),
-        "cs"                      => Some("csharp"),
-        "rb"                      => Some("ruby"),
-        "kt" | "kts"              => Some("kotlin"),
-        "swift"                   => Some("swift"),
-        "md" | "markdown"         => Some("markdown"),
-        "toml"                    => Some("toml"),
-        "json"                    => Some("json"),
-        "yaml" | "yml"            => Some("yaml"),
-        "html" | "htm"            => Some("html"),
-        "css" | "scss" | "sass"   => Some("css"),
-        "sh" | "bash"             => Some("shell"),
-        "sql"                     => Some("sql"),
-        "php"                     => Some("php"),
-        "lua"                     => Some("lua"),
-        "zig"                     => Some("zig"),
-        _                         => None,
+        "rs"                                  => Some("rust"),
+        "py"                                  => Some("python"),
+        "js" | "mjs" | "cjs"                 => Some("javascript"),
+        "ts" | "mts"                          => Some("typescript"),
+        "tsx"                                 => Some("tsx"),
+        "jsx"                                 => Some("jsx"),
+        "go"                                  => Some("go"),
+        "java"                                => Some("java"),
+        "cpp" | "cc" | "cxx"                 => Some("cpp"),
+        "c"                                   => Some("c"),
+        "h" | "hpp"                           => Some("cpp"),
+        "cs"                                  => Some("csharp"),
+        "rb"                                  => Some("ruby"),
+        "kt" | "kts"                          => Some("kotlin"),
+        "swift"                               => Some("swift"),
+        "md" | "markdown"                     => Some("markdown"),
+        "toml"                                => Some("toml"),
+        "json"                                => Some("json"),
+        "yaml" | "yml"                        => Some("yaml"),
+        "html" | "htm"                        => Some("html"),
+        "css" | "scss" | "sass"               => Some("css"),
+        "sh" | "bash"                         => Some("shell"),
+        "sql"                                 => Some("sql"),
+        "php"                                 => Some("php"),
+        "lua"                                 => Some("lua"),
+        "zig"                                 => Some("zig"),
+        // ── Legacy / Enterprise languages ─────────────────────────────
+        "cbl" | "cob" | "cpy" | "cobol"      => Some("cobol"),
+        "nsp" | "nse" | "nsd" | "nsl" | "nst" => Some("natural"),
+        "rpg" | "rpgle" | "sqlrpgle"          => Some("rpg"),
+        "sru" | "sra" | "srd" | "srw" | "pbl" => Some("powerscript"),
+        _                                     => None,
     }
 }
 
@@ -585,6 +590,128 @@ fn parse_symbol(lang: &str, line: &str) -> Option<(String, String)> {
                 let name = before.split_whitespace().last()?.to_string();
                 if valid_ident(&name) && name.len() > 1 {
                     return Some(("method".into(), name));
+                }
+            }
+        }
+        "cobol" => {
+            // COBOL divisions and sections: e.g. "IDENTIFICATION DIVISION."
+            let su = s.to_uppercase();
+            for (suffix, kind) in [
+                (" DIVISION.", "division"),
+                (" SECTION.",  "section"),
+            ] {
+                if su.ends_with(suffix) {
+                    let name = su[..su.len() - suffix.len()]
+                        .split_whitespace().last()?.to_string();
+                    if !name.is_empty() { return Some((kind.into(), name)); }
+                }
+            }
+            // COBOL paragraphs: a word on its own line followed by '.'
+            // e.g. "0100-INIT-DATA."
+            if su.ends_with('.')
+                && !su.contains(' ')
+                && su.len() > 1
+            {
+                let name = su.trim_end_matches('.').to_string();
+                if !name.is_empty() && name.len() <= 64 {
+                    return Some(("paragraph".into(), name));
+                }
+            }
+            // PERFORM / CALL targets
+            for prefix in ["PERFORM ", "CALL "] {
+                if let Some(rest) = su.strip_prefix(prefix) {
+                    let name = rest.split_whitespace().next()?.trim_end_matches(".").to_string();
+                    if !name.is_empty() && name.len() <= 64 {
+                        return Some(("call".into(), name));
+                    }
+                }
+            }
+        }
+        "natural" => {
+            // Natural: DEFINE SUBROUTINE, DEFINE FUNCTION, DEFINE DATA, DEFINE WORK FILE
+            let su = s.to_uppercase();
+            for (prefix, kind) in [
+                ("DEFINE SUBROUTINE ", "subroutine"),
+                ("DEFINE FUNCTION ",   "function"),
+                ("DEFINE DATA",        "data-section"),
+                ("DEFINE WINDOW ",     "window"),
+            ] {
+                if su.starts_with(prefix) {
+                    let rest = &su[prefix.len()..];
+                    let name = rest.split_whitespace().next().unwrap_or("").to_string();
+                    if !name.is_empty() { return Some((kind.into(), name)); }
+                    if prefix.ends_with("DATA") { return Some(("data-section".into(), "DATA".into())); }
+                }
+            }
+            // SUBROUTINE / FUNCTION header (short form)
+            for prefix in ["SUBROUTINE ", "FUNCTION "] {
+                if let Some(rest) = su.strip_prefix(prefix) {
+                    let name = rest.split_whitespace().next().unwrap_or("").to_string();
+                    if valid_ident(&name) { return Some(("subroutine".into(), name)); }
+                }
+            }
+        }
+        "rpg" => {
+            // RPG free-form (ILE RPG / RPGLE)
+            let su = s.to_uppercase();
+            // DCL-PROC, DCL-PARM, DCL-SUBF, DCL-DS
+            for (prefix, kind) in [
+                ("DCL-PROC ",  "procedure"),
+                ("DCL-DS ",    "data-struct"),
+                ("DCL-S ",     "variable"),
+                ("DCL-C ",     "constant"),
+                ("DCL-F ",     "file"),
+            ] {
+                if let Some(rest) = su.strip_prefix(prefix) {
+                    let name = rest.split_whitespace().next().unwrap_or("").to_string();
+                    if valid_ident(&name) { return Some((kind.into(), name)); }
+                }
+            }
+            // Fixed-form: P spec (procedure boundary) — col 1 is 'P'
+            if su.starts_with('P') && su.len() > 1 {
+                let name_part: String = su.chars().skip(6).take(14).collect();
+                let name = name_part.trim().to_string();
+                if valid_ident(&name) { return Some(("procedure".into(), name)); }
+            }
+            // BEG / END / BEGSR / ENDSR
+            for prefix in ["BEGSR ", "BEGSR\n"] {
+                if su.starts_with(prefix) {
+                    let name = su[prefix.len()..].split_whitespace().next().unwrap_or("").to_string();
+                    if valid_ident(&name) { return Some(("subroutine".into(), name)); }
+                }
+            }
+        }
+        "powerscript" => {
+            // PowerBuilder PowerScript
+            let sl = s.to_lowercase();
+            // forward / type declarations
+            for (prefix, kind) in [
+                ("forward\n",                  "forward"),
+                ("type ",                       "type"),
+                ("global type ",                "global-type"),
+            ] {
+                if sl.starts_with(prefix) {
+                    let rest = &s[prefix.len()..];
+                    let name = rest.split_whitespace().next().unwrap_or("").to_string();
+                    if valid_ident(&name) { return Some((kind.into(), name)); }
+                }
+            }
+            // function / event / subroutine definitions
+            for (prefix, kind) in [
+                ("public function ",    "function"),
+                ("private function ",   "function"),
+                ("protected function ", "function"),
+                ("function ",           "function"),
+                ("public subroutine ",  "subroutine"),
+                ("private subroutine ", "subroutine"),
+                ("subroutine ",         "subroutine"),
+                ("on ",                 "event"),
+                ("event ",              "event"),
+            ] {
+                if sl.starts_with(prefix) {
+                    let rest = &s[prefix.len()..];
+                    let name = rest.split(['(', ' ']).next().unwrap_or("").to_string();
+                    if valid_ident(&name) { return Some((kind.into(), name)); }
                 }
             }
         }
