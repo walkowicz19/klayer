@@ -252,7 +252,7 @@ only reviewed + user are ENFORCED.
 | `clear_domain` | Fully delete a domain and all its data; `chunks_only=true` keeps promoted rules |
 | `log_episode` | Record one step of an agentic run for auditability |
 | `compile_skill` | Regenerate the SKILL.md router from the current registries |
-| `index_codebase` | Walk a directory and index all source files into the codebase DB for semantic search |
+| `index_codebase` | Walk a directory and index all source files into the codebase DB for semantic search. Supports Rust, Python, JavaScript, TypeScript, Go, Java, C/C++, C#, Ruby, Kotlin, Swift, PHP, Lua, Zig, SQL, Shell, HTML, CSS, JSON, YAML, TOML, Markdown, **COBOL** (`.cbl/.cob/.cpy`), **Natural** (`.nsp/.nse/.nsd`), **RPG/RPGLE** (`.rpg/.rpgle/.sqlrpgle`), **PowerScript** (`.sru/.sra/.srd/.srw`) |
 | `search_code` | Full-text + semantic search across all indexed codebases; returns matching snippets with file paths |
 | `list_repos` | List all indexed repositories with file/chunk counts and last-indexed timestamps |
 | `forget_repo` | Remove a previously indexed repository (all files and chunks) from the codebase DB |
