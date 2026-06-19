@@ -140,6 +140,20 @@ Each registered domain is an isolated namespace for rules, facts, and ingested s
 
 ![Domains](docs/screenshots/domains.png)
 
+### Marketplace
+
+The **Marketplace** page lists public domain templates that users can apply
+without starting from scratch. Applying a template registers the domain, creates a
+marketplace source, and seeds reviewed knowledge items for that domain. If a
+domain has already been applied, its button becomes disabled until the domain is
+removed.
+
+Publishing new templates is intentionally gated: users who want to share a domain
+publicly should contact the creator for validation and approval before it is
+listed for everyone.
+
+![Marketplace](docs/screenshots/marketplace.png)
+
 ### Knowledge
 
 All items in the store — rules, facts, and procedures — sorted newest first.
@@ -185,20 +199,6 @@ ever exported — proposed rows and unanswered stubs never leak into a dataset. 
 [Training data layer](#training-data-layer-kl-train) for the full pipeline.
 
 ![Training Data](docs/screenshots/training.png)
-
-### Marketplace
-
-The **Marketplace** page lists public domain templates that users can apply
-without starting from scratch. Applying a template registers the domain, creates a
-marketplace source, and seeds reviewed knowledge items for that domain. If a
-domain has already been applied, its button becomes disabled until the domain is
-removed.
-
-Publishing new templates is intentionally gated: users who want to share a domain
-publicly should contact the creator for validation and approval before it is
-listed for everyone.
-
-![Marketplace](docs/screenshots/marketplace.png)
 
 ### Dashboard port & REST API
 
