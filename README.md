@@ -186,6 +186,20 @@ ever exported — proposed rows and unanswered stubs never leak into a dataset. 
 
 ![Training Data](docs/screenshots/training.png)
 
+### Marketplace
+
+The **Marketplace** page lists public domain templates that users can apply
+without starting from scratch. Applying a template registers the domain, creates a
+marketplace source, and seeds reviewed knowledge items for that domain. If a
+domain has already been applied, its button becomes disabled until the domain is
+removed.
+
+Publishing new templates is intentionally gated: users who want to share a domain
+publicly should contact the creator for validation and approval before it is
+listed for everyone.
+
+![Marketplace](docs/screenshots/marketplace.png)
+
 ### Dashboard port & REST API
 
 The default port is **7474** (`KLAYER_DASHBOARD_PORT` to override).
@@ -200,6 +214,10 @@ The default port is **7474** (`KLAYER_DASHBOARD_PORT` to override).
 | `GET /api/episodes` | `run_id` | Agentic run audit trail |
 | `GET /api/preferences` | — | User preferences |
 | `GET /api/training` | `domain`, `trust` | Training examples with provenance and trust |
+| `GET /api/domain/delete` | `name` | Remove one domain and its cascading data |
+| `GET /api/knowledge/delete` | `id` | Remove one knowledge item |
+| `GET /api/source/delete` | `id` | Remove one source and its chunks |
+| `GET /api/marketplace/apply` | `template` | Apply a Marketplace domain template |
 
 ---
 

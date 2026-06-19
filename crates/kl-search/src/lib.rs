@@ -22,7 +22,9 @@ pub struct DuckDuckGo {
 
 impl Default for DuckDuckGo {
     fn default() -> Self {
-        Self { client: build_client() }
+        Self {
+            client: build_client(),
+        }
     }
 }
 
@@ -81,7 +83,9 @@ pub struct Bing {
 
 impl Default for Bing {
     fn default() -> Self {
-        Self { client: build_client() }
+        Self {
+            client: build_client(),
+        }
     }
 }
 
@@ -117,7 +121,11 @@ fn parse_bing(html: &str, limit: usize) -> Vec<SearchResult> {
         .filter_map(|item| {
             let title_el = item.select(&title_sel).next()?;
             let title = title_el.text().collect::<String>().trim().to_string();
-            let url = title_el.value().attr("href").unwrap_or_default().to_string();
+            let url = title_el
+                .value()
+                .attr("href")
+                .unwrap_or_default()
+                .to_string();
             let snippet = item
                 .select(&snip_sel)
                 .next()
@@ -126,7 +134,11 @@ fn parse_bing(html: &str, limit: usize) -> Vec<SearchResult> {
             if title.is_empty() || url.is_empty() {
                 None
             } else {
-                Some(SearchResult { title, url, snippet })
+                Some(SearchResult {
+                    title,
+                    url,
+                    snippet,
+                })
             }
         })
         .collect()
@@ -141,7 +153,10 @@ pub struct Brave {
 
 impl Brave {
     pub fn new(api_key: impl Into<String>) -> Self {
-        Self { client: build_client(), api_key: api_key.into() }
+        Self {
+            client: build_client(),
+            api_key: api_key.into(),
+        }
     }
 }
 
@@ -179,7 +194,11 @@ fn parse_brave(json: &str) -> Result<Vec<SearchResult>> {
             let title = r["title"].as_str()?.to_string();
             let url = r["url"].as_str()?.to_string();
             let snippet = r["description"].as_str().unwrap_or("").to_string();
-            Some(SearchResult { title, url, snippet })
+            Some(SearchResult {
+                title,
+                url,
+                snippet,
+            })
         })
         .collect();
     Ok(results)

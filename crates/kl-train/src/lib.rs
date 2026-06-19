@@ -37,28 +37,28 @@ pub struct TrainStore {
 /// A single training example row. Mirrors the `training_examples` columns.
 #[derive(Debug, Serialize, Clone)]
 pub struct TrainingRow {
-    pub id:                i64,
-    pub domain:            String,
-    pub system_prompt:     Option<String>,
-    pub user_content:      String,
+    pub id: i64,
+    pub domain: String,
+    pub system_prompt: Option<String>,
+    pub user_content: String,
     pub assistant_content: Option<String>,
-    pub label_type:        String,
-    pub trust:             String,
-    pub provenance:        String,
-    pub retrieval_ref:     Option<String>,
-    pub verify_log:        Option<String>,
-    pub created_at:        i64,
-    pub updated_at:        i64,
+    pub label_type: String,
+    pub trust: String,
+    pub provenance: String,
+    pub retrieval_ref: Option<String>,
+    pub verify_log: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 /// Aggregate counts for the dashboard.
 #[derive(Debug, Serialize)]
 pub struct TrainStats {
-    pub total:    i64,
+    pub total: i64,
     pub proposed: i64,
     pub reviewed: i64,
-    pub user:     i64,
-    pub stubs:    i64,
+    pub user: i64,
+    pub stubs: i64,
 }
 
 /// Outcome of a promote attempt — lets callers distinguish the collapse-guard
@@ -74,17 +74,18 @@ pub enum PromoteOutcome {
 #[derive(Debug, Serialize)]
 pub struct ExportFile {
     pub domain: String,
-    pub path:   String,
-    pub rows:   usize,
+    pub path: String,
+    pub rows: usize,
 }
 
 // ── TrainStore impl ─────────────────────────────────────────────────────────────
 
 impl TrainStore {
     pub fn open(path: &str) -> Result<Self> {
-        let conn = Connection::open(path)
-            .with_context(|| format!("opening train db at {path}"))?;
-        Ok(Self { conn: Mutex::new(conn) })
+        let conn = Connection::open(path).with_context(|| format!("opening train db at {path}"))?;
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     pub fn migrate(&self) -> Result<()> {
@@ -111,8 +112,15 @@ impl TrainStore {
         verify_log: Option<&str>,
     ) -> Result<i64> {
         self.insert_row(
-            domain, system_prompt, user_content, assistant_content,
-            label_type, "proposed", provenance, retrieval_ref, verify_log,
+            domain,
+            system_prompt,
+            user_content,
+            assistant_content,
+            label_type,
+            "proposed",
+            provenance,
+            retrieval_ref,
+            verify_log,
         )
     }
 
@@ -130,8 +138,15 @@ impl TrainStore {
         verify_log: Option<&str>,
     ) -> Result<i64> {
         self.insert_row(
-            domain, system_prompt, user_content, Some(assistant_content),
-            label_type, "user", "human", retrieval_ref, verify_log,
+            domain,
+            system_prompt,
+            user_content,
+            Some(assistant_content),
+            label_type,
+            "user",
+            "human",
+            retrieval_ref,
+            verify_log,
         )
     }
 
@@ -156,8 +171,16 @@ impl TrainStore {
                 trust, provenance, retrieval_ref, verify_log, created_at, updated_at)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10)",
             params![
-                domain, system_prompt, user_content, assistant_content, label_type,
-                trust, provenance, retrieval_ref, verify_log, now
+                domain,
+                system_prompt,
+                user_content,
+                assistant_content,
+                label_type,
+                trust,
+                provenance,
+                retrieval_ref,
+                verify_log,
+                now
             ],
         )?;
         let id = c.last_insert_rowid();
@@ -225,18 +248,18 @@ impl TrainStore {
         )?;
         let rows = stmt.query_map(params![domain, trust], |r| {
             Ok(TrainingRow {
-                id:                r.get(0)?,
-                domain:            r.get(1)?,
-                system_prompt:     r.get(2)?,
-                user_content:      r.get(3)?,
+                id: r.get(0)?,
+                domain: r.get(1)?,
+                system_prompt: r.get(2)?,
+                user_content: r.get(3)?,
                 assistant_content: r.get(4)?,
-                label_type:        r.get(5)?,
-                trust:             r.get(6)?,
-                provenance:        r.get(7)?,
-                retrieval_ref:     r.get(8)?,
-                verify_log:        r.get(9)?,
-                created_at:        r.get(10)?,
-                updated_at:        r.get(11)?,
+                label_type: r.get(5)?,
+                trust: r.get(6)?,
+                provenance: r.get(7)?,
+                retrieval_ref: r.get(8)?,
+                verify_log: r.get(9)?,
+                created_at: r.get(10)?,
+                updated_at: r.get(11)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -288,19 +311,22 @@ impl TrainStore {
                 }
                 messages.push(serde_json::json!({ "role": "user", "content": user }));
                 messages.push(serde_json::json!({ "role": "assistant", "content": assistant }));
-                buf.push_str(&serde_json::to_string(&serde_json::json!({ "messages": messages }))?);
+                buf.push_str(&serde_json::to_string(
+                    &serde_json::json!({ "messages": messages }),
+                )?);
                 buf.push('\n');
                 n += 1;
             }
             if n == 0 {
                 continue;
             }
-            let path = std::path::Path::new(out_dir).join(format!("{}.jsonl", sanitize_filename(&dom)));
+            let path =
+                std::path::Path::new(out_dir).join(format!("{}.jsonl", sanitize_filename(&dom)));
             std::fs::write(&path, buf).with_context(|| format!("writing {}", path.display()))?;
             out.push(ExportFile {
                 domain: dom,
-                path:   path.to_string_lossy().to_string(),
-                rows:   n,
+                path: path.to_string_lossy().to_string(),
+                rows: n,
             });
         }
         Ok(out)
@@ -323,8 +349,12 @@ impl TrainStore {
             if ep.stage.as_deref() != Some("recall") {
                 continue;
             }
-            let Some(action) = ep.action.as_deref() else { continue };
-            let Some((domain, query)) = parse_recall_action(action) else { continue };
+            let Some(action) = ep.action.as_deref() else {
+                continue;
+            };
+            let Some((domain, query)) = parse_recall_action(action) else {
+                continue;
+            };
 
             let blocked = matches!(ep.outcome.as_deref(), Some("blocked") | Some("error"));
             let hits = ep.observation.as_deref().and_then(parse_hits);
@@ -344,7 +374,16 @@ impl TrainStore {
 
             let label_type = if blocked { "refusal" } else { "grounded" };
             let rref = format!("episode:{}/{}", ep.run_id, ep.step);
-            self.capture_example(&domain, None, &query, None, label_type, "student", Some(&rref), None)?;
+            self.capture_example(
+                &domain,
+                None,
+                &query,
+                None,
+                label_type,
+                "student",
+                Some(&rref),
+                None,
+            )?;
             seen.insert(key);
             inserted += 1;
         }
@@ -398,7 +437,10 @@ impl TrainStore {
                 Some(d) if !d.is_empty() => {
                     format!("Walk through the \"{}\" stage ({d}). What must you verify, and in what order?", s.name)
                 }
-                _ => format!("Walk through the \"{}\" stage. What must you verify, and in what order?", s.name),
+                _ => format!(
+                    "Walk through the \"{}\" stage. What must you verify, and in what order?",
+                    s.name
+                ),
             };
             inserted += self.seed_one(domain, &q, &rref, &mut seen)?;
         }
@@ -419,7 +461,14 @@ impl TrainStore {
             return Ok(0);
         }
         self.capture_example(
-            domain, None, question, None, "grounded", "student", Some(retrieval_ref), None,
+            domain,
+            None,
+            question,
+            None,
+            "grounded",
+            "student",
+            Some(retrieval_ref),
+            None,
         )?;
         seen.insert(question.to_string());
         Ok(1)
@@ -446,11 +495,11 @@ impl TrainStore {
         let c = self.conn.lock().unwrap();
         let count = |sql: &str| -> Result<i64> { Ok(c.query_row(sql, [], |r| r.get(0))?) };
         Ok(TrainStats {
-            total:    count("SELECT COUNT(*) FROM training_examples")?,
+            total: count("SELECT COUNT(*) FROM training_examples")?,
             proposed: count("SELECT COUNT(*) FROM training_examples WHERE trust = 'proposed'")?,
             reviewed: count("SELECT COUNT(*) FROM training_examples WHERE trust = 'reviewed'")?,
-            user:     count("SELECT COUNT(*) FROM training_examples WHERE trust = 'user'")?,
-            stubs:    count(
+            user: count("SELECT COUNT(*) FROM training_examples WHERE trust = 'user'")?,
+            stubs: count(
                 "SELECT COUNT(*) FROM training_examples \
                  WHERE assistant_content IS NULL OR assistant_content = ''",
             )?,
@@ -477,7 +526,13 @@ fn now() -> i64 {
 /// Make a domain name safe to use as a filename stem.
 fn sanitize_filename(s: &str) -> String {
     s.chars()
-        .map(|ch| if ch.is_alphanumeric() || ch == '-' || ch == '_' { ch } else { '_' })
+        .map(|ch| {
+            if ch.is_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -544,9 +599,21 @@ mod tests {
         let s = store();
         // A student-provenance row must never be promotable.
         let sid = s
-            .capture_example("d", None, "q?", Some("a"), "grounded", "student", None, None)
+            .capture_example(
+                "d",
+                None,
+                "q?",
+                Some("a"),
+                "grounded",
+                "student",
+                None,
+                None,
+            )
             .unwrap();
-        assert_eq!(s.promote_example(sid).unwrap(), PromoteOutcome::BlockedStudent);
+        assert_eq!(
+            s.promote_example(sid).unwrap(),
+            PromoteOutcome::BlockedStudent
+        );
 
         // It stays proposed after the rejected promote.
         let rows = s.list_training(Some("d"), Some("proposed")).unwrap();
@@ -555,7 +622,16 @@ mod tests {
 
         // A teacher-provenance row promotes fine — the guard is provenance-specific.
         let tid = s
-            .capture_example("d", None, "q2?", Some("a2"), "grounded", "teacher", None, None)
+            .capture_example(
+                "d",
+                None,
+                "q2?",
+                Some("a2"),
+                "grounded",
+                "teacher",
+                None,
+                None,
+            )
             .unwrap();
         assert_eq!(s.promote_example(tid).unwrap(), PromoteOutcome::Promoted);
     }
@@ -564,15 +640,34 @@ mod tests {
     fn export_emits_only_reviewed_and_user() {
         let s = store();
         // proposed teacher (must be EXCLUDED)
-        s.capture_example("d", Some("sys"), "PROPOSED_Q?", Some("pa"), "grounded", "teacher", None, None)
-            .unwrap();
+        s.capture_example(
+            "d",
+            Some("sys"),
+            "PROPOSED_Q?",
+            Some("pa"),
+            "grounded",
+            "teacher",
+            None,
+            None,
+        )
+        .unwrap();
         // reviewed teacher (must be included)
         let r = s
-            .capture_example("d", Some("sys"), "rq?", Some("ra"), "grounded", "teacher", None, None)
+            .capture_example(
+                "d",
+                Some("sys"),
+                "rq?",
+                Some("ra"),
+                "grounded",
+                "teacher",
+                None,
+                None,
+            )
             .unwrap();
         assert_eq!(s.promote_example(r).unwrap(), PromoteOutcome::Promoted);
         // user/human (must be included)
-        s.author_example("d", None, "uq?", "ua", "grounded", None, None).unwrap();
+        s.author_example("d", None, "uq?", "ua", "grounded", None, None)
+            .unwrap();
 
         let dir = std::env::temp_dir().join(format!("kltrain_test_{}", std::process::id()));
         let dir_s = dir.to_string_lossy().to_string();
@@ -623,7 +718,11 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].provenance, "student");
         assert_eq!(rows[0].label_type, "grounded");
-        assert!(rows[0].assistant_content.as_deref().unwrap_or("").is_empty());
+        assert!(rows[0]
+            .assistant_content
+            .as_deref()
+            .unwrap_or("")
+            .is_empty());
 
         // Re-running over the same trail inserts nothing (already stored).
         assert_eq!(s.queue_weak(&eps, 0).unwrap(), 0);
@@ -645,20 +744,35 @@ mod tests {
             created_at: 0,
             updated_at: 0,
         };
-        let knowledge = vec![k(1, "rule", "validate all input"), k(2, "fact", "TLS 1.3 is preferred")];
+        let knowledge = vec![
+            k(1, "rule", "validate all input"),
+            k(2, "fact", "TLS 1.3 is preferred"),
+        ];
         let stages: Vec<StageRow> = vec![];
 
         // 3 variants for the rule + 2 for the fact = 5 stubs.
-        let n = s.seed_from_topics("secdev", None, &knowledge, &stages).unwrap();
+        let n = s
+            .seed_from_topics("secdev", None, &knowledge, &stages)
+            .unwrap();
         assert_eq!(n, 5);
 
         let rows = s.list_training(Some("secdev"), Some("proposed")).unwrap();
         assert_eq!(rows.len(), 5);
         assert!(rows.iter().all(|r| r.provenance == "student"));
-        assert!(rows.iter().all(|r| r.assistant_content.as_deref().unwrap_or("").is_empty()));
-        assert!(rows.iter().all(|r| r.retrieval_ref.as_deref().unwrap_or("").starts_with("knowledge:#")));
+        assert!(rows
+            .iter()
+            .all(|r| r.assistant_content.as_deref().unwrap_or("").is_empty()));
+        assert!(rows.iter().all(|r| r
+            .retrieval_ref
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("knowledge:#")));
 
         // Idempotent: re-seeding the same topics inserts nothing.
-        assert_eq!(s.seed_from_topics("secdev", None, &knowledge, &stages).unwrap(), 0);
+        assert_eq!(
+            s.seed_from_topics("secdev", None, &knowledge, &stages)
+                .unwrap(),
+            0
+        );
     }
 }

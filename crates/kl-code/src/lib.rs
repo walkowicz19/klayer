@@ -17,9 +17,25 @@ const CHUNK_LINES: usize = 80;
 const MAX_FILE_BYTES: u64 = 512 * 1024;
 
 const SKIP_DIRS: &[&str] = &[
-    ".git", "node_modules", "target", "__pycache__", ".venv", "venv", "env",
-    "dist", "build", "vendor", ".next", ".nuxt", "coverage", ".nyc_output",
-    "out", ".cache", ".parcel-cache", ".turbo", ".svelte-kit",
+    ".git",
+    "node_modules",
+    "target",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "env",
+    "dist",
+    "build",
+    "vendor",
+    ".next",
+    ".nuxt",
+    "coverage",
+    ".nyc_output",
+    "out",
+    ".cache",
+    ".parcel-cache",
+    ".turbo",
+    ".svelte-kit",
 ];
 
 const SCHEMA: &str = "
@@ -65,38 +81,38 @@ pub struct CodeStore {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct RepoInfo {
-    pub id:          i64,
-    pub path:        String,
-    pub name:        Option<String>,
-    pub indexed_at:  Option<i64>,
-    pub file_count:  i64,
+    pub id: i64,
+    pub path: String,
+    pub name: Option<String>,
+    pub indexed_at: Option<i64>,
+    pub file_count: i64,
     pub chunk_count: i64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CodeHit {
-    pub repo_path:   String,
-    pub file_path:   String,
-    pub language:    Option<String>,
-    pub line_start:  i64,
-    pub line_end:    i64,
-    pub kind:        Option<String>,
+    pub repo_path: String,
+    pub file_path: String,
+    pub language: Option<String>,
+    pub line_start: i64,
+    pub line_end: i64,
+    pub kind: Option<String>,
     pub symbol_name: Option<String>,
-    pub snippet:     String,
-    pub score:       f64,
+    pub snippet: String,
+    pub score: f64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct CodeStats {
-    pub repos:  i64,
-    pub files:  i64,
+    pub repos: i64,
+    pub files: i64,
     pub chunks: i64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct IndexStats {
-    pub files:   usize,
-    pub chunks:  usize,
+    pub files: usize,
+    pub chunks: usize,
     pub skipped: usize,
 }
 
@@ -104,9 +120,10 @@ pub struct IndexStats {
 
 impl CodeStore {
     pub fn open(path: &str) -> Result<Self> {
-        let conn = Connection::open(path)
-            .with_context(|| format!("opening code db at {path}"))?;
-        Ok(Self { conn: Mutex::new(conn) })
+        let conn = Connection::open(path).with_context(|| format!("opening code db at {path}"))?;
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     pub fn migrate(&self) -> Result<()> {
@@ -117,10 +134,14 @@ impl CodeStore {
 
     pub fn stats(&self) -> Result<CodeStats> {
         let c = self.conn.lock().unwrap();
-        let repos  = c.query_row("SELECT COUNT(*) FROM repos",       [], |r| r.get(0))?;
-        let files  = c.query_row("SELECT COUNT(*) FROM code_files",  [], |r| r.get(0))?;
+        let repos = c.query_row("SELECT COUNT(*) FROM repos", [], |r| r.get(0))?;
+        let files = c.query_row("SELECT COUNT(*) FROM code_files", [], |r| r.get(0))?;
         let chunks = c.query_row("SELECT COUNT(*) FROM code_chunks", [], |r| r.get(0))?;
-        Ok(CodeStats { repos, files, chunks })
+        Ok(CodeStats {
+            repos,
+            files,
+            chunks,
+        })
     }
 
     pub fn list_repos(&self) -> Result<Vec<RepoInfo>> {
@@ -131,16 +152,18 @@ impl CodeStore {
         )?;
         let rows = stmt.query_map([], |r| {
             Ok(RepoInfo {
-                id:          r.get(0)?,
-                path:        r.get(1)?,
-                name:        r.get(2)?,
-                indexed_at:  r.get(3)?,
-                file_count:  r.get(4)?,
+                id: r.get(0)?,
+                path: r.get(1)?,
+                name: r.get(2)?,
+                indexed_at: r.get(3)?,
+                file_count: r.get(4)?,
                 chunk_count: r.get(5)?,
             })
         })?;
         let mut out = Vec::new();
-        for row in rows { out.push(row?); }
+        for row in rows {
+            out.push(row?);
+        }
         Ok(out)
     }
 
@@ -148,9 +171,13 @@ impl CodeStore {
         let c = self.conn.lock().unwrap();
 
         let repo_id: Option<i64> = c
-            .query_row("SELECT id FROM repos WHERE path = ?1", params![path], |r| r.get(0))
+            .query_row("SELECT id FROM repos WHERE path = ?1", params![path], |r| {
+                r.get(0)
+            })
             .ok();
-        let Some(repo_id) = repo_id else { return Ok(false); };
+        let Some(repo_id) = repo_id else {
+            return Ok(false);
+        };
 
         // Collect chunk IDs before cascade-deleting (FTS5 must be cleaned first).
         let mut chunk_ids: Vec<i64> = Vec::new();
@@ -175,9 +202,9 @@ impl CodeStore {
     pub fn clear_all(&self) -> Result<u64> {
         let c = self.conn.lock().unwrap();
         c.execute_batch("DELETE FROM code_fts; DELETE FROM repos;")?;
-        let deleted: u64 = c.query_row(
-            "SELECT changes()", [], |r| r.get(0)
-        ).unwrap_or(0);
+        let deleted: u64 = c
+            .query_row("SELECT changes()", [], |r| r.get(0))
+            .unwrap_or(0);
         Ok(deleted)
     }
 
@@ -187,9 +214,11 @@ impl CodeStore {
         repo_path: Option<&str>,
         limit: usize,
     ) -> Result<Vec<CodeHit>> {
-        if query.trim().is_empty() { return Ok(vec![]); }
+        if query.trim().is_empty() {
+            return Ok(vec![]);
+        }
         let match_expr = fts_match(query);
-        let c   = self.conn.lock().unwrap();
+        let c = self.conn.lock().unwrap();
         let lim = limit as i64;
         let mut hits = Vec::new();
 
@@ -206,17 +235,19 @@ impl CodeStore {
                  WHERE code_fts MATCH ?1 AND r.path = ?2
                  ORDER BY score ASC LIMIT ?3",
             )?;
-            for row in stmt.query_map(params![match_expr, rp, lim], |r| Ok(CodeHit {
-                snippet:     r.get(0)?,
-                kind:        r.get(1)?,
-                symbol_name: r.get(2)?,
-                line_start:  r.get(3)?,
-                line_end:    r.get(4)?,
-                file_path:   r.get(5)?,
-                language:    r.get(6)?,
-                repo_path:   r.get(7)?,
-                score:       r.get(8)?,
-            }))? {
+            for row in stmt.query_map(params![match_expr, rp, lim], |r| {
+                Ok(CodeHit {
+                    snippet: r.get(0)?,
+                    kind: r.get(1)?,
+                    symbol_name: r.get(2)?,
+                    line_start: r.get(3)?,
+                    line_end: r.get(4)?,
+                    file_path: r.get(5)?,
+                    language: r.get(6)?,
+                    repo_path: r.get(7)?,
+                    score: r.get(8)?,
+                })
+            })? {
                 hits.push(row?);
             }
         } else {
@@ -232,17 +263,19 @@ impl CodeStore {
                  WHERE code_fts MATCH ?1
                  ORDER BY score ASC LIMIT ?2",
             )?;
-            for row in stmt.query_map(params![match_expr, lim], |r| Ok(CodeHit {
-                snippet:     r.get(0)?,
-                kind:        r.get(1)?,
-                symbol_name: r.get(2)?,
-                line_start:  r.get(3)?,
-                line_end:    r.get(4)?,
-                file_path:   r.get(5)?,
-                language:    r.get(6)?,
-                repo_path:   r.get(7)?,
-                score:       r.get(8)?,
-            }))? {
+            for row in stmt.query_map(params![match_expr, lim], |r| {
+                Ok(CodeHit {
+                    snippet: r.get(0)?,
+                    kind: r.get(1)?,
+                    symbol_name: r.get(2)?,
+                    line_start: r.get(3)?,
+                    line_end: r.get(4)?,
+                    file_path: r.get(5)?,
+                    language: r.get(6)?,
+                    repo_path: r.get(7)?,
+                    score: r.get(8)?,
+                })
+            })? {
                 hits.push(row?);
             }
         }
@@ -261,12 +294,14 @@ impl CodeStore {
         let mut skipped = 0usize;
         collect_files(&canonical, &canonical, &mut file_data, &mut skipped)?;
 
-        let total_files  = file_data.len();
+        let total_files = file_data.len();
         let total_chunks: usize = file_data.iter().map(|f| f.chunks.len()).sum();
 
         tracing::info!(
             "code-index: {} files, {} chunks, {} skipped — writing to DB",
-            total_files, total_chunks, skipped
+            total_files,
+            total_chunks,
+            skipped
         );
 
         let c = self.conn.lock().unwrap();
@@ -280,7 +315,13 @@ impl CodeStore {
                  indexed_at  = ?3,
                  file_count  = ?4,
                  chunk_count = ?5",
-            params![canon_str, name, now, total_files as i64, total_chunks as i64],
+            params![
+                canon_str,
+                name,
+                now,
+                total_files as i64,
+                total_chunks as i64
+            ],
         )?;
         let repo_id: i64 = c.query_row(
             "SELECT id FROM repos WHERE path = ?1",
@@ -304,7 +345,10 @@ impl CodeStore {
         for id in &old_chunk_ids {
             c.execute("DELETE FROM code_fts WHERE rowid = ?1", params![id])?;
         }
-        c.execute("DELETE FROM code_files WHERE repo_id = ?1", params![repo_id])?;
+        c.execute(
+            "DELETE FROM code_files WHERE repo_id = ?1",
+            params![repo_id],
+        )?;
 
         // Insert new files and chunks in one transaction.
         {
@@ -327,7 +371,7 @@ impl CodeStore {
                             params![
                                 file_id,
                                 chunk.line_start as i64,
-                                chunk.line_end   as i64,
+                                chunk.line_end as i64,
                                 chunk.content,
                                 chunk.kind,
                                 chunk.symbol_name
@@ -358,7 +402,11 @@ impl CodeStore {
             }
         }
 
-        Ok(IndexStats { files: total_files, chunks: total_chunks, skipped })
+        Ok(IndexStats {
+            files: total_files,
+            chunks: total_chunks,
+            skipped,
+        })
     }
 }
 
@@ -371,7 +419,9 @@ fn fts_match(query: &str) -> String {
         .filter(|t| !t.is_empty())
         .map(|t| format!("\"{t}\""))
         .collect();
-    if terms.is_empty() { return String::new(); }
+    if terms.is_empty() {
+        return String::new();
+    }
     terms.join(" OR ")
 }
 
@@ -380,14 +430,14 @@ fn fts_match(query: &str) -> String {
 struct FileEntry {
     rel_path: String,
     language: String,
-    chunks:   Vec<ChunkEntry>,
+    chunks: Vec<ChunkEntry>,
 }
 
 struct ChunkEntry {
-    line_start:  usize,
-    line_end:    usize,
-    content:     String,
-    kind:        Option<String>,
+    line_start: usize,
+    line_end: usize,
+    content: String,
+    kind: Option<String>,
     symbol_name: Option<String>,
 }
 
@@ -399,7 +449,10 @@ fn collect_files(
 ) -> Result<()> {
     let rd = match std::fs::read_dir(dir) {
         Ok(rd) => rd,
-        Err(_) => { *skipped += 1; return Ok(()); }
+        Err(_) => {
+            *skipped += 1;
+            return Ok(());
+        }
     };
 
     for entry in rd.flatten() {
@@ -415,23 +468,40 @@ fn collect_files(
             continue;
         }
 
-        if !ft.is_file() { continue; }
-
-        let path = entry.path();
-        let Some(lang) = detect_language(&path) else { *skipped += 1; continue };
-
-        if let Ok(meta) = std::fs::metadata(&path) {
-            if meta.len() > MAX_FILE_BYTES { *skipped += 1; continue; }
+        if !ft.is_file() {
+            continue;
         }
 
-        let Ok(content) = std::fs::read_to_string(&path) else { *skipped += 1; continue };
-        if content.trim().is_empty() { continue; }
+        let path = entry.path();
+        let Some(lang) = detect_language(&path) else {
+            *skipped += 1;
+            continue;
+        };
+
+        if let Ok(meta) = std::fs::metadata(&path) {
+            if meta.len() > MAX_FILE_BYTES {
+                *skipped += 1;
+                continue;
+            }
+        }
+
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            *skipped += 1;
+            continue;
+        };
+        if content.trim().is_empty() {
+            continue;
+        }
 
         let rel = path.strip_prefix(root).unwrap_or(&path);
         let rel_str = rel.to_string_lossy().replace('\\', "/");
         let chunks = chunk_file(&content, lang);
         if !chunks.is_empty() {
-            out.push(FileEntry { rel_path: rel_str, language: lang.to_string(), chunks });
+            out.push(FileEntry {
+                rel_path: rel_str,
+                language: lang.to_string(),
+                chunks,
+            });
         }
     }
 
@@ -440,44 +510,46 @@ fn collect_files(
 
 fn detect_language(path: &Path) -> Option<&'static str> {
     match path.extension()?.to_str()? {
-        "rs"                                  => Some("rust"),
-        "py"                                  => Some("python"),
-        "js" | "mjs" | "cjs"                 => Some("javascript"),
-        "ts" | "mts"                          => Some("typescript"),
-        "tsx"                                 => Some("tsx"),
-        "jsx"                                 => Some("jsx"),
-        "go"                                  => Some("go"),
-        "java"                                => Some("java"),
-        "cpp" | "cc" | "cxx"                 => Some("cpp"),
-        "c"                                   => Some("c"),
-        "h" | "hpp"                           => Some("cpp"),
-        "cs"                                  => Some("csharp"),
-        "rb"                                  => Some("ruby"),
-        "kt" | "kts"                          => Some("kotlin"),
-        "swift"                               => Some("swift"),
-        "md" | "markdown"                     => Some("markdown"),
-        "toml"                                => Some("toml"),
-        "json"                                => Some("json"),
-        "yaml" | "yml"                        => Some("yaml"),
-        "html" | "htm"                        => Some("html"),
-        "css" | "scss" | "sass"               => Some("css"),
-        "sh" | "bash"                         => Some("shell"),
-        "sql"                                 => Some("sql"),
-        "php"                                 => Some("php"),
-        "lua"                                 => Some("lua"),
-        "zig"                                 => Some("zig"),
+        "rs" => Some("rust"),
+        "py" => Some("python"),
+        "js" | "mjs" | "cjs" => Some("javascript"),
+        "ts" | "mts" => Some("typescript"),
+        "tsx" => Some("tsx"),
+        "jsx" => Some("jsx"),
+        "go" => Some("go"),
+        "java" => Some("java"),
+        "cpp" | "cc" | "cxx" => Some("cpp"),
+        "c" => Some("c"),
+        "h" | "hpp" => Some("cpp"),
+        "cs" => Some("csharp"),
+        "rb" => Some("ruby"),
+        "kt" | "kts" => Some("kotlin"),
+        "swift" => Some("swift"),
+        "md" | "markdown" => Some("markdown"),
+        "toml" => Some("toml"),
+        "json" => Some("json"),
+        "yaml" | "yml" => Some("yaml"),
+        "html" | "htm" => Some("html"),
+        "css" | "scss" | "sass" => Some("css"),
+        "sh" | "bash" => Some("shell"),
+        "sql" => Some("sql"),
+        "php" => Some("php"),
+        "lua" => Some("lua"),
+        "zig" => Some("zig"),
         // ── Legacy / Enterprise languages ─────────────────────────────
-        "cbl" | "cob" | "cpy" | "cobol"      => Some("cobol"),
+        "cbl" | "cob" | "cpy" | "cobol" => Some("cobol"),
         "nsp" | "nse" | "nsd" | "nsl" | "nst" => Some("natural"),
-        "rpg" | "rpgle" | "sqlrpgle"          => Some("rpg"),
+        "rpg" | "rpgle" | "sqlrpgle" => Some("rpg"),
         "sru" | "sra" | "srd" | "srw" | "pbl" => Some("powerscript"),
-        _                                     => None,
+        _ => None,
     }
 }
 
 fn chunk_file(content: &str, lang: &str) -> Vec<ChunkEntry> {
     let lines: Vec<&str> = content.lines().collect();
-    if lines.is_empty() { return vec![]; }
+    if lines.is_empty() {
+        return vec![];
+    }
 
     let mut chunks = Vec::new();
     let mut i = 0;
@@ -487,8 +559,8 @@ fn chunk_file(content: &str, lang: &str) -> Vec<ChunkEntry> {
         let (kind, symbol_name) = detect_symbol(lang, slice);
         chunks.push(ChunkEntry {
             line_start: i + 1,
-            line_end:   end,
-            content:    slice.join("\n"),
+            line_end: end,
+            content: slice.join("\n"),
             kind,
             symbol_name,
         });
@@ -511,33 +583,43 @@ fn parse_symbol(lang: &str, line: &str) -> Option<(String, String)> {
     match lang {
         "rust" => {
             for (prefix, kind) in [
-                ("pub async fn ", "fn"), ("pub fn ", "fn"),
-                ("async fn ", "fn"),     ("fn ", "fn"),
-                ("pub struct ", "struct"), ("struct ", "struct"),
-                ("pub enum ", "enum"),   ("enum ", "enum"),
-                ("pub trait ", "trait"), ("trait ", "trait"),
-                ("pub type ", "type"),   ("type ", "type"),
+                ("pub async fn ", "fn"),
+                ("pub fn ", "fn"),
+                ("async fn ", "fn"),
+                ("fn ", "fn"),
+                ("pub struct ", "struct"),
+                ("struct ", "struct"),
+                ("pub enum ", "enum"),
+                ("enum ", "enum"),
+                ("pub trait ", "trait"),
+                ("trait ", "trait"),
+                ("pub type ", "type"),
+                ("type ", "type"),
             ] {
                 if let Some(rest) = s.strip_prefix(prefix) {
                     let name = rest.split(['(', '<', '{', ' ', '\n']).next()?.to_string();
-                    if valid_ident(&name) { return Some((kind.into(), name)); }
+                    if valid_ident(&name) {
+                        return Some((kind.into(), name));
+                    }
                 }
             }
             for prefix in ["pub impl ", "impl "] {
                 if let Some(rest) = s.strip_prefix(prefix) {
                     let part = rest.split_once(" for ").map(|(_, b)| b).unwrap_or(rest);
                     let name = part.split(['<', '{', ' ']).next()?.to_string();
-                    if valid_ident(&name) { return Some(("impl".into(), name)); }
+                    if valid_ident(&name) {
+                        return Some(("impl".into(), name));
+                    }
                 }
             }
         }
         "python" => {
-            for (prefix, kind) in [
-                ("async def ", "fn"), ("def ", "fn"), ("class ", "class"),
-            ] {
+            for (prefix, kind) in [("async def ", "fn"), ("def ", "fn"), ("class ", "class")] {
                 if let Some(rest) = s.strip_prefix(prefix) {
                     let name = rest.split(['(', ':', ' ']).next()?.to_string();
-                    if valid_ident(&name) { return Some((kind.into(), name)); }
+                    if valid_ident(&name) {
+                        return Some((kind.into(), name));
+                    }
                 }
             }
         }
@@ -556,14 +638,18 @@ fn parse_symbol(lang: &str, line: &str) -> Option<(String, String)> {
             ] {
                 if let Some(rest) = s.strip_prefix(prefix) {
                     let name = rest.split(['(', '<', '{', ' ']).next()?.to_string();
-                    if valid_ident(&name) { return Some((kind.into(), name)); }
+                    if valid_ident(&name) {
+                        return Some((kind.into(), name));
+                    }
                 }
             }
             for prefix in ["export const ", "const "] {
                 if let Some(rest) = s.strip_prefix(prefix) {
                     if rest.contains("=>") || rest.contains("= function") {
                         let name = rest.split(['=', ':', ' ']).next()?.to_string();
-                        if valid_ident(&name) { return Some(("const".into(), name)); }
+                        if valid_ident(&name) {
+                            return Some(("const".into(), name));
+                        }
                     }
                 }
             }
@@ -576,16 +662,23 @@ fn parse_symbol(lang: &str, line: &str) -> Option<(String, String)> {
                     rest
                 };
                 let name = rest.split(['(', ' ']).next()?.to_string();
-                if valid_ident(&name) { return Some(("fn".into(), name)); }
+                if valid_ident(&name) {
+                    return Some(("fn".into(), name));
+                }
             }
             if let Some(rest) = s.strip_prefix("type ") {
                 let name = rest.split([' ', '[']).next()?.to_string();
-                if valid_ident(&name) { return Some(("type".into(), name)); }
+                if valid_ident(&name) {
+                    return Some(("type".into(), name));
+                }
             }
         }
         "java" | "kotlin" | "csharp" => {
-            if s.contains('(') && !s.starts_with("if ")
-                && !s.starts_with("for ") && !s.starts_with("while ") {
+            if s.contains('(')
+                && !s.starts_with("if ")
+                && !s.starts_with("for ")
+                && !s.starts_with("while ")
+            {
                 let before = s.split('(').next()?;
                 let name = before.split_whitespace().last()?.to_string();
                 if valid_ident(&name) && name.len() > 1 {
@@ -596,22 +689,20 @@ fn parse_symbol(lang: &str, line: &str) -> Option<(String, String)> {
         "cobol" => {
             // COBOL divisions and sections: e.g. "IDENTIFICATION DIVISION."
             let su = s.to_uppercase();
-            for (suffix, kind) in [
-                (" DIVISION.", "division"),
-                (" SECTION.",  "section"),
-            ] {
+            for (suffix, kind) in [(" DIVISION.", "division"), (" SECTION.", "section")] {
                 if su.ends_with(suffix) {
                     let name = su[..su.len() - suffix.len()]
-                        .split_whitespace().last()?.to_string();
-                    if !name.is_empty() { return Some((kind.into(), name)); }
+                        .split_whitespace()
+                        .last()?
+                        .to_string();
+                    if !name.is_empty() {
+                        return Some((kind.into(), name));
+                    }
                 }
             }
             // COBOL paragraphs: a word on its own line followed by '.'
             // e.g. "0100-INIT-DATA."
-            if su.ends_with('.')
-                && !su.contains(' ')
-                && su.len() > 1
-            {
+            if su.ends_with('.') && !su.contains(' ') && su.len() > 1 {
                 let name = su.trim_end_matches('.').to_string();
                 if !name.is_empty() && name.len() <= 64 {
                     return Some(("paragraph".into(), name));
@@ -620,7 +711,11 @@ fn parse_symbol(lang: &str, line: &str) -> Option<(String, String)> {
             // PERFORM / CALL targets
             for prefix in ["PERFORM ", "CALL "] {
                 if let Some(rest) = su.strip_prefix(prefix) {
-                    let name = rest.split_whitespace().next()?.trim_end_matches(".").to_string();
+                    let name = rest
+                        .split_whitespace()
+                        .next()?
+                        .trim_end_matches(".")
+                        .to_string();
                     if !name.is_empty() && name.len() <= 64 {
                         return Some(("call".into(), name));
                     }
@@ -632,22 +727,28 @@ fn parse_symbol(lang: &str, line: &str) -> Option<(String, String)> {
             let su = s.to_uppercase();
             for (prefix, kind) in [
                 ("DEFINE SUBROUTINE ", "subroutine"),
-                ("DEFINE FUNCTION ",   "function"),
-                ("DEFINE DATA",        "data-section"),
-                ("DEFINE WINDOW ",     "window"),
+                ("DEFINE FUNCTION ", "function"),
+                ("DEFINE DATA", "data-section"),
+                ("DEFINE WINDOW ", "window"),
             ] {
                 if su.starts_with(prefix) {
                     let rest = &su[prefix.len()..];
                     let name = rest.split_whitespace().next().unwrap_or("").to_string();
-                    if !name.is_empty() { return Some((kind.into(), name)); }
-                    if prefix.ends_with("DATA") { return Some(("data-section".into(), "DATA".into())); }
+                    if !name.is_empty() {
+                        return Some((kind.into(), name));
+                    }
+                    if prefix.ends_with("DATA") {
+                        return Some(("data-section".into(), "DATA".into()));
+                    }
                 }
             }
             // SUBROUTINE / FUNCTION header (short form)
             for prefix in ["SUBROUTINE ", "FUNCTION "] {
                 if let Some(rest) = su.strip_prefix(prefix) {
                     let name = rest.split_whitespace().next().unwrap_or("").to_string();
-                    if valid_ident(&name) { return Some(("subroutine".into(), name)); }
+                    if valid_ident(&name) {
+                        return Some(("subroutine".into(), name));
+                    }
                 }
             }
         }
@@ -656,28 +757,38 @@ fn parse_symbol(lang: &str, line: &str) -> Option<(String, String)> {
             let su = s.to_uppercase();
             // DCL-PROC, DCL-PARM, DCL-SUBF, DCL-DS
             for (prefix, kind) in [
-                ("DCL-PROC ",  "procedure"),
-                ("DCL-DS ",    "data-struct"),
-                ("DCL-S ",     "variable"),
-                ("DCL-C ",     "constant"),
-                ("DCL-F ",     "file"),
+                ("DCL-PROC ", "procedure"),
+                ("DCL-DS ", "data-struct"),
+                ("DCL-S ", "variable"),
+                ("DCL-C ", "constant"),
+                ("DCL-F ", "file"),
             ] {
                 if let Some(rest) = su.strip_prefix(prefix) {
                     let name = rest.split_whitespace().next().unwrap_or("").to_string();
-                    if valid_ident(&name) { return Some((kind.into(), name)); }
+                    if valid_ident(&name) {
+                        return Some((kind.into(), name));
+                    }
                 }
             }
             // Fixed-form: P spec (procedure boundary) — col 1 is 'P'
             if su.starts_with('P') && su.len() > 1 {
                 let name_part: String = su.chars().skip(6).take(14).collect();
                 let name = name_part.trim().to_string();
-                if valid_ident(&name) { return Some(("procedure".into(), name)); }
+                if valid_ident(&name) {
+                    return Some(("procedure".into(), name));
+                }
             }
             // BEG / END / BEGSR / ENDSR
             for prefix in ["BEGSR ", "BEGSR\n"] {
                 if su.starts_with(prefix) {
-                    let name = su[prefix.len()..].split_whitespace().next().unwrap_or("").to_string();
-                    if valid_ident(&name) { return Some(("subroutine".into(), name)); }
+                    let name = su[prefix.len()..]
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .to_string();
+                    if valid_ident(&name) {
+                        return Some(("subroutine".into(), name));
+                    }
                 }
             }
         }
@@ -686,32 +797,36 @@ fn parse_symbol(lang: &str, line: &str) -> Option<(String, String)> {
             let sl = s.to_lowercase();
             // forward / type declarations
             for (prefix, kind) in [
-                ("forward\n",                  "forward"),
-                ("type ",                       "type"),
-                ("global type ",                "global-type"),
+                ("forward\n", "forward"),
+                ("type ", "type"),
+                ("global type ", "global-type"),
             ] {
                 if sl.starts_with(prefix) {
                     let rest = &s[prefix.len()..];
                     let name = rest.split_whitespace().next().unwrap_or("").to_string();
-                    if valid_ident(&name) { return Some((kind.into(), name)); }
+                    if valid_ident(&name) {
+                        return Some((kind.into(), name));
+                    }
                 }
             }
             // function / event / subroutine definitions
             for (prefix, kind) in [
-                ("public function ",    "function"),
-                ("private function ",   "function"),
+                ("public function ", "function"),
+                ("private function ", "function"),
                 ("protected function ", "function"),
-                ("function ",           "function"),
-                ("public subroutine ",  "subroutine"),
+                ("function ", "function"),
+                ("public subroutine ", "subroutine"),
                 ("private subroutine ", "subroutine"),
-                ("subroutine ",         "subroutine"),
-                ("on ",                 "event"),
-                ("event ",              "event"),
+                ("subroutine ", "subroutine"),
+                ("on ", "event"),
+                ("event ", "event"),
             ] {
                 if sl.starts_with(prefix) {
                     let rest = &s[prefix.len()..];
                     let name = rest.split(['(', ' ']).next().unwrap_or("").to_string();
-                    if valid_ident(&name) { return Some((kind.into(), name)); }
+                    if valid_ident(&name) {
+                        return Some((kind.into(), name));
+                    }
                 }
             }
         }
@@ -724,5 +839,8 @@ fn valid_ident(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 64
         && s.chars().all(|c| c.is_alphanumeric() || c == '_')
-        && s.chars().next().map(|c| !c.is_ascii_digit()).unwrap_or(false)
+        && s.chars()
+            .next()
+            .map(|c| !c.is_ascii_digit())
+            .unwrap_or(false)
 }

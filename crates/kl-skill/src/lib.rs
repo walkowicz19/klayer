@@ -30,7 +30,11 @@ pub fn render(inp: &RouterInputs) -> String {
     s.push_str("description: >\n");
     s.push_str(&format!(
         "  Grounded knowledge layer for: {}. Before answering or acting in these\n",
-        if domains_csv.is_empty() { "(no domains yet)" } else { &domains_csv }
+        if domains_csv.is_empty() {
+            "(no domains yet)"
+        } else {
+            &domains_csv
+        }
     ));
     s.push_str("  domains, recall stored knowledge and enforce stored rules. This file is\n");
     s.push_str("  an index, not the data — pull on demand.\n");
@@ -38,7 +42,9 @@ pub fn render(inp: &RouterInputs) -> String {
 
     s.push_str(&format!("# {} — Knowledge Router\n\n", inp.name));
     s.push_str("This file routes; it never holds the corpus. Knowledge lives in the store and\n");
-    s.push_str("is retrieved per query via MCP tools. Keep every answer grounded in what you recall.\n\n");
+    s.push_str(
+        "is retrieved per query via MCP tools. Keep every answer grounded in what you recall.\n\n",
+    );
 
     // domains
     s.push_str("## Domains\n");

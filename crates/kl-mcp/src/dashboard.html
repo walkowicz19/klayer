@@ -208,7 +208,9 @@
     .domain-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 12px; margin-bottom: 20px; }
     .dcard { background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 18px 20px; transition: border-color .15s; }
     .dcard:hover { border-color: var(--hairline-strong); }
+    .dcard-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
     .dcard-name { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+    .dcard-head .dcard-name { margin-bottom: 0; flex: 1; min-width: 0; }
     .dcard-desc { font-size: 12px; color: var(--body); margin-bottom: 14px; line-height: 1.45; }
     .dcard-row { display: flex; gap: 20px; }
     .dcard-stat-val { font-family: 'SF Pro Rounded','Nunito',system-ui,sans-serif; font-size: 20px; font-weight: 700; color: var(--blue); letter-spacing: -.5px; line-height: 1; }
@@ -262,6 +264,11 @@
     .src-meta { font-size: 11px; color: var(--mute); margin-top: 1px; }
     .src-end { margin-left: auto; flex-shrink: 0; }
 
+    /* ── Actions ── */
+    .danger-btn { font-size: 11px; font-weight: 600; color: var(--red); background: transparent; border: 1px solid rgba(239,68,68,.35); border-radius: var(--r-full); padding: 3px 9px; cursor: pointer; transition: background .12s, border-color .12s; white-space: nowrap; }
+    .danger-btn:hover { background: rgba(239,68,68,.08); border-color: var(--red); }
+    .danger-btn:disabled { opacity: .45; cursor: default; }
+
     /* ── Domain glance bars ── */
     .dglance-item { margin-bottom: 12px; }
     .dglance-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
@@ -309,6 +316,29 @@
     .repo-stat-lbl { font-size: 10px; color: var(--mute); }
     .code-stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
 
+    /* ── Marketplace ── */
+    .market-hero { display: grid; grid-template-columns: 1.35fr .85fr; gap: 16px; margin-bottom: 16px; }
+    .market-panel { background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 20px; }
+    .market-kicker { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: var(--r-full); background: var(--blue-lt); color: var(--blue); font-size: 11px; font-weight: 700; margin-bottom: 10px; }
+    .market-title { font-family: 'SF Pro Rounded','Nunito',system-ui,sans-serif; font-size: 20px; font-weight: 700; color: var(--navy); letter-spacing: -.3px; margin-bottom: 6px; }
+    .market-copy { font-size: 13px; color: var(--body); line-height: 1.55; }
+    .market-steps { display: grid; gap: 8px; margin-top: 12px; }
+    .market-step { display: flex; gap: 9px; align-items: flex-start; font-size: 12px; color: var(--body); }
+    .market-step-num { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--blue-lt); color: var(--blue); font-weight: 700; flex-shrink: 0; }
+    .template-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(250px,1fr)); gap: 12px; }
+    .template-card { background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 16px; display: flex; flex-direction: column; min-height: 170px; }
+    .template-card-title { font-size: 13px; font-weight: 700; color: var(--navy); margin-bottom: 5px; }
+    .template-card-copy { font-size: 12px; color: var(--body); line-height: 1.45; margin-bottom: 14px; flex: 1; }
+    .template-card-meta { display: flex; align-items: stretch; justify-content: stretch; margin-top: auto; }
+    .template-apply-btn { display: inline-flex; width: 100%; height: 36px; align-items: center; justify-content: center; border-radius: var(--r-full); }
+    .template-apply-btn.is-applied,
+    .template-apply-btn:disabled.is-applied {
+      background: var(--hairline-strong);
+      color: var(--mute);
+      cursor: not-allowed;
+      opacity: .85;
+    }
+
     /* ── Settings ── */
     .settings-section { margin-bottom: 20px; }
     .settings-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--mute); margin-bottom: 10px; }
@@ -342,6 +372,7 @@
       .sidebar { display: none; }
       .stats { grid-template-columns: repeat(3,1fr); }
       .g2 { grid-template-columns: 1fr; }
+      .market-hero { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -383,6 +414,10 @@
       <button class="nav-btn active" data-page="overview">
         <svg class="ico" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".9"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/></svg>
         <span data-i18n="navDashboard"></span>
+      </button>
+      <button class="nav-btn" data-page="marketplace">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 6.5h12l-1 7H3L2 6.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5 6.5V5a3 3 0 0 1 6 0v1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5.5 10h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span data-i18n="navMarketplace"></span>
       </button>
     </div>
     <div class="nav-group">
@@ -545,7 +580,7 @@
         <div class="tw"><table>
           <thead><tr>
             <th data-i18n="thTitle"></th><th data-i18n="thKind"></th>
-            <th data-i18n="thDomain"></th><th data-i18n="thTrust"></th><th data-i18n="thCreated"></th>
+            <th data-i18n="thDomain"></th><th data-i18n="thTrust"></th><th data-i18n="thCreated"></th><th data-i18n="thAction"></th>
           </tr></thead>
           <tbody id="tb-knowledge"></tbody>
         </table></div>
@@ -708,6 +743,73 @@
       </div>
     </div>
 
+    <!-- Marketplace -->
+    <div id="page-marketplace" class="page">
+      <div class="ph">
+        <div class="ph-title" data-i18n="navMarketplace"></div>
+        <div class="ph-sub" data-i18n="phMarketplaceSub"></div>
+      </div>
+
+      <div class="market-hero">
+        <div class="market-panel">
+          <span class="market-kicker" data-i18n="marketPublicBadge"></span>
+          <div class="market-title" data-i18n="marketHeroTitle"></div>
+          <p class="market-copy" data-i18n="marketHeroCopy"></p>
+          <div class="market-steps">
+            <div class="market-step"><span class="market-step-num">1</span><span data-i18n="marketStepUse"></span></div>
+            <div class="market-step"><span class="market-step-num">2</span><span data-i18n="marketStepAdapt"></span></div>
+            <div class="market-step"><span class="market-step-num">3</span><span data-i18n="marketStepPublish"></span></div>
+          </div>
+        </div>
+        <div class="market-panel">
+          <span class="market-kicker" data-i18n="marketPublishBadge"></span>
+          <div class="market-title" data-i18n="marketPublishTitle"></div>
+          <p class="market-copy" data-i18n="marketPublishCopy"></p>
+        </div>
+      </div>
+
+      <div class="card card-fw">
+        <div class="ch">
+          <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v10H3V3z" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 6h5M5.5 9h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <span class="ch-title" data-i18n="chMarketplaceTemplates"></span>
+        </div>
+        <div class="cb">
+          <div class="template-grid">
+            <div class="template-card">
+              <div class="template-card-title">clean-code</div>
+              <div class="template-card-copy" data-i18n="templateCleanCodeCopy"></div>
+              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="clean-code" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
+            </div>
+            <div class="template-card">
+              <div class="template-card-title">architecture</div>
+              <div class="template-card-copy" data-i18n="templateArchitectureCopy"></div>
+              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="architecture" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
+            </div>
+            <div class="template-card">
+              <div class="template-card-title">cyber-security</div>
+              <div class="template-card-copy" data-i18n="templateCyberSecurityCopy"></div>
+              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="cyber-security" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
+            </div>
+            <div class="template-card">
+              <div class="template-card-title">quality-assurance</div>
+              <div class="template-card-copy" data-i18n="templateQualityAssuranceCopy"></div>
+              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="quality-assurance" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
+            </div>
+            <div class="template-card">
+              <div class="template-card-title">front-end</div>
+              <div class="template-card-copy" data-i18n="templateFrontEndCopy"></div>
+              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="front-end" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
+            </div>
+            <div class="template-card">
+              <div class="template-card-title">build-agents</div>
+              <div class="template-card-copy" data-i18n="templateBuildAgentsCopy"></div>
+              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="build-agents" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Settings -->
     <div id="page-settings" class="page">
       <div class="ph">
@@ -776,9 +878,9 @@
 const LANGS = {
   en: {
     topbarSub: 'knowledge dashboard',
-    navGroupOverview: 'Overview', navGroupKnowledge: 'Knowledge', navGroupAgent: 'Agent', navGroupCode: 'Codebase', navGroupTraining: 'Training', navGroupSystem: 'System',
+    navGroupOverview: 'Overview', navGroupKnowledge: 'Knowledge', navGroupAgent: 'Agent', navGroupCode: 'Codebase', navGroupTraining: 'Training', navGroupMarketplace: 'Marketplace', navGroupSystem: 'System',
     navDashboard: 'Dashboard', navDomains: 'Domains', navKnowledge: 'Knowledge',
-    navSources: 'Sources', navMemory: 'Agent Memory', navTrust: 'Trust Lifecycle', navCodebase: 'Codebase', navTraining: 'Training Data', navSettings: 'Settings',
+    navSources: 'Sources', navMemory: 'Agent Memory', navTrust: 'Trust Lifecycle', navCodebase: 'Codebase', navTraining: 'Training Data', navMarketplace: 'Marketplace', navSettings: 'Settings',
     btnRefresh: '↺ Refresh', btnLoading: '↺ Loading…',
     statusConnecting: 'connecting…', statusLive: 'klayer.db · live', statusError: 'API unreachable',
     statDomains: 'Domains', statDomainsHint: 'active namespaces',
@@ -845,12 +947,39 @@ const LANGS = {
     settingsProject: 'Project', settingsTransport: 'Transport',
     filterDomainLabel: 'Filter by Domain:',
     filterAllDomains: 'All Domains',
+    phMarketplaceSub: 'Browse ready-to-use domain templates instead of starting from scratch',
+    marketPublicBadge: 'Open to everyone',
+    marketHeroTitle: 'Use validated templates instantly',
+    marketHeroCopy: 'The Marketplace is a shared library of domain templates that any user can browse and use to bootstrap a klayer workspace faster.',
+    marketStepUse: 'Pick a public template that matches the domain you want to start from.',
+    marketStepAdapt: 'Import it, adapt the guidance to your project, and keep ownership of your local knowledge.',
+    marketStepPublish: 'Publishing a new domain is gated separately: contact the creator for validation and permission before it becomes available to everyone.',
+    marketPublishBadge: 'Publishing requires approval',
+    marketPublishTitle: 'Publish after validation',
+    marketPublishCopy: 'Users who want to share domains in the Marketplace should contact the creator. The domain is reviewed, validated, and approved before it is listed publicly.',
+    chMarketplaceTemplates: 'Marketplace Domains',
+    templateCleanCodeCopy: 'SOLID, KISS, YAGNI, DRY, self-explanatory variables and functions, i18n, plus LGPD and GDPR compliance.',
+    templateArchitectureCopy: 'Teacher mode for evaluating context and complexity, with modular monoliths, hexagonal architecture, microservices, and other patterns.',
+    templateCyberSecurityCopy: 'SQL injection, XSS, rate limiting, red teams, prevention against script kiddies and APTs, plus attack simulation.',
+    templateQualityAssuranceCopy: 'Unit, integration, stress, and other tests with k6, Locust, Vegeta, and Playwright or Cypress automation.',
+    templateFrontEndCopy: 'Enterprise front-end practices for Angular, React, shadcn, Chakra, and more, with rigorous anti AI-slop validation.',
+    templateBuildAgentsCopy: 'Agent-building templates for CrewAI, LangChain, Langflow, watsonx Orchestrate ADK, Antigravity SDK, and Vercel SDK.',
+    marketTemplateLabel: 'domain template',
+    marketApplyBtn: 'Apply',
+    marketAppliedBtn: 'Applied',
+    marketAppliedHint: 'Remove this domain to apply the template again.',
+    marketApplying: 'Applying…',
+    marketApplied: (d,i,s) => `Applied ${d}: ${i} new reviewed items, ${s} already present.`,
+    removeBtn: 'Remove',
+    removeDomainWarning: name => `Remove domain "${name}" and all its knowledge, sources, and chunks? This cannot be undone.`,
+    removeKnowledgeWarning: title => `Remove knowledge item "${title}"? This cannot be undone.`,
+    removeSourceWarning: title => `Remove source "${title}" and its chunks? This cannot be undone.`,
   },
   pt: {
     topbarSub: 'painel de conhecimento',
-    navGroupOverview: 'Visão Geral', navGroupKnowledge: 'Conhecimento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupTraining: 'Treinamento', navGroupSystem: 'Sistema',
+    navGroupOverview: 'Visão Geral', navGroupKnowledge: 'Conhecimento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupTraining: 'Treinamento', navGroupMarketplace: 'Marketplace', navGroupSystem: 'Sistema',
     navDashboard: 'Painel', navDomains: 'Domínios', navKnowledge: 'Conhecimento',
-    navSources: 'Fontes', navMemory: 'Memória do Agente', navTrust: 'Ciclo de Confiança', navCodebase: 'Base de Código', navTraining: 'Dados de Treinamento', navSettings: 'Configurações',
+    navSources: 'Fontes', navMemory: 'Memória do Agente', navTrust: 'Ciclo de Confiança', navCodebase: 'Base de Código', navTraining: 'Dados de Treinamento', navMarketplace: 'Marketplace', navSettings: 'Configurações',
     btnRefresh: '↺ Atualizar', btnLoading: '↺ Carregando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · ativo', statusError: 'API inacessível',
     statDomains: 'Domínios', statDomainsHint: 'namespaces ativos',
@@ -917,12 +1046,39 @@ const LANGS = {
     settingsProject: 'Projeto', settingsTransport: 'Transporte',
     filterDomainLabel: 'Filtrar por Domínio:',
     filterAllDomains: 'Todos os Domínios',
+    phMarketplaceSub: 'Explore templates de domínio prontos para uso em vez de começar do zero',
+    marketPublicBadge: 'Aberto para todos',
+    marketHeroTitle: 'Use templates validados instantaneamente',
+    marketHeroCopy: 'O Marketplace é uma biblioteca compartilhada de templates de domínio que qualquer usuário pode explorar e usar para iniciar um workspace klayer mais rápido.',
+    marketStepUse: 'Escolha um template público que combine com o domínio que você quer criar.',
+    marketStepAdapt: 'Importe, adapte a orientação ao seu projeto e mantenha a propriedade do seu conhecimento local.',
+    marketStepPublish: 'Publicar um novo domínio é controlado separadamente: contate o criador para validação e permissão antes que ele fique disponível para todos.',
+    marketPublishBadge: 'Publicação requer aprovação',
+    marketPublishTitle: 'Publique após validação',
+    marketPublishCopy: 'Usuários que querem compartilhar domínios no Marketplace devem contatar o criador. O domínio é revisado, validado e aprovado antes de ser listado publicamente.',
+    chMarketplaceTemplates: 'Domínios do Marketplace',
+    templateCleanCodeCopy: 'SOLID, KISS, YAGNI, DRY, variáveis e funções autoexplicativas, i18n, além de conformidade com LGPD e GDPR.',
+    templateArchitectureCopy: 'Modo professor para avaliar contexto e complexidade, com monólitos modulares, arquitetura hexagonal, microsserviços e outros padrões.',
+    templateCyberSecurityCopy: 'SQL injection, XSS, rate limiting, red teams, prevenção contra script kiddies e APTs, além de simulação de ataques.',
+    templateQualityAssuranceCopy: 'Testes unitários, de integração, estresse e outros com k6, Locust, Vegeta e automação Playwright ou Cypress.',
+    templateFrontEndCopy: 'Práticas front-end enterprise para Angular, React, shadcn, Chakra e mais, com validação rigorosa anti AI-slop.',
+    templateBuildAgentsCopy: 'Templates para criação de agentes com CrewAI, LangChain, Langflow, watsonx Orchestrate ADK, Antigravity SDK e Vercel SDK.',
+    marketTemplateLabel: 'template de domínio',
+    marketApplyBtn: 'Aplicar',
+    marketAppliedBtn: 'Aplicado',
+    marketAppliedHint: 'Remova este domínio para aplicar o template novamente.',
+    marketApplying: 'Aplicando…',
+    marketApplied: (d,i,s) => `${d} aplicado: ${i} novos itens revisados, ${s} já existiam.`,
+    removeBtn: 'Remover',
+    removeDomainWarning: name => `Remover o domínio "${name}" e todo seu conhecimento, fontes e fragmentos? Esta ação não pode ser desfeita.`,
+    removeKnowledgeWarning: title => `Remover o item de conhecimento "${title}"? Esta ação não pode ser desfeita.`,
+    removeSourceWarning: title => `Remover a fonte "${title}" e seus fragmentos? Esta ação não pode ser desfeita.`,
   },
   es: {
     topbarSub: 'panel de conocimiento',
-    navGroupOverview: 'Resumen', navGroupKnowledge: 'Conocimiento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupTraining: 'Entrenamiento', navGroupSystem: 'Sistema',
+    navGroupOverview: 'Resumen', navGroupKnowledge: 'Conocimiento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupTraining: 'Entrenamiento', navGroupMarketplace: 'Marketplace', navGroupSystem: 'Sistema',
     navDashboard: 'Panel', navDomains: 'Dominios', navKnowledge: 'Conocimiento',
-    navSources: 'Fuentes', navMemory: 'Memoria del Agente', navTrust: 'Ciclo de Confianza', navCodebase: 'Base de Código', navTraining: 'Datos de Entrenamiento', navSettings: 'Configuración',
+    navSources: 'Fuentes', navMemory: 'Memoria del Agente', navTrust: 'Ciclo de Confianza', navCodebase: 'Base de Código', navTraining: 'Datos de Entrenamiento', navMarketplace: 'Marketplace', navSettings: 'Configuración',
     btnRefresh: '↺ Actualizar', btnLoading: '↺ Cargando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · activo', statusError: 'API no disponible',
     statDomains: 'Dominios', statDomainsHint: 'espacios de nombres activos',
@@ -989,12 +1145,39 @@ const LANGS = {
     settingsProject: 'Proyecto', settingsTransport: 'Transporte',
     filterDomainLabel: 'Filtrar por Dominio:',
     filterAllDomains: 'Todos los Dominios',
+    phMarketplaceSub: 'Explora plantillas de dominio listas para usar en lugar de empezar desde cero',
+    marketPublicBadge: 'Abierto para todos',
+    marketHeroTitle: 'Usa plantillas validadas al instante',
+    marketHeroCopy: 'El Marketplace es una biblioteca compartida de plantillas de dominio que cualquier usuario puede explorar y usar para iniciar un workspace de klayer más rápido.',
+    marketStepUse: 'Elige una plantilla pública que coincida con el dominio desde el que quieres empezar.',
+    marketStepAdapt: 'Impórtala, adapta la guía a tu proyecto y conserva la propiedad de tu conocimiento local.',
+    marketStepPublish: 'Publicar un nuevo dominio se controla por separado: contacta al creador para validación y permiso antes de que esté disponible para todos.',
+    marketPublishBadge: 'Publicar requiere aprobación',
+    marketPublishTitle: 'Publica después de la validación',
+    marketPublishCopy: 'Los usuarios que quieran compartir dominios en el Marketplace deben contactar al creador. El dominio se revisa, valida y aprueba antes de listarse públicamente.',
+    chMarketplaceTemplates: 'Dominios del Marketplace',
+    templateCleanCodeCopy: 'SOLID, KISS, YAGNI, DRY, variables y funciones autoexplicativas, i18n, además de cumplimiento con LGPD y GDPR.',
+    templateArchitectureCopy: 'Modo profesor para evaluar contexto y complejidad, con monolitos modulares, arquitectura hexagonal, microservicios y otros patrones.',
+    templateCyberSecurityCopy: 'SQL injection, XSS, rate limiting, red teams, prevención contra script kiddies y APTs, además de simulación de ataques.',
+    templateQualityAssuranceCopy: 'Pruebas unitarias, de integración, estrés y otros tipos con k6, Locust, Vegeta y automatización con Playwright o Cypress.',
+    templateFrontEndCopy: 'Prácticas front-end enterprise para Angular, React, shadcn, Chakra y más, con validación rigurosa anti AI-slop.',
+    templateBuildAgentsCopy: 'Plantillas para crear agentes con CrewAI, LangChain, Langflow, watsonx Orchestrate ADK, Antigravity SDK y Vercel SDK.',
+    marketTemplateLabel: 'plantilla de dominio',
+    marketApplyBtn: 'Aplicar',
+    marketAppliedBtn: 'Aplicado',
+    marketAppliedHint: 'Elimina este dominio para aplicar la plantilla de nuevo.',
+    marketApplying: 'Aplicando…',
+    marketApplied: (d,i,s) => `${d} aplicado: ${i} nuevos elementos revisados, ${s} ya existían.`,
+    removeBtn: 'Eliminar',
+    removeDomainWarning: name => `¿Eliminar el dominio "${name}" y todo su conocimiento, fuentes y fragmentos? Esta acción no se puede deshacer.`,
+    removeKnowledgeWarning: title => `¿Eliminar el elemento de conocimiento "${title}"? Esta acción no se puede deshacer.`,
+    removeSourceWarning: title => `¿Eliminar la fuente "${title}" y sus fragmentos? Esta acción no se puede deshacer.`,
   },
   zh: {
     topbarSub: '知识控制台',
-    navGroupOverview: '概览', navGroupKnowledge: '知识', navGroupAgent: '智能体', navGroupCode: '代码库', navGroupTraining: '训练', navGroupSystem: '系统',
+    navGroupOverview: '概览', navGroupKnowledge: '知识', navGroupAgent: '智能体', navGroupCode: '代码库', navGroupTraining: '训练', navGroupMarketplace: '市场', navGroupSystem: '系统',
     navDashboard: '控制台', navDomains: '域', navKnowledge: '知识',
-    navSources: '来源', navMemory: '智能体记忆', navTrust: '信任生命周期', navCodebase: '代码库', navTraining: '训练数据', navSettings: '设置',
+    navSources: '来源', navMemory: '智能体记忆', navTrust: '信任生命周期', navCodebase: '代码库', navTraining: '训练数据', navMarketplace: '市场', navSettings: '设置',
     btnRefresh: '↺ 刷新', btnLoading: '↺ 加载中…',
     statusConnecting: '连接中…', statusLive: 'klayer.db · 在线', statusError: 'API 不可达',
     statDomains: '域', statDomainsHint: '活跃命名空间',
@@ -1061,12 +1244,39 @@ const LANGS = {
     settingsProject: '项目', settingsTransport: '传输',
     filterDomainLabel: '按域过滤:',
     filterAllDomains: '所有域',
+    phMarketplaceSub: '浏览可直接使用的域模板，不必从零开始',
+    marketPublicBadge: '所有人可用',
+    marketHeroTitle: '立即使用已验证模板',
+    marketHeroCopy: 'Marketplace 是共享的域模板库，任何用户都可以浏览并用它更快地启动 klayer 工作区。',
+    marketStepUse: '选择与你要创建的领域匹配的公共模板。',
+    marketStepAdapt: '导入模板，按项目调整指导内容，并保留本地知识的所有权。',
+    marketStepPublish: '发布新域单独受控：在向所有人开放之前，需要联系创建者进行验证并获得许可。',
+    marketPublishBadge: '发布需要审批',
+    marketPublishTitle: '验证后发布',
+    marketPublishCopy: '想在 Marketplace 分享域的用户需要联系创建者。域会先经过审核、验证和批准，然后才会公开列出。',
+    chMarketplaceTemplates: 'Marketplace 域',
+    templateCleanCodeCopy: 'SOLID、KISS、YAGNI、DRY、自解释变量和函数、i18n，以及 LGPD 和 GDPR 合规。',
+    templateArchitectureCopy: '教师模式用于按上下文和复杂度评估，涵盖模块化单体、六边形架构、微服务和其他模式。',
+    templateCyberSecurityCopy: 'SQL 注入、XSS、速率限制、红队、防范脚本小子和 APT，以及攻击模拟。',
+    templateQualityAssuranceCopy: '单元测试、集成测试、压力测试和其他测试，使用 k6、Locust、Vegeta，以及 Playwright 或 Cypress 自动化。',
+    templateFrontEndCopy: '面向企业级前端的最佳实践，覆盖 Angular、React、shadcn、Chakra 等，并进行严格的反 AI-slop 验证。',
+    templateBuildAgentsCopy: '使用 CrewAI、LangChain、Langflow、watsonx Orchestrate ADK、Antigravity SDK 和 Vercel SDK 构建智能体的模板。',
+    marketTemplateLabel: '域模板',
+    marketApplyBtn: '应用',
+    marketAppliedBtn: '已应用',
+    marketAppliedHint: '删除此域后即可再次应用该模板。',
+    marketApplying: '正在应用…',
+    marketApplied: (d,i,s) => `已应用 ${d}：${i} 个新的已审核条目，${s} 个已存在。`,
+    removeBtn: '删除',
+    removeDomainWarning: name => `删除域 "${name}" 及其所有知识、来源和片段？此操作无法撤销。`,
+    removeKnowledgeWarning: title => `删除知识条目 "${title}"？此操作无法撤销。`,
+    removeSourceWarning: title => `删除来源 "${title}" 及其片段？此操作无法撤销。`,
   },
   pl: {
     topbarSub: 'panel wiedzy',
-    navGroupOverview: 'Przegląd', navGroupKnowledge: 'Wiedza', navGroupAgent: 'Agent', navGroupCode: 'Kod', navGroupTraining: 'Trening', navGroupSystem: 'System',
+    navGroupOverview: 'Przegląd', navGroupKnowledge: 'Wiedza', navGroupAgent: 'Agent', navGroupCode: 'Kod', navGroupTraining: 'Trening', navGroupMarketplace: 'Marketplace', navGroupSystem: 'System',
     navDashboard: 'Panel', navDomains: 'Domeny', navKnowledge: 'Wiedza',
-    navSources: 'Źródła', navMemory: 'Pamięć Agenta', navTrust: 'Cykl Zaufania', navCodebase: 'Baza Kodu', navTraining: 'Dane Treningowe', navSettings: 'Ustawienia',
+    navSources: 'Źródła', navMemory: 'Pamięć Agenta', navTrust: 'Cykl Zaufania', navCodebase: 'Baza Kodu', navTraining: 'Dane Treningowe', navMarketplace: 'Marketplace', navSettings: 'Ustawienia',
     btnRefresh: '↺ Odśwież', btnLoading: '↺ Ładowanie…',
     statusConnecting: 'łączenie…', statusLive: 'klayer.db · aktywny', statusError: 'API niedostępne',
     statDomains: 'Domeny', statDomainsHint: 'aktywne przestrzenie nazw',
@@ -1133,6 +1343,33 @@ const LANGS = {
     settingsProject: 'Projekt', settingsTransport: 'Transport',
     filterDomainLabel: 'Filtruj według domeny:',
     filterAllDomains: 'Wszystkie domeny',
+    phMarketplaceSub: 'Przeglądaj gotowe szablony domen zamiast zaczynać od zera',
+    marketPublicBadge: 'Dostępne dla wszystkich',
+    marketHeroTitle: 'Używaj zweryfikowanych szablonów od razu',
+    marketHeroCopy: 'Marketplace to współdzielona biblioteka szablonów domen, którą każdy użytkownik może przeglądać i wykorzystywać do szybszego uruchamiania workspace klayer.',
+    marketStepUse: 'Wybierz publiczny szablon pasujący do domeny, od której chcesz zacząć.',
+    marketStepAdapt: 'Zaimportuj go, dostosuj wskazówki do projektu i zachowaj własność lokalnej wiedzy.',
+    marketStepPublish: 'Publikowanie nowej domeny jest kontrolowane osobno: skontaktuj się z twórcą w celu walidacji i uzyskania zgody, zanim będzie dostępna dla wszystkich.',
+    marketPublishBadge: 'Publikacja wymaga akceptacji',
+    marketPublishTitle: 'Publikuj po walidacji',
+    marketPublishCopy: 'Użytkownicy, którzy chcą udostępniać domeny w Marketplace, powinni skontaktować się z twórcą. Domena jest sprawdzana, walidowana i akceptowana przed publicznym opublikowaniem.',
+    chMarketplaceTemplates: 'Domeny Marketplace',
+    templateCleanCodeCopy: 'SOLID, KISS, YAGNI, DRY, samoopisujące się zmienne i funkcje, i18n oraz zgodność z LGPD i GDPR.',
+    templateArchitectureCopy: 'Tryb nauczyciela do oceny kontekstu i złożoności, z monolitami modułowymi, architekturą heksagonalną, mikroserwisami i innymi wzorcami.',
+    templateCyberSecurityCopy: 'SQL injection, XSS, rate limiting, red teams, ochrona przed script kiddies i APT oraz symulacje ataków.',
+    templateQualityAssuranceCopy: 'Testy jednostkowe, integracyjne, obciążeniowe i inne z k6, Locust, Vegeta oraz automatyzacją Playwright lub Cypress.',
+    templateFrontEndCopy: 'Enterprise front-end practices dla Angular, React, shadcn, Chakra i innych, z rygorystyczną walidacją anty AI-slop.',
+    templateBuildAgentsCopy: 'Szablony budowy agentów dla CrewAI, LangChain, Langflow, watsonx Orchestrate ADK, Antigravity SDK i Vercel SDK.',
+    marketTemplateLabel: 'szablon domeny',
+    marketApplyBtn: 'Zastosuj',
+    marketAppliedBtn: 'Zastosowano',
+    marketAppliedHint: 'Usuń tę domenę, aby ponownie zastosować szablon.',
+    marketApplying: 'Stosowanie…',
+    marketApplied: (d,i,s) => `Zastosowano ${d}: ${i} nowych zrecenzowanych elementów, ${s} już istniało.`,
+    removeBtn: 'Usuń',
+    removeDomainWarning: name => `Usunąć domenę "${name}" oraz całą jej wiedzę, źródła i fragmenty? Tej operacji nie można cofnąć.`,
+    removeKnowledgeWarning: title => `Usunąć element wiedzy "${title}"? Tej operacji nie można cofnąć.`,
+    removeSourceWarning: title => `Usunąć źródło "${title}" i jego fragmenty? Tej operacji nie można cofnąć.`,
   },
 };
 
@@ -1298,6 +1535,21 @@ const domainIcon = d => ({'clean-code':'📄','cybersecurity':'🔐','design-ui-
 const fmtDate = ts => ts ? new Date(ts*1000).toISOString().slice(0,10) : '—';
 const fmtTs   = ts => ts ? new Date(ts*1000).toISOString().replace('T',' ').slice(0,16) : '—';
 
+function marketplaceDomainExists(slug) {
+  return G.domains.some(d => d.name === slug);
+}
+
+function updateMarketplaceButtons() {
+  document.querySelectorAll('.template-apply-btn[data-template]').forEach(btn => {
+    if (btn.dataset.applying === 'true') return;
+    const applied = marketplaceDomainExists(btn.dataset.template);
+    btn.disabled = applied;
+    btn.classList.toggle('is-applied', applied);
+    btn.textContent = t(applied ? 'marketAppliedBtn' : 'marketApplyBtn');
+    btn.title = applied ? t('marketAppliedHint') : '';
+  });
+}
+
 function trustFlowHtml(raw, proposed, reviewed, user) {
   return `
     <div class="tnode tn-raw"><div class="tnode-lbl">${t('tnUntrusted')}</div><div class="tnode-val">${raw}</div><div class="tnode-sub">${t('tnRawIngest')}</div></div>
@@ -1364,14 +1616,17 @@ function renderDomains() {
   document.getElementById('domain-grid').innerHTML = domains.length
     ? domains.map(d => `
         <div class="dcard">
-          <div class="dcard-name">${escHtml(d.name)}</div>
+          <div class="dcard-head">
+            <div class="dcard-name">${escHtml(d.name)}</div>
+            <button class="danger-btn" data-domain="${escHtml(d.name)}" onclick="deleteDomain(this.dataset.domain,this)">${t('removeBtn')}</button>
+          </div>
           <div class="dcard-desc">${escHtml(d.description||'—')}</div>
           <div class="dcard-row">
-            <div class="clickable-stat" onclick="showSourcesForDomain('${escHtml(d.name)}')">
+            <div class="clickable-stat" data-domain="${escHtml(d.name)}" onclick="showSourcesForDomain(this.dataset.domain)">
               <div class="dcard-stat-val">${d.doc_count}</div>
               <div class="dcard-stat-lbl">${t('dcDocuments')}</div>
             </div>
-            <div class="clickable-stat" onclick="showKnowledgeForDomain('${escHtml(d.name)}')">
+            <div class="clickable-stat" data-domain="${escHtml(d.name)}" onclick="showKnowledgeForDomain(this.dataset.domain)">
               <div class="dcard-stat-val">${d.rule_count}</div>
               <div class="dcard-stat-lbl">${t('dcRules')}</div>
             </div>
@@ -1394,11 +1649,12 @@ function renderKnowledge() {
           <td>${domainTag(k.domain)}</td>
           <td>${trustBadge(k.trust)}</td>
           <td class="td-dim">${fmtDate(k.created_at)}</td>
+          <td><button class="danger-btn" data-title="${escHtml(k.title)}" onclick="deleteKnowledge(${k.id},this.dataset.title,this,event)">${t('removeBtn')}</button></td>
         </tr>
         <tr id="kd-${i}" style="display:none">
-          <td colspan="5" style="padding:.75rem 1.25rem 1rem;background:var(--bg);font-size:.79rem;color:var(--body);white-space:pre-wrap;word-break:break-word;border-bottom:1px solid var(--border);line-height:1.55">${escHtml(k.body||k.content||k.text||'(no body)')}</td>
+          <td colspan="6" style="padding:.75rem 1.25rem 1rem;background:var(--bg);font-size:.79rem;color:var(--body);white-space:pre-wrap;word-break:break-word;border-bottom:1px solid var(--border);line-height:1.55">${escHtml(k.body||k.content||k.text||'(no body)')}</td>
         </tr>`).join('')
-    : `<tr><td colspan="5" class="empty">${t('emptyKnowledge')}</td></tr>`;
+    : `<tr><td colspan="6" class="empty">${t('emptyKnowledge')}</td></tr>`;
 }
 
 function toggleKnowledgeDetail(i) {
@@ -1427,6 +1683,7 @@ function renderSources() {
             <div class="src-meta">${escHtml(s.title||'')} · ${t('ingestedDate')(fmtDate(s.fetched_at))}</div>
           </div>
           <div class="src-end">${domainTag(s.domain)}</div>
+          <button class="danger-btn" data-title="${escHtml(uri || s.title || 'source')}" onclick="deleteSource(${s.id},this.dataset.title,this)">${t('removeBtn')}</button>
         </div>`;}).join('')
     : `<div class="empty">${t('emptySources')}</div>`;
 }
@@ -1556,6 +1813,7 @@ function renderAll() {
   renderOverview(); renderDomains(); renderKnowledge();
   renderSources(); renderEpisodes(); renderTrust();
   renderCodebase(); renderTraining(); renderSettings();
+  updateMarketplaceButtons();
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -1656,6 +1914,63 @@ async function clearSources() {
     if (r.ok) { await loadData(); }
     else alert('Clear failed: ' + (r.error || 'unknown error'));
   } catch(e) { alert('Clear failed: ' + e); }
+}
+
+async function runDelete(url, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await fetch(url).then(res => res.json());
+    if (r.ok) { await loadData(); }
+    else alert('Remove failed: ' + (r.error || 'not found'));
+  } catch(e) {
+    alert('Remove failed: ' + e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = t('removeBtn'); }
+  }
+}
+
+async function deleteDomain(name, btn) {
+  if (!confirm(t('removeDomainWarning')(name))) return;
+  await runDelete(`/api/domain/delete?name=${encodeURIComponent(name)}`, btn);
+}
+
+async function deleteKnowledge(id, title, btn, event) {
+  if (event) event.stopPropagation();
+  if (!confirm(t('removeKnowledgeWarning')(title))) return;
+  await runDelete(`/api/knowledge/delete?id=${encodeURIComponent(id)}`, btn);
+}
+
+async function deleteSource(id, title, btn) {
+  if (!confirm(t('removeSourceWarning')(title))) return;
+  await runDelete(`/api/source/delete?id=${encodeURIComponent(id)}`, btn);
+}
+
+async function applyMarketplaceTemplate(slug, btn) {
+  if (marketplaceDomainExists(slug)) {
+    updateMarketplaceButtons();
+    return;
+  }
+  if (btn) {
+    btn.dataset.applying = 'true';
+    btn.disabled = true;
+    btn.classList.remove('is-applied');
+    btn.textContent = t('marketApplying');
+  }
+  try {
+    const r = await fetch(`/api/marketplace/apply?template=${encodeURIComponent(slug)}`).then(res => res.json());
+    if (!r.ok) {
+      alert('Apply failed: ' + (r.error || 'unknown error'));
+      return;
+    }
+    await loadData();
+    showPage('domains');
+    alert(t('marketApplied')(r.domain || slug, r.inserted ?? 0, r.skipped ?? 0));
+  } catch(e) {
+    alert('Apply failed: ' + e);
+  } finally {
+    if (btn) delete btn.dataset.applying;
+    updateMarketplaceButtons();
+  }
 }
 
 async function clearEpisodes() {

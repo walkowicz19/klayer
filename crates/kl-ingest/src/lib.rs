@@ -44,22 +44,27 @@ fn fetch_file(source: &str) -> Result<Fetched> {
         source.to_string()
     };
 
-    let body = std::fs::read(&path)
-        .with_context(|| format!("read file {path}"))?;
+    let body = std::fs::read(&path).with_context(|| format!("read file {path}"))?;
     let content_type = content_type_from_ext(Path::new(&path)).to_string();
     Ok(Fetched { content_type, body })
 }
 
 fn content_type_from_ext(path: &Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase().as_str() {
-        "pdf"                   => "application/pdf",
-        "json"                  => "application/json",
-        "md" | "markdown"       => "text/markdown",
-        "txt"                   => "text/plain",
-        "html" | "htm"          => "text/html",
-        "xml"                   => "text/xml",
-        "csv"                   => "text/plain",
-        _                       => "application/octet-stream",
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
+        "pdf" => "application/pdf",
+        "json" => "application/json",
+        "md" | "markdown" => "text/markdown",
+        "txt" => "text/plain",
+        "html" | "htm" => "text/html",
+        "xml" => "text/xml",
+        "csv" => "text/plain",
+        _ => "application/octet-stream",
     }
 }
 
@@ -122,8 +127,7 @@ fn extract_html(body: &[u8]) -> (String, String) {
         .trim()
         .to_string();
 
-    let sel = Selector::parse("p, li, h1, h2, h3, h4, pre, blockquote")
-        .expect("static selector");
+    let sel = Selector::parse("p, li, h1, h2, h3, h4, pre, blockquote").expect("static selector");
     let mut parts: Vec<String> = Vec::new();
     for el in doc.select(&sel) {
         let t = el.text().collect::<String>();
@@ -142,13 +146,17 @@ fn extract_pdf(body: &[u8]) -> (String, String) {
             if text.is_empty() {
                 (
                     String::new(),
-                    "[klayer] PDF contained no extractable text (may be a scanned image).".to_string(),
+                    "[klayer] PDF contained no extractable text (may be a scanned image)."
+                        .to_string(),
                 )
             } else {
                 (String::new(), text)
             }
         }
-        Err(e) => (String::new(), format!("[klayer] PDF extraction failed: {e}")),
+        Err(e) => (
+            String::new(),
+            format!("[klayer] PDF extraction failed: {e}"),
+        ),
     }
 }
 
@@ -161,7 +169,10 @@ fn extract_json(body: &[u8]) -> (String, String) {
 }
 
 fn extract_plain(body: &[u8]) -> (String, String) {
-    (String::new(), String::from_utf8_lossy(body).trim().to_string())
+    (
+        String::new(),
+        String::from_utf8_lossy(body).trim().to_string(),
+    )
 }
 
 /// Greedy paragraph packing into ~`max`-char chunks (chars, not tokens).

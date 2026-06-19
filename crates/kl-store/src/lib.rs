@@ -23,18 +23,27 @@ impl Store {
         let conn = Connection::open(path).with_context(|| format!("opening db at {path}"))?;
         conn.pragma_update(None, "journal_mode", "WAL").ok();
         conn.pragma_update(None, "foreign_keys", "ON").ok();
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     pub fn migrate(&self) -> Result<()> {
         let c = self.conn.lock().unwrap();
-        c.execute_batch(MIGRATION).context("running migration 0001")?;
+        c.execute_batch(MIGRATION)
+            .context("running migration 0001")?;
         Ok(())
     }
 
     // ---- ingestion (reference tier) --------------------------------------
 
-    pub fn add_source(&self, kind: &str, uri: Option<&str>, title: Option<&str>, domain: &str) -> Result<i64> {
+    pub fn add_source(
+        &self,
+        kind: &str,
+        uri: Option<&str>,
+        title: Option<&str>,
+        domain: &str,
+    ) -> Result<i64> {
         let now = Utc::now().timestamp();
         let c = self.conn.lock().unwrap();
         c.execute(
@@ -56,7 +65,10 @@ impl Store {
                 params![source_id, domain, ord as i64, text],
             )?;
             let id = tx.last_insert_rowid();
-            tx.execute("INSERT INTO chunks_fts (rowid, text) VALUES (?1, ?2)", params![id, text])?;
+            tx.execute(
+                "INSERT INTO chunks_fts (rowid, text) VALUES (?1, ?2)",
+                params![id, text],
+            )?;
         }
         // Fold the domain touch into the same transaction so we only hold the
         // mutex once. The original design called touch_domain_internal after
@@ -74,7 +86,18 @@ impl Store {
 
     /// User-authored fact: highest trust, immediately enforceable.
     pub fn remember(&self, domain: &str, statement: &str) -> Result<i64> {
-        self.insert_knowledge(Kind::Fact, domain, None, statement, statement, None, None, None, None, Trust::User)
+        self.insert_knowledge(
+            Kind::Fact,
+            domain,
+            None,
+            statement,
+            statement,
+            None,
+            None,
+            None,
+            None,
+            Trust::User,
+        )
     }
 
     /// LLM-extracted candidate: stored as `proposed`, NOT enforced until promoted.
@@ -91,7 +114,18 @@ impl Store {
         remediation: Option<&str>,
         source_id: Option<i64>,
     ) -> Result<i64> {
-        self.insert_knowledge(kind, domain, stage, title, body, trigger, severity, remediation, source_id, Trust::Proposed)
+        self.insert_knowledge(
+            kind,
+            domain,
+            stage,
+            title,
+            body,
+            trigger,
+            severity,
+            remediation,
+            source_id,
+            Trust::Proposed,
+        )
     }
 
     /// The validation gate: promote a proposed item to `reviewed` (enforceable).
@@ -112,11 +146,55 @@ impl Store {
         Ok(n > 0)
     }
 
+    pub fn delete_source(&self, id: i64) -> Result<bool> {
+        let mut c = self.conn.lock().unwrap();
+        let tx = c.transaction()?;
+
+        let domain: Option<String> = tx
+            .query_row(
+                "SELECT domain FROM sources WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(domain) = domain else {
+            return Ok(false);
+        };
+
+        tx.execute(
+            "DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE source_id = ?1)",
+            params![id],
+        )?;
+        tx.execute("DELETE FROM chunks WHERE source_id = ?1", params![id])?;
+        tx.execute(
+            "UPDATE knowledge SET source_id = NULL WHERE source_id = ?1",
+            params![id],
+        )?;
+        let n = tx.execute("DELETE FROM sources WHERE id = ?1", params![id])?;
+        tx.execute(
+            "UPDATE domains SET doc_count = MAX(doc_count - 1, 0), last_updated = ?2 WHERE name = ?1",
+            params![domain, Utc::now().timestamp()],
+        )?;
+        tx.commit()?;
+        Ok(n > 0)
+    }
+
     /// Remove all ingested chunks and sources for a domain.
     /// If `chunks_only` is false, also removes all curated knowledge (facts, rules, procedures).
     pub fn clear_domain(&self, domain: &str, chunks_only: bool) -> Result<(usize, usize)> {
         let mut c = self.conn.lock().unwrap();
         let tx = c.transaction()?;
+
+        let knowledge_deleted = if !chunks_only {
+            tx.execute("DELETE FROM knowledge WHERE domain = ?1", params![domain])?
+        } else {
+            tx.execute(
+                "UPDATE knowledge SET source_id = NULL
+                 WHERE source_id IN (SELECT id FROM sources WHERE domain = ?1)",
+                params![domain],
+            )?;
+            0
+        };
 
         // delete FTS index entries for this domain's chunks
         tx.execute(
@@ -126,12 +204,6 @@ impl Store {
         let chunks_deleted = tx.execute("DELETE FROM chunks WHERE domain = ?1", params![domain])?;
         tx.execute("DELETE FROM sources WHERE domain = ?1", params![domain])?;
         tx.execute("DELETE FROM domains WHERE name = ?1", params![domain])?;
-
-        let knowledge_deleted = if !chunks_only {
-            tx.execute("DELETE FROM knowledge WHERE domain = ?1", params![domain])?
-        } else {
-            0
-        };
 
         tx.commit()?;
         Ok((chunks_deleted, knowledge_deleted))
@@ -166,7 +238,13 @@ impl Store {
 
     /// Hybrid-ish recall: FTS over the reference tier + a LIKE pass over curated
     /// knowledge, merged and trust-ranked. Every hit carries provenance + trust.
-    pub fn recall(&self, domain: &str, query: &str, kind: Option<Kind>, k: usize) -> Result<Vec<RecallHit>> {
+    pub fn recall(
+        &self,
+        domain: &str,
+        query: &str,
+        kind: Option<Kind>,
+        k: usize,
+    ) -> Result<Vec<RecallHit>> {
         let c = self.conn.lock().unwrap();
         let mut hits: Vec<RecallHit> = Vec::new();
 
@@ -249,7 +327,9 @@ impl Store {
                 domain: domain.to_string(),
                 enforceable: Trust::parse(&trust_s).is_enforceable(),
                 trust: trust_s,
-                provenance: r.get::<_, Option<i64>>(4)?.map(|id| format!("knowledge:source#{id}")),
+                provenance: r
+                    .get::<_, Option<i64>>(4)?
+                    .map(|id| format!("knowledge:source#{id}")),
                 fetched_at: r.get::<_, Option<i64>>(5)?,
                 score: 0.0,
             })
@@ -263,7 +343,11 @@ impl Store {
         hits.sort_by(|a, b| {
             let ta = Trust::parse(&a.trust).rank();
             let tb = Trust::parse(&b.trust).rank();
-            tb.cmp(&ta).then(a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
+            tb.cmp(&ta).then(
+                a.score
+                    .partial_cmp(&b.score)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
         });
         hits.truncate(k.max(1));
         Ok(hits)
@@ -273,7 +357,12 @@ impl Store {
 
     /// List knowledge items with optional trust and kind filters.
     /// Returns up to 100 rows newest-first so callers can page if needed.
-    pub fn list_knowledge(&self, domain: &str, trust: Option<&str>, kind: Option<Kind>) -> Result<Vec<KnowledgeRow>> {
+    pub fn list_knowledge(
+        &self,
+        domain: &str,
+        trust: Option<&str>,
+        kind: Option<Kind>,
+    ) -> Result<Vec<KnowledgeRow>> {
         let c = self.conn.lock().unwrap();
         let mut stmt = c.prepare(
             "SELECT id, kind, domain, stage, title, body, trust, severity, created_at, updated_at
@@ -325,7 +414,12 @@ impl Store {
 
     // ---- registries (drive the router) -----------------------------------
 
-    pub fn register_domain(&self, name: &str, description: Option<&str>, query_hint: Option<&str>) -> Result<()> {
+    pub fn register_domain(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        query_hint: Option<&str>,
+    ) -> Result<()> {
         let now = Utc::now().timestamp();
         let c = self.conn.lock().unwrap();
         c.execute(
@@ -369,7 +463,12 @@ impl Store {
               WHERE taxonomy = ?1 ORDER BY ordinal ASC",
         )?;
         let rows = stmt.query_map(params![taxonomy], |r| {
-            Ok(StageRow { taxonomy: r.get(0)?, name: r.get(1)?, ordinal: r.get(2)?, description: r.get(3)? })
+            Ok(StageRow {
+                taxonomy: r.get(0)?,
+                name: r.get(1)?,
+                ordinal: r.get(2)?,
+                description: r.get(3)?,
+            })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
@@ -407,11 +506,13 @@ impl Store {
     ) -> Result<i64> {
         let now = Utc::now().timestamp();
         let c = self.conn.lock().unwrap();
-        let step: i64 = c.query_row(
-            "SELECT COALESCE(MAX(step), 0) + 1 FROM episodes WHERE run_id = ?1",
-            params![run_id],
-            |r| r.get(0),
-        ).unwrap_or(1);
+        let step: i64 = c
+            .query_row(
+                "SELECT COALESCE(MAX(step), 0) + 1 FROM episodes WHERE run_id = ?1",
+                params![run_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(1);
         c.execute(
             "INSERT INTO episodes (run_id, step, stage, action, observation, outcome, ts)
              VALUES (?1,?2,?3,?4,?5,?6,?7)",
@@ -473,10 +574,10 @@ impl Store {
     pub fn clear_all_domains(&self) -> Result<u64> {
         let mut c = self.conn.lock().unwrap();
         let tx = c.transaction()?;
+        tx.execute("DELETE FROM knowledge", [])?;
         tx.execute("DELETE FROM chunks_fts", [])?;
         tx.execute("DELETE FROM chunks", [])?;
         tx.execute("DELETE FROM sources", [])?;
-        tx.execute("DELETE FROM knowledge", [])?;
         let n = tx.execute("DELETE FROM domains", [])?;
         tx.commit()?;
         Ok(n as u64)
@@ -491,6 +592,10 @@ impl Store {
     pub fn clear_all_sources(&self) -> Result<u64> {
         let mut c = self.conn.lock().unwrap();
         let tx = c.transaction()?;
+        tx.execute(
+            "UPDATE knowledge SET source_id = NULL WHERE source_id IS NOT NULL",
+            [],
+        )?;
         tx.execute("DELETE FROM chunks_fts", [])?;
         tx.execute("DELETE FROM chunks", [])?;
         let n = tx.execute("DELETE FROM sources", [])?;
@@ -508,7 +613,11 @@ impl Store {
     pub fn domain_exists(&self, name: &str) -> Result<bool> {
         let c = self.conn.lock().unwrap();
         let found: Option<String> = c
-            .query_row("SELECT name FROM domains WHERE name = ?1", params![name], |r| r.get(0))
+            .query_row(
+                "SELECT name FROM domains WHERE name = ?1",
+                params![name],
+                |r| r.get(0),
+            )
             .optional()?;
         Ok(found.is_some())
     }
