@@ -1790,17 +1790,17 @@ function renderMarketplace() {
   const grid = document.querySelector('.template-grid');
   if (!grid || !G.marketplaceTemplates) return;
   
-  grid.innerHTML = G.marketplaceTemplates.map(t => {
-    const langKey = 'template' + t.slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('') + 'Copy';
-    const copy = (LANGS[LANG] && LANGS[LANG][langKey]) || t.description;
+  grid.innerHTML = G.marketplaceTemplates.map(tmpl => {
+    const langKey = 'template' + tmpl.slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('') + 'Copy';
+    const copy = (LANGS[LANG] && LANGS[LANG][langKey]) || tmpl.description;
 
     return `
       <div class="template-card">
-        <div class="template-card-title">${escHtml(t.slug)}</div>
+        <div class="template-card-title">${escHtml(tmpl.slug)}</div>
         <div class="template-card-copy">${escHtml(copy)}</div>
         <div class="template-card-meta">
           <button class="code-search-btn template-apply-btn" 
-                  data-template="${escHtml(t.slug)}" 
+                  data-template="${escHtml(tmpl.slug)}" 
                   onclick="applyMarketplaceTemplate(this.dataset.template,this)">
             ${escHtml(t('marketApplyBtn'))}
           </button>
