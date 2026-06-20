@@ -148,6 +148,8 @@ marketplace source, and seeds reviewed knowledge items for that domain. If a
 domain has already been applied, its button becomes disabled until the domain is
 removed.
 
+Templates are loaded dynamically from `marketplace.json`. You can customize the available templates by placing a `marketplace.json` file in your working directory; if not present, the system defaults to its built-in set of templates.
+
 Publishing new templates is intentionally gated: users who want to share a domain
 publicly should contact the creator for validation and approval before it is
 listed for everyone.
@@ -217,6 +219,7 @@ The default port is **7474** (`KLAYER_DASHBOARD_PORT` to override).
 | `GET /api/domain/delete` | `name` | Remove one domain and its cascading data |
 | `GET /api/knowledge/delete` | `id` | Remove one knowledge item |
 | `GET /api/source/delete` | `id` | Remove one source and its chunks |
+| `GET /api/marketplace/templates` | — | List all available Marketplace domain templates |
 | `GET /api/marketplace/apply` | `template` | Apply a Marketplace domain template |
 
 ---
