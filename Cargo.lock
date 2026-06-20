@@ -881,7 +881,7 @@ dependencies = [
 
 [[package]]
 name = "kl-code"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "kl-core"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -901,7 +901,7 @@ dependencies = [
 
 [[package]]
 name = "kl-ingest"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "pdf-extract",
@@ -912,7 +912,7 @@ dependencies = [
 
 [[package]]
 name = "kl-mcp"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "kl-search"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -948,14 +948,14 @@ dependencies = [
 
 [[package]]
 name = "kl-skill"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "kl-core",
 ]
 
 [[package]]
 name = "kl-store"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -965,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "kl-train"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "anyhow",
  "chrono",
