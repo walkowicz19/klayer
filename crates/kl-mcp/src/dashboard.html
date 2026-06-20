@@ -774,38 +774,7 @@
           <span class="ch-title" data-i18n="chMarketplaceTemplates"></span>
         </div>
         <div class="cb">
-          <div class="template-grid">
-            <div class="template-card">
-              <div class="template-card-title">clean-code</div>
-              <div class="template-card-copy" data-i18n="templateCleanCodeCopy"></div>
-              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="clean-code" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
-            </div>
-            <div class="template-card">
-              <div class="template-card-title">architecture</div>
-              <div class="template-card-copy" data-i18n="templateArchitectureCopy"></div>
-              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="architecture" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
-            </div>
-            <div class="template-card">
-              <div class="template-card-title">cyber-security</div>
-              <div class="template-card-copy" data-i18n="templateCyberSecurityCopy"></div>
-              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="cyber-security" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
-            </div>
-            <div class="template-card">
-              <div class="template-card-title">quality-assurance</div>
-              <div class="template-card-copy" data-i18n="templateQualityAssuranceCopy"></div>
-              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="quality-assurance" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
-            </div>
-            <div class="template-card">
-              <div class="template-card-title">front-end</div>
-              <div class="template-card-copy" data-i18n="templateFrontEndCopy"></div>
-              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="front-end" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
-            </div>
-            <div class="template-card">
-              <div class="template-card-title">build-agents</div>
-              <div class="template-card-copy" data-i18n="templateBuildAgentsCopy"></div>
-              <div class="template-card-meta"><button class="code-search-btn template-apply-btn" data-template="build-agents" onclick="applyMarketplaceTemplate(this.dataset.template,this)" data-i18n="marketApplyBtn"></button></div>
-            </div>
-          </div>
+          <div class="template-grid"></div>
         </div>
       </div>
     </div>
@@ -1430,7 +1399,7 @@ function setLang(code) {
 }
 
 // ── Global state ────────────────────────────────────────────────────────────
-let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [], training: [], trainStats: null };
+let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [], training: [], trainStats: null, marketplaceTemplates: [] };
 
 // ── Filter state ─────────────────────────────────────────────────────────────
 let selectedDomainFilter = '';
@@ -1813,7 +1782,32 @@ function renderAll() {
   renderOverview(); renderDomains(); renderKnowledge();
   renderSources(); renderEpisodes(); renderTrust();
   renderCodebase(); renderTraining(); renderSettings();
+  renderMarketplace();
   updateMarketplaceButtons();
+}
+
+function renderMarketplace() {
+  const grid = document.querySelector('.template-grid');
+  if (!grid || !G.marketplaceTemplates) return;
+  
+  grid.innerHTML = G.marketplaceTemplates.map(t => {
+    const langKey = 'template' + t.slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('') + 'Copy';
+    const copy = (LANGS[LANG] && LANGS[LANG][langKey]) || t.description;
+
+    return `
+      <div class="template-card">
+        <div class="template-card-title">${escHtml(t.slug)}</div>
+        <div class="template-card-copy">${escHtml(copy)}</div>
+        <div class="template-card-meta">
+          <button class="code-search-btn template-apply-btn" 
+                  data-template="${escHtml(t.slug)}" 
+                  onclick="applyMarketplaceTemplate(this.dataset.template,this)">
+            ${escHtml(t('marketApplyBtn'))}
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -1829,7 +1823,7 @@ async function loadData(opts = {}) {
   if (btn && !silent) { btn.classList.add('spinning'); btn.textContent = t('btnLoading'); }
   try {
     const ok = v => v.status === 'fulfilled' ? v.value : null;
-    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos, training, trainStats] =
+    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos, training, trainStats, marketplaceTemplates] =
       (await Promise.allSettled([
         fetch('/api/stats').then(r=>r.json()),
         fetch('/api/domains').then(r=>r.json()),
@@ -1841,6 +1835,7 @@ async function loadData(opts = {}) {
         fetch('/api/code/repos').then(r=>r.json()),
         fetch('/api/training').then(r=>r.json()),
         fetch('/api/training/stats').then(r=>r.json()),
+        fetch('/api/marketplace/templates').then(r=>r.json()),
       ])).map(ok);
     const live = !!stats;
     const dot = document.getElementById('status-dot');
@@ -1861,6 +1856,7 @@ async function loadData(opts = {}) {
       codeRepos:   codeRepos   ?? G.codeRepos,
       training:    training    ?? G.training,
       trainStats:  trainStats  ?? G.trainStats,
+      marketplaceTemplates: marketplaceTemplates ?? G.marketplaceTemplates,
     };
     const sig = JSON.stringify(next);
     if (silent && sig === lastSig) return;  // nothing changed — don't disrupt UI

@@ -1,0 +1,431 @@
+[
+  {
+    "slug": "clean-code",
+    "description": "Professional clean-code guidance covering simplicity, maintainability, naming, duplication control, i18n, and privacy compliance.",
+    "query_hint": "Recall this domain for implementation quality, refactors, naming, duplication, simplicity, i18n, and LGPD/GDPR-sensitive code decisions.",
+    "items": [
+      {
+        "kind": "rule",
+        "stage": "implementation",
+        "title": "Prefer SOLID boundaries",
+        "body": "Classes, modules, and services must have focused, single responsibilities. Enforce clear contracts using dependency inversion, Liskov substitution rules, and interface segregation. Separate domain logic from external dependencies (DB, APIs, GUI) to allow clean testing and independent evolution. Avoid creating 'God' classes or bloated interfaces that couple unrelated actors.",
+        "trigger": "creating or refactoring modules, services, classes, traits, or interfaces",
+        "severity": "warn",
+        "remediation": "Split mixed responsibilities into separate classes/functions. Inject dependencies explicitly via constructors/initializers rather than instantiating them inline. Keep interfaces small and specific so that callers do not depend on methods they do not use."
+      },
+      {
+        "kind": "rule",
+        "stage": "implementation",
+        "title": "Apply KISS and YAGNI before abstraction",
+        "body": "Always choose the simplest implementation that satisfies current, validated requirements. Do not introduce speculative interfaces, complex configuration layers, multi-tenant schemas, or generic extension points until there is a concrete, active second use-case that demands it. Over-engineering increases cognitive load and slows down refactoring.",
+        "trigger": "adding abstractions, configuration systems, service layers, or extensibility points",
+        "severity": "warn",
+        "remediation": "Inline the logic directly or keep the implementation concrete. Avoid writing generic code or base classes when a simple, explicit function handles the exact case. Do not add fields, methods, or configurations 'just in case'."
+      },
+      {
+        "kind": "rule",
+        "stage": "review",
+        "title": "Use DRY for knowledge, not coincidence",
+        "body": "Don't Repeat Yourself (DRY) applies to business rules, algorithms, and logical invariants, not identical-looking markup or incidental code duplication. Extracting shared code just because two blocks look similar can lead to high coupling, where changes to one business flow break another unrelated flow.",
+        "trigger": "reviewing duplicated code or proposing a shared helper",
+        "severity": "info",
+        "remediation": "Check if the duplication represents a shared business invariant (knowledge). If yes, extract it to a unified helper. If not (coincidental representation), keep them separate to allow them to evolve independently. Prefer clean, readable duplication over a wrong abstraction."
+      },
+      {
+        "kind": "rule",
+        "stage": "implementation",
+        "title": "Name variables and functions by intent",
+        "body": "Symbols must clearly convey domain intent, units, side-effects, and lifecycle. Avoid names containing generic technical terms like 'data', 'item', 'value', 'handler', 'processor', or 'manager' when a precise business domain term is available. Names should be long enough to be self-explanatory but short enough to be readable.",
+        "trigger": "writing variables, functions, modules, or public APIs",
+        "severity": "warn",
+        "remediation": "Rename symbols so that a reader can understand what the entity represents and what a function accomplishes without reading its body. Include units in names where relevant (e.g., 'timeout_ms' instead of 'timeout')."
+      },
+      {
+        "kind": "rule",
+        "stage": "privacy",
+        "title": "Respect LGPD and GDPR data minimization",
+        "body": "Under GDPR Art. 5(1)(c) and LGPD Art. 6(III), systems must collect, store, and process only personal data that is adequate, relevant, and limited to what is necessary for the declared purposes. Avoid collecting sensitive attributes (e.g., health, union status, origin) unless explicitly justified. Enforce storage limitations by implementing automatic deletion/anonymization schedules.",
+        "trigger": "handling personal data, telemetry, logs, exports, analytics, or user profiles",
+        "severity": "block",
+        "remediation": "Audit the data schema. Remove columns or fields that do not have a documented processing purpose. Implement field-level encryption (AES-256) for PII (Personally Identifiable Information) columns and ensure logs redact sensitive fields automatically."
+      },
+      {
+        "kind": "rule",
+        "stage": "i18n",
+        "title": "Externalize user-facing text for i18n",
+        "body": "All user-facing strings, validation errors, dates, numbers, currencies, and layout labels must be externalized using localized translation resources instead of hardcoding text inline. Grammar rules, pluralization forms, and text direction (RTL) must be handled dynamically through the internationalization layer to prevent broken UI layouts in other locales.",
+        "trigger": "adding UI copy, API-facing messages, emails, notifications, errors, placeholders, labels, or formatted dates and numbers",
+        "severity": "warn",
+        "remediation": "Move inline strings to language files (e.g., JSON/YAML locales). Use locale-aware formatting libraries for currency, date, and numbers. Do not build messages using string concatenation, as grammatical structure varies by language; use templating placeholders instead."
+      },
+      {
+        "kind": "procedure",
+        "stage": "implementation",
+        "title": "Run the clean-code review checklist",
+        "body": "Before completing a pull request or code generation task, perform a structured code quality review: 1) Verify Single Responsibility (SOLID) bounds. 2) Ensure no over-engineering (KISS/YAGNI). 3) Confirm DRY is used only for shared domain logic. 4) Inspect variables/functions naming for clarity. 5) Check for i18n compliance. 6) Verify PII protection and data minimization.",
+        "trigger": "reviewing a pull request, refactor, generated code, or marketplace-applied domain guidance",
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "rule",
+        "stage": "privacy",
+        "title": "Apply privacy by design and default",
+        "body": "GDPR Art. 25 and LGPD Art. 46 mandate that privacy-enhancing safeguards must be integrated into the system architecture from the earliest design stages. Settings must default to the highest level of privacy (e.g., tracking opted-out, optional data fields empty, minimal profile visibility, and auto-delete enabled) rather than requiring user opt-out.",
+        "trigger": "designing forms, telemetry, logs, exports, analytics, consent, account data, or personalization",
+        "severity": "block",
+        "remediation": "Implement an explicit consent-gating mechanism. Ensure third-party analytics and marketing SDKs are disabled by default and only loaded after receiving user consent. Validate that personal data deleted by a user is also deleted from backups and third-party subprocessors within legal time limits."
+      }
+    ]
+  },
+  {
+    "slug": "architecture",
+    "description": "Architecture decision guidance for selecting patterns by context, complexity, team maturity, and operational constraints.",
+    "query_hint": "Recall this domain before choosing architectural style, service boundaries, modularization, or teacher-mode trade-off evaluation.",
+    "items": [
+      {
+        "kind": "procedure",
+        "stage": "design",
+        "title": "Use teacher mode for architecture evaluation",
+        "body": "Assess architecture proposals by systematically walking through: 1) Business context and scaling targets (traffic, data volume). 2) Team structure and topology (Conway's Law, domain boundaries). 3) Operational maturity and infrastructure capabilities. 4) Trade-off analysis of at least two alternative patterns. 5) Failure modes and disaster recovery impact.",
+        "trigger": "choosing or reviewing architecture",
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "rule",
+        "stage": "design",
+        "title": "Match architecture to context and complexity",
+        "body": "Choose the simplest architectural style that successfully supports current operational and organizational scales. Do not adopt complex distributed architectures (e.g., event sourcing, microservices, service meshes) solely because they are industry trends. High architecture complexity incurs high maintenance costs, deployment friction, and cognitive overhead.",
+        "trigger": "choosing between monolith, modular monolith, microservices, serverless, event-driven, or hexagonal designs",
+        "severity": "warn",
+        "remediation": "Write a brief context document. Benchmark the throughput and availability requirements. Compare the operational cost of managing a single deployment vs. multiple distributed services. If the current team is under 15 developers, default to a modular monolith."
+      },
+      {
+        "kind": "rule",
+        "stage": "design",
+        "title": "Prefer modular monoliths until distribution is justified",
+        "body": "A modular monolith organizes code into strict, bounded contexts inside a single deployable unit. It keeps domain boundaries clean using compiler checks or internal visibility modifiers, allowing modular design while keeping data consistency trivial (single DB transactions) and avoiding network overhead.",
+        "trigger": "starting a new backend or splitting an existing system",
+        "severity": "info",
+        "remediation": "Enforce package-level or assembly-level encapsulation. Prevent direct cross-module database joins; instead, access data via defined public interfaces of other modules. Use an internal event bus or direct method calls for cross-boundary communication."
+      },
+      {
+        "kind": "rule",
+        "stage": "design",
+        "title": "Use hexagonal architecture to protect domain logic",
+        "body": "Hexagonal Architecture (Ports & Adapters) isolates the core business logic from databases, UI, web frameworks, messaging systems, and external APIs. The domain core must define incoming and outgoing interfaces (ports), and external infrastructure must implement adapters that map details to these ports. This makes the business logic highly testable and independent of framework version upgrades.",
+        "trigger": "domain logic is coupled to infrastructure or framework APIs",
+        "severity": "warn",
+        "remediation": "Define interfaces (Ports) in your domain layer for database repositories, external notifications, and system time. Implement these interfaces in infrastructure modules (Adapters). Keep domain models free of framework annotations, decorators, and database-specific libraries."
+      },
+      {
+        "kind": "rule",
+        "stage": "design",
+        "title": "Use microservices only with operational readiness",
+        "body": "Microservices are appropriate when different domains need separate release cycles, have vastly different scaling characteristics, or are owned by independent teams. They require high operational maturity, including fully automated CI/CD pipelines, robust centralized logging, tracing (correlation IDs), service mesh or service discovery, and a plan for eventual consistency (Outbox pattern, Saga pattern).",
+        "trigger": "proposing service decomposition or distributed ownership",
+        "severity": "warn",
+        "remediation": "Verify the team has infrastructure automation in place. If correlation IDs, telemetry dashboards, and transaction outbox patterns are not yet implemented, pause decomposition and keep the modules inside a unified codebase first."
+      },
+      {
+        "kind": "fact",
+        "stage": "design",
+        "title": "Monolith first is a valid architecture decision",
+        "body": "As outlined in Martin Fowler's 'MonolithFirst' design guidance, starting directly with microservices for a new system carries a high risk of incorrect boundary choices. It is significantly easier to refactor, split, and extract microservices from a well-structured modular monolith once the domain patterns and real-world bottlenecks are understood.",
+        "trigger": null,
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "procedure",
+        "stage": "design",
+        "title": "Document architecture decision drivers",
+        "body": "Every major architectural decision must be documented in an Architectural Decision Record (ADR). The ADR must detail: 1) Context & drivers (technical or business problems). 2) Options considered (with pros/cons). 3) Selected option and justification. 4) Consequences (what we lose, operational requirements). 5) Revision triggers (when to re-evaluate).",
+        "trigger": "creating an ADR, comparing modular monolith, hexagonal architecture, microservices, event-driven design, or serverless",
+        "severity": null,
+        "remediation": null
+      }
+    ]
+  },
+  {
+    "slug": "cyber-security",
+    "description": "Security review and attack-simulation guidance for common web risks, abuse prevention, and adversarial testing.",
+    "query_hint": "Recall this domain for threat modeling, injection risks, XSS, rate limits, red-team simulation, and attacker-resilience checks.",
+    "items": [
+      {
+        "kind": "rule",
+        "stage": "security",
+        "title": "Block SQL injection paths",
+        "body": "All database queries must use bound, parameterized placeholders or secure ORMs/query builders. Never build dynamic SQL strings by concatenating user-controlled text, request headers, or query parameters. Treat custom sorting, pagination, and migration scripts as high-risk execution points.",
+        "trigger": "building database queries or search filters",
+        "severity": "block",
+        "remediation": "Replace raw SQL string concatenation with query parameters (`?` or named binds). If dynamic column names are required for sorting/filtering, validate them against a strict allow-list before executing the query."
+      },
+      {
+        "kind": "rule",
+        "stage": "security",
+        "title": "Prevent XSS by default",
+        "body": "Treat all user input as untrusted. When rendering strings in HTML templates or javascript, use escaping utilities by default. If rich-text HTML rendering is required, sanitize the content using a secure, actively maintained sanitizer (e.g. DOMPurify) and restrict allowed tags. Implement a strict Content Security Policy (CSP) header.",
+        "trigger": "rendering user-controlled content in browser, email, docs, or admin panels",
+        "severity": "block",
+        "remediation": "Do not bypass default template escaping (e.g., avoid `v-html` in Vue or `dangerouslySetInnerHTML` in React unless inputs are pre-sanitized). Validate all user-supplied links to prevent `javascript:` protocol payloads."
+      },
+      {
+        "kind": "rule",
+        "stage": "security",
+        "title": "Apply rate limiting to abuseable endpoints",
+        "body": "Protect all authentication, registration, password-reset, billing, search, and file-upload endpoints from abuse, credential stuffing, and Denial of Service (DoS) attacks. Implement tiered rate-limiting using Token Bucket or Sliding Window algorithms based on client IP, account ID, and API keys.",
+        "trigger": "exposing public or semi-public endpoints",
+        "severity": "warn",
+        "remediation": "Add middleware to throttle requests. Respond with HTTP status 429 (Too Many Requests) and include a `Retry-After` header. Configure alerts for sudden spikes in 401/403/429 status codes."
+      },
+      {
+        "kind": "procedure",
+        "stage": "security",
+        "title": "Run red-team style validation",
+        "body": "Simulate real attack flows on features pre-release: 1) Map input paths and trust boundaries. 2) Attempt privilege escalation (accessing user B's resource from user A's account). 3) Attempt rate limit bypasses. 4) Inject malicious payloads (SQL, XSS, Path Traversal, SSRF). 5) Validate that logs do not leak secrets or PII during attack attempts.",
+        "trigger": "pre-release security review or high-risk feature review",
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "rule",
+        "stage": "security",
+        "title": "Defend against script kiddies and APT-style persistence",
+        "body": "Harden the runtime environment to mitigate automated scanners and patient attackers. Ensure minimal container images (distroless) are used, restrict process privileges, run applications as non-root, automate dependency patch pipelines, rotate secrets regularly, and set up alert notifications for anomalous file system edits.",
+        "trigger": "reviewing production exposure, admin capabilities, secrets, or infrastructure",
+        "severity": "warn",
+        "remediation": "Audit open ports. Run dependency vulnerability scans (`npm audit`, `cargo audit`, Snyk). Ensure secrets are loaded via environment variables or a vault rather than committed to source control."
+      },
+      {
+        "kind": "procedure",
+        "stage": "security",
+        "title": "Use OWASP cheat sheets as review anchors",
+        "body": "Conduct security code reviews by mapping findings to concrete OWASP Cheat Sheets (e.g., REST Security, Session Management, SQL Injection Prevention). Cross-reference architecture with the Application Security Verification Standard (ASVS) baseline targets.",
+        "trigger": "performing application security review or creating remediation tasks",
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "rule",
+        "stage": "security",
+        "title": "Threat model trust boundaries before coding",
+        "body": "Before writing code for security-sensitive domains (auth, payment, admin actions), conduct a threat modeling session (e.g. STRIDE). Identify assets, entry points, actors, and where trust transitions from validated to unvalidated. Document how threats are mitigated in the code design.",
+        "trigger": "adding authentication, authorization, payments, file upload, admin actions, webhooks, public APIs, or integrations",
+        "severity": "warn",
+        "remediation": "Create a diagram showing trust boundaries and data flow. List the security controls applied at each boundary (e.g. JWT validation, payload schema validation, network firewall rules)."
+      }
+    ]
+  },
+  {
+    "slug": "quality-assurance",
+    "description": "Testing strategy guidance for unit, integration, stress, load, and browser automation coverage.",
+    "query_hint": "Recall this domain when planning or reviewing tests, load tooling, browser automation, or release confidence.",
+    "items": [
+      {
+        "kind": "rule",
+        "stage": "test",
+        "title": "Cover business rules with unit tests",
+        "body": "All core business logic, validation rules, calculations, algorithms, and parsers must have comprehensive unit test coverage. Unit tests must be fast, fully deterministic, run in-memory, and have no external network, file, or database dependencies. Follow the Arrange-Act-Assert (AAA) pattern.",
+        "trigger": "adding or changing logic",
+        "severity": "warn",
+        "remediation": "Extract business logic into pure, framework-independent functions that can be tested in isolation. Mock external adapters or repositories using interfaces, stubs, or mock frameworks."
+      },
+      {
+        "kind": "rule",
+        "stage": "test",
+        "title": "Use integration tests for contracts",
+        "body": "Verify integration boundaries (database persistence, API endpoint contracts, event queue pub/sub, external HTTP requests, and SQL migrations) using integration tests. Test the real boundary where possible instead of mocking it, using local database instances (e.g., via Docker Testcontainers) or controlled local servers.",
+        "trigger": "changing persistence, API boundaries, external integrations, or migrations",
+        "severity": "warn",
+        "remediation": "Write integration tests that spin up a local DB, execute migrations, insert test data, invoke the code, and assert on database state or API response payloads. Clean up state after every test run."
+      },
+      {
+        "kind": "procedure",
+        "stage": "test",
+        "title": "Plan stress and load tests by risk",
+        "body": "Define load testing strategies before writing scripts: 1) Identify peak traffic patterns and data size. 2) Set performance budgets (e.g. p95 latency < 200ms). 3) Formulate bottleneck hypotheses (e.g., DB pool size, CPU limits). 4) Choose the appropriate tool (k6, Locust, Vegeta). 5) Define test profiles (load, spike, soak/stability).",
+        "trigger": "testing performance, scaling, or reliability",
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "rule",
+        "stage": "test",
+        "title": "Automate user-critical flows with Playwright or Cypress",
+        "body": "End-to-End (E2E) browser automation must cover critical user paths (auth, checkouts, registration, key workflows). To prevent flakiness: 1) Use stable test attributes or text selectors instead of fragile CSS class selectors. 2) Avoid arbitrary time sleeps; wait explicitly for visible DOM states or network requests to complete.",
+        "trigger": "shipping UI changes or critical workflows",
+        "severity": "warn",
+        "remediation": "Replace `await page.waitForTimeout(2000)` with `await page.waitForSelector('.success-message')` or page routing expectations. Isolate test accounts and seed test data deterministically before running the E2E suite."
+      },
+      {
+        "kind": "fact",
+        "stage": "test",
+        "title": "Test pyramid is a risk model",
+        "body": "The classic test pyramid (many fast unit tests, fewer integration tests, minimal E2E tests) is a cost-to-confidence model. High-risk, complex logic calls for dense unit tests, while API endpoints and database integrity require thorough integration coverage. Adjust the test mix based on risk profile, not rigid percentage mandates.",
+        "trigger": null,
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "procedure",
+        "stage": "test",
+        "title": "Choose test tooling by failure mode",
+        "body": "Select test tools based on the specific failure mode you want to prevent: 1) Logical errors -> Unit tests. 2) Contract mismatch / DB syntax -> Integration tests with Testcontainers. 3) Resource leaks / Concurrency bottlenecks -> Soak/Spike tests with k6. 4) Client-side javascript / layout breakage -> Playwright visual regression tests.",
+        "trigger": "planning a test strategy or adding release gates",
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "rule",
+        "stage": "test",
+        "title": "Make automation deterministic and observable",
+        "body": "Automated tests in CI must be reproducible and clean. Avoid sharing state or database tables between parallel tests without proper isolation. Log query traces, capture screenshots/videos for E2E failures, and mock external API dependencies using deterministic HTTP mock servers (e.g., WireMock) to prevent external service downtime from breaking CI.",
+        "trigger": "writing CI tests, browser tests, integration tests, load scripts, or regression suites",
+        "severity": "warn",
+        "remediation": "Configure the test runner to clean the database state between tests (e.g., via transactions or truncated tables). Ensure tests use unique IDs or isolation schemas when executed in parallel."
+      }
+    ]
+  },
+  {
+    "slug": "front-end",
+    "description": "Enterprise front-end practices for framework choices, component quality, accessibility, and anti AI-slop validation.",
+    "query_hint": "Recall this domain for Angular, React, shadcn, Chakra, UI architecture, accessibility, and front-end quality reviews.",
+    "items": [
+      {
+        "kind": "rule",
+        "stage": "frontend",
+        "title": "Choose front-end libraries by product constraints",
+        "body": "Select front-end frameworks (Angular, React, Vue, Svelte) and component libraries (shadcn/ui, Chakra UI, Material UI) by auditing: 1) Initial page load time / Bundle size constraints. 2) Search Engine Optimization (SEO) & Server-Side Rendering (SSR) needs. 3) Team familiarity and design system alignment. 4) Accessibility primitives quality.",
+        "trigger": "choosing UI framework, component library, or design-system tooling",
+        "severity": "warn",
+        "remediation": "Establish a performance budget. Compare package weights using Bundlephobia. Document UI selection in an ADR and avoid mixing multiple CSS-in-JS or component frameworks in the same project."
+      },
+      {
+        "kind": "rule",
+        "stage": "frontend",
+        "title": "Validate against AI-slop UI",
+        "body": "Reject generic, low-quality generated UIs that feature weak layout hierarchy, confusing visual contrast, lack of hover/focus states, decorative element clutter, poor spacing, or components that don't match actual data models. UI must look deliberate and align with professional design tokens.",
+        "trigger": "reviewing generated UI, mockups, or component implementations",
+        "severity": "warn",
+        "remediation": "Establish a grid and spacing scale (e.g. 4px/8px grid). Inspect responsive behavior, empty states, and loading skeletons. Ensure every button and interaction has a clear, functional visual feedback state."
+      },
+      {
+        "kind": "rule",
+        "stage": "frontend",
+        "title": "Make accessibility a default constraint",
+        "body": "Accessibility is a core software quality attribute. All user-facing components must support keyboard navigation (logical tab focus order), focus-trapping inside modals, visible focus indicators, screen-reader landmark labels, and appropriate semantic HTML elements before styling.",
+        "trigger": "building forms, navigation, modals, menus, tables, or custom controls",
+        "severity": "block",
+        "remediation": "Use semantic primitives first (e.g., `<button>` instead of `<div onclick>`). Use ARIA attributes (`aria-expanded`, `aria-label`, `aria-hidden`) to represent dynamic state changes to screen readers."
+      },
+      {
+        "kind": "rule",
+        "stage": "frontend",
+        "title": "Keep enterprise components predictable",
+        "body": "Enterprise UI components must handle edge cases gracefully: 1) Loading states (skeletons or spinners). 2) Empty states (call-to-actions when data is missing). 3) Error boundaries (preventing page crashes on API errors). 4) Network disconnect / offline-first state. 5) Permission-gated actions (disabled or hidden controls).",
+        "trigger": "building reusable front-end components or pages",
+        "severity": "warn",
+        "remediation": "Define structured states in components (e.g., `status: 'idle' | 'loading' | 'error' | 'success'`). Render appropriate views for each state and test error boundary recovery."
+      },
+      {
+        "kind": "procedure",
+        "stage": "frontend",
+        "title": "Review front-end changes rigorously",
+        "body": "Before merging UI code, review: 1) Cross-browser compatibility. 2) Responsive layout breakpoints. 3) CSS layout performance (avoiding reflows/layout shifts). 4) Bundle size impact of new imports. 5) Lighthouse scores (Performance, Accessibility, Best Practices, SEO).",
+        "trigger": "front-end code review or UI acceptance",
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "rule",
+        "stage": "frontend",
+        "title": "Use WCAG 2.2 Level AA as the accessibility baseline",
+        "body": "Ensure compliance with WCAG 2.2 Level AA guidelines. Specifically: 1) SC 2.4.11 Focus Not Obscured: Keyboard focus indicators must not be completely hidden by sticky headers/footers. 2) SC 2.5.7 Dragging Movements: Provide tap or click alternatives for drag/drop. 3) SC 2.5.8 Target Size: Interactive targets must be at least 24x24 CSS pixels or have equivalent spacing. 4) SC 3.2.6 Consistent Help: Keep help icons/links in the same relative position. 5) SC 3.3.7 Redundant Entry: Auto-fill previously entered data. 6) SC 3.3.8 Accessible Authentication: Support password managers and avoid cognitive tests.",
+        "trigger": "building or reviewing user-facing UI, forms, navigation, modals, tables, dashboards, or generated layouts",
+        "severity": "block",
+        "remediation": "Audit authentication flows to ensure credentials can be pasted or autofilled. Test touch targets using devtools emulation. Manually navigate via keyboard to verify focus states are never obscured by sticky banners."
+      },
+      {
+        "kind": "procedure",
+        "stage": "frontend",
+        "title": "Validate framework output against product reality",
+        "body": "Whether using Angular, React, Vue, or Svelte, audit compile-time configurations, ensure strict TypeScript check compliance, enforce lint rules, run bundle analysis, and verify that actual API data matches component data structures.",
+        "trigger": "accepting generated UI, composing component libraries, or building enterprise screens",
+        "severity": null,
+        "remediation": null
+      }
+    ]
+  },
+  {
+    "slug": "build-agents",
+    "description": "Agent-building guidance across orchestration frameworks, SDKs, tool design, evaluation, and production safeguards.",
+    "query_hint": "Recall this domain when designing agents, choosing orchestration frameworks, adding tools, or evaluating agent reliability.",
+    "items": [
+      {
+        "kind": "rule",
+        "stage": "agents",
+        "title": "Choose agent frameworks by orchestration needs",
+        "body": "Select agentic platforms (CrewAI, LangChain, Langflow, watsonx Orchestrate ADK, Antigravity SDK, Vercel AI SDK) by matching the complexity of the task: 1) Deterministic chains vs. autonomous routing. 2) State management and short/long-term memory. 3) Streaming capability requirements. 4) Multi-agent communication protocols. 5) Debugging and tracing suite availability.",
+        "trigger": "choosing an agent framework or SDK",
+        "severity": "warn",
+        "remediation": "Avoid complex multi-agent swarms unless tasks are highly distinct and require specialized prompts/tools. Implement a simple single-agent router or linear pipeline first."
+      },
+      {
+        "kind": "rule",
+        "stage": "agents",
+        "title": "Ground agents before consequential actions",
+        "body": "Agents must retrieve relevant rules, database constraints, user context, and preferences (grounding) before performing any consequential action (writing files, calling write APIs, executing database mutations, or sending messages). Safe grounding prevents goal drift, hallucination errors, and harmful action execution.",
+        "trigger": "agent is about to perform a consequential action",
+        "severity": "block",
+        "remediation": "Call the `recall` tool to fetch relevant rules before invoking a write tool. surface any high-severity blocking rules in the prompt context. Require explicit user confirmation for irreversible or high-impact actions."
+      },
+      {
+        "kind": "rule",
+        "stage": "agents",
+        "title": "Design tools with narrow contracts",
+        "body": "Agent tools must have strict schemas (JSON Schema), clear typing, narrow scope, explicit error responses, and no side-effects outside their declared contract. Avoid giving agents broad CLI execution tools or generic database query tools; instead, expose high-level, parameterized actions to keep tool calling predictable.",
+        "trigger": "creating MCP tools, SDK actions, or automation APIs",
+        "severity": "warn",
+        "remediation": "Break down broad tools into single-responsibility API endpoints. Validate all parameters strictly. Return descriptive error strings (e.g., 'File not found at path X') instead of generic system codes so the LLM can self-correct."
+      },
+      {
+        "kind": "procedure",
+        "stage": "agents",
+        "title": "Evaluate agents with scenario suites",
+        "body": "Build a test evaluation suite containing scenarios representing: 1) Happy path executions. 2) Ambiguous user prompts (tests grounding and clarification prompt logic). 3) Tool execution failures (tests error recovery). 4) Security boundary probes (attempts at prompt injection or escaping constraints). 5) Long-running tasks.",
+        "trigger": "testing or releasing agent workflows",
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "rule",
+        "stage": "agents",
+        "title": "Log agent decisions for auditability",
+        "body": "All production agent executions must record a structured trace (episodes) of: 1) Initial user goal. 2) Grounded rules and context retrieved. 3) LLM reasoning steps. 4) Tool calls and parameters. 5) Tool output observations. 6) Final outcomes or errors. Structured logs are critical for security audits, debugging, and offline evaluation optimization.",
+        "trigger": "building production or semi-autonomous agents",
+        "severity": "warn",
+        "remediation": "Implement trace logging middleware. Capture tokens used, execution latency, and step outcomes. Link logs to a user session or transaction ID."
+      },
+      {
+        "kind": "rule",
+        "stage": "agents",
+        "title": "Use framework docs as integration contracts",
+        "body": "Orchestration libraries and AI SDKs (LangChain, CrewAI, Vercel AI SDK) evolve rapidly. Lock package dependencies, and treat official APIs, memory adapters, and streaming callbacks as formal contracts. Verify schema updates when upgrading packages to prevent runtime tool-calling crashes.",
+        "trigger": "building or upgrading agent workflows, tools, orchestration, memory, streaming, or SDK integrations",
+        "severity": "warn",
+        "remediation": "Write unit tests for custom tool mapping. Ensure strict typescript schemas for tool arguments. Run smoke tests for LLM streaming and state management on dependency updates."
+      },
+      {
+        "kind": "procedure",
+        "stage": "agents",
+        "title": "Gate agent autonomy by impact",
+        "body": "Classify agent tools by risk profile: 1) Read-only (low risk). 2) Reversible write (medium risk). 3) Irreversible write, spending, or deploying (high risk). Implement strict authorization gates and human-in-the-loop (HITL) triggers as risk increases.",
+        "trigger": "designing production agents, assistants, autonomous workflows, or MCP/SDK tool permissions",
+        "severity": null,
+        "remediation": null
+      }
+    ]
+  }
+]
