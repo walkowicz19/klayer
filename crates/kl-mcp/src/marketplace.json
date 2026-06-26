@@ -69,12 +69,57 @@
       },
       {
         "kind": "rule",
+        "stage": "implementation",
+        "title": "Use mutexes to protect shared mutable state — never skip unlock",
+        "body": "A mutex (mutual exclusion lock) ensures that only one thread or goroutine can access a critical section at a time. Violating this guarantee causes data races, memory corruption, and non-deterministic crashes. Rules: 1) Always acquire and release a lock in the same lexical scope or use RAII guards (Rust `MutexGuard`, C++ `std::lock_guard`, Java `try-finally`). 2) Never hold two mutexes simultaneously unless lock ordering is globally enforced — acquiring locks in inconsistent orders causes deadlock. 3) Minimize the critical section size: lock, operate on shared state, unlock. Do not call blocking I/O, network calls, or user callbacks while holding a mutex. 4) Prefer read-write locks (`RwLock`) when reads vastly outnumber writes. 5) Detect deadlock potential with static analysis tools (`ThreadSanitizer`, `cargo-geiger`, or Helgrind) during CI.",
+        "trigger": "implementing concurrent data access, shared state, caches, counters, queues, or multi-threaded services",
+        "severity": "block",
+        "remediation": "Audit all mutex lock sites. Establish a canonical lock acquisition order documented in the module header. Replace any manual lock/unlock pairs with RAII guards. Extract critical sections into dedicated, short-lived functions. If a deadlock is suspected, use a timeout-aware `try_lock` variant and log the contention for investigation."
+      },
+      {
+        "kind": "rule",
+        "stage": "implementation",
+        "title": "Use semaphores for resource-pool and producer-consumer coordination",
+        "body": "A semaphore is a signaling mechanism that limits the number of concurrent accessors to a bounded resource (e.g., DB connection pool, file handles, HTTP request slots). Unlike mutexes, they do not enforce mutual exclusion — they track availability. Two core patterns: 1) Counting Semaphore: initialized to N, allows N concurrent operations. Use for connection pools, download concurrency limits, or worker-thread caps. 2) Binary Semaphore: initialized to 1, signals between two parties (producer notifies consumer). Prefer structured channels or async primitives (Go channels, Rust `tokio::sync::Semaphore`, Java `Semaphore`) over raw OS semaphores. Avoid sleeping in a spin-wait loop to check for permits — use `acquire()` with async/await or blocking where appropriate.",
+        "trigger": "implementing connection pools, rate limiters, worker queues, producer-consumer pipelines, or concurrent download managers",
+        "severity": "warn",
+        "remediation": "Replace busy-wait loops with semaphore acquire calls. Verify the semaphore count matches the actual resource pool capacity. Ensure `release()` is always called in a finally block or RAII destructor even on error paths — leaked permits will starve the pool. For async systems, prefer structured concurrency libraries over raw semaphore primitives."
+      },
+      {
+        "kind": "rule",
+        "stage": "implementation",
+        "title": "Choose sorting algorithms by data profile and stability requirements",
+        "body": "Sorting algorithm selection directly impacts latency, memory usage, and correctness for ordered output. Key trade-offs: 1) Quick Sort — average O(n log n) time, O(log n) stack space. Fastest in practice for random data due to cache locality. Worst case O(n²) on already-sorted or adversarial input; mitigate with randomized pivot or median-of-three pivot. Unstable — do not use when preserving equal-element order matters. 2) Merge Sort — guaranteed O(n log n) worst case, O(n) auxiliary space. Stable — preserves relative order of equal elements. Preferred for linked lists, external sorting (datasets larger than RAM), and when stability is required. 3) Heap Sort — guaranteed O(n log n) worst case, O(1) in-place auxiliary space. Unstable. Poor cache locality makes it slower than Quick Sort in practice despite the same asymptotic complexity. Use when worst-case guarantees matter and extra memory is prohibited (embedded systems). 4) Prefer language-provided sort (e.g., `slice::sort` in Rust, `Arrays.sort` in Java, `sorted()` in Python) which are typically hybrid Timsort or introsort, providing best-of-all-worlds performance. Only implement a custom sort when benchmarks prove a clear improvement.",
+        "trigger": "implementing ordering, ranking, priority queues, leaderboards, search result ranking, or any custom sort logic",
+        "severity": "info",
+        "remediation": "Replace custom comparison-based sorting with the standard library sort unless profiling shows it is a bottleneck. If stability is required, use a stable sort variant. If memory is constrained, use Heap Sort. Always test sorting with edge cases: empty collection, single element, all-equal elements, reverse-sorted input, and very large datasets."
+      },
+      {
+        "kind": "procedure",
+        "stage": "review",
+        "title": "Run the concurrency correctness checklist",
+        "body": "Before shipping any concurrent or parallel code, execute this checklist: 1) DATA RACES — Is every shared mutable variable protected by a mutex, RwLock, or atomic? 2) DEADLOCK — Are all lock acquisitions in a globally consistent order? Are locks never held across blocking I/O? 3) STARVATION — Can a semaphore pool be exhausted and never released on error paths? 4) LIVELOCK — Can two threads indefinitely retry without making progress? 5) VISIBILITY — Are memory ordering semantics correct for atomics (Acquire/Release vs. SeqCst)? 6) RESOURCE LEAK — Is every acquired lock, permit, or connection released in all code paths (error, panic, timeout)? 7) ORDERING CORRECTNESS — If output order matters, is a stable sort used? Is the sort key deterministic and total-ordering compliant?",
+        "trigger": "reviewing multi-threaded code, async pipelines, shared cache implementations, concurrent queues, or any code using mutex, semaphore, channel, or parallel sort",
+        "severity": null,
+        "remediation": null
+      },
+      {
+        "kind": "rule",
         "stage": "privacy",
         "title": "Apply privacy by design and default",
         "body": "GDPR Art. 25 and LGPD Art. 46 mandate that privacy-enhancing safeguards must be integrated into the system architecture from the earliest design stages. Settings must default to the highest level of privacy (e.g., tracking opted-out, optional data fields empty, minimal profile visibility, and auto-delete enabled) rather than requiring user opt-out.",
         "trigger": "designing forms, telemetry, logs, exports, analytics, consent, account data, or personalization",
         "severity": "block",
         "remediation": "Implement an explicit consent-gating mechanism. Ensure third-party analytics and marketing SDKs are disabled by default and only loaded after receiving user consent. Validate that personal data deleted by a user is also deleted from backups and third-party subprocessors within legal time limits."
+      },
+      {
+        "kind": "rule",
+        "stage": "implementation",
+        "title": "Justify sequential vs parallel execution by necessity, cost, and complexity",
+        "body": "Before introducing parallel or concurrent execution, perform a three-axis evaluation: 1) NECESSITY — Does the workload contain independent, CPU-bound or I/O-bound units that are actually blocked by sequential execution? Measure with profiling, not assumption. 2) COST — Parallelism adds synchronization overhead (lock contention, context switches, cache invalidation, atomic operations), increased memory footprint (one stack per thread), and non-deterministic failure modes. The speedup benefit must outweigh these costs using Amdahl's Law analysis: speedup is bounded by the serial fraction of the workload. 3) COMPLEXITY — Concurrent code is harder to read, test, and debug. Race conditions and deadlocks are notoriously difficult to reproduce. Prefer structured concurrency primitives (async/await with structured cancellation, thread pools, parallel iterators like Rayon in Rust or ParallelStream in Java) over manual thread management. Sequential code must be the default; parallelism is an optimization that requires explicit justification and benchmarks.",
+        "trigger": "adding threads, goroutines, async tasks, parallel iterators, background workers, thread pools, or any concurrent data pipeline",
+        "severity": "warn",
+        "remediation": "Profile the sequential version first. Identify the bottleneck using a profiler (e.g., `perf`, `async-profiler`, `tokio-console`). Apply parallelism only to the identified bottleneck. Prefer data-parallel operations (parallel map/fold over collections) over manually spawning threads. Document the justification (measured speedup, workload profile) in a code comment adjacent to the parallelism boundary."
       }
     ]
   },
@@ -150,8 +195,8 @@
   },
   {
     "slug": "cyber-security",
-    "description": "Security review and attack-simulation guidance for common web risks, abuse prevention, and adversarial testing.",
-    "query_hint": "Recall this domain for threat modeling, injection risks, XSS, rate limits, red-team simulation, and attacker-resilience checks.",
+    "description": "Security guidance for web risks, attack simulation, multi-party authorization, dispatch authentication, payload validation, fine-grained RBAC, audit trails, anomaly detection, rate limiting, and kill-switch patterns — with cross-language library references for every major ecosystem.",
+    "query_hint": "Recall this domain for threat modeling, injection/XSS, rate limits, red-team simulation, dual/m-of-n authorization, FROST threshold signatures, Keycloak/SPIFFE authentication, CAP payload validation, OpenFGA/Casbin RBAC, immudb audit trails, Wazuh anomaly detection, and feature-flag kill switches.",
     "items": [
       {
         "kind": "rule",
@@ -215,6 +260,51 @@
         "trigger": "adding authentication, authorization, payments, file upload, admin actions, webhooks, public APIs, or integrations",
         "severity": "warn",
         "remediation": "Create a diagram showing trust boundaries and data flow. List the security controls applied at each boundary (e.g. JWT validation, payload schema validation, network firewall rules)."
+      },
+      {
+        "kind": "rule",
+        "stage": "security",
+        "title": "Enforce dual / multi-party authorization (four-eyes, m-of-n) on high-impact actions",
+        "body": "High-impact or irreversible actions (critical alerts, production deploys, financial transfers, bulk deletions) must require independent approval from at least N parties before executing. Key pattern: prefer network-service implementations for security-critical controls — they centralize logic in one audited place instead of reimplementing per language, which is how inconsistencies and bypasses creep in. Three implementation tiers: 1) POLICY LAYER (any language) — Open Policy Agent encodes 'needs N approvers' as policy; Temporal or Camunda (BPMN gates) manages the durable approval workflow; HashiCorp Vault provides a battle-tested Shamir-quorum unsealing reference for m-of-n unlock. 2) IN-PROCESS RBAC ENGINE — Casbin has first-class ports for almost every ecosystem: Go (casbin), Python (pycasbin), Node (node-casbin), Java (jCasbin), Rust (casbin-rs), .NET (Casbin.NET), PHP, and Ruby. 3) CRYPTOGRAPHIC LAYER — For true dual-control where no single compromised key fires the action, use threshold signatures: the FROST spec has implementations across ecosystems (frost crates in Rust; frost-ed25519 in Go; ZF maintains cross-language references). The dispatch fires only after k-of-n parties have independently signed.",
+        "trigger": "designing dispatch systems, critical alert pipelines, deployment gates, financial authorization flows, bulk data deletion, or admin privilege escalation",
+        "severity": "block",
+        "remediation": "Replace single-approver workflows with an explicit multi-party gate. Implement OPA or Casbin policies that validate the approver set before the action executes. For cryptographic-grade control, implement threshold signatures with FROST — fire only after k-of-n parties have signed. Log every approval decision (approver identity, timestamp, action hash) to an immutable audit store."
+      },
+      {
+        "kind": "rule",
+        "stage": "security",
+        "title": "Apply strong, layered authentication on sensitive dispatch and admin paths",
+        "body": "Authentication on high-risk paths must use multiple factors and short-lived credentials. Prefer the network-service tier for centralized, audited identity management. INFRA (any language): Keycloak, the Ory stack (Kratos/Hydra/Oathkeeper), Zitadel, or Authentik as your OIDC/MFA/passkey provider — your app speaks OIDC so language is irrelevant. For mTLS / 'only verified workloads call dispatch': SPIFFE/SPIRE (CNCF) gives every service a cryptographic SVID identity replacing shared secrets; Linkerd or Istio meshes provide the same mTLS with less wiring. IN-PROCESS libraries by concern: JWT verification — golang-jwt (Go), PyJWT/Authlib (Python), jose (Node/TS), Nimbus JOSE + JWT / SmallRye JWT (Java/JVM), built-in + jose-jwt (.NET), jsonwebtoken / josekit (Rust). OIDC client — coreos/go-oidc (Go), Authlib (Python), openid-client (Node), built-in OIDC (Java), built-in (.NET), openidconnect crate (Rust). WebAuthn relying-party — go-webauthn (Go), py_webauthn (Python), SimpleWebAuthn (Node), webauthn4j (Java), Fido2 (.NET), webauthn-rs (Rust). Token TTLs must be minutes, not hours. Reject requests without a valid certificate or SVID at the network perimeter.",
+        "trigger": "building authentication for dispatch paths, admin panels, alert publication, CI/CD gates, or any workload-to-workload communication that triggers irreversible actions",
+        "severity": "block",
+        "remediation": "Enable MFA on all human-authenticated admin paths. Issue scoped, short-lived JWTs (claims: specific action, target, expiry in minutes). Use SPIFFE/SPIRE SVIDs for machine-to-machine authentication on dispatch endpoints. Rotate credentials automatically. Validate the OIDC token's audience claim to ensure tokens minted for one service cannot be replayed against another."
+      },
+      {
+        "kind": "rule",
+        "stage": "security",
+        "title": "Validate dispatch payload content and structure at the ingestion gate",
+        "body": "Every payload traversing a critical dispatch path must be validated against a strict schema before it is enqueued, stored, or broadcast. Structural validation catches malformed inputs and injection attempts that exploit downstream parsers. Prefer enforcing structure at the wire level with Protocol Buffers or Apache Avro — both generate validators for every major language and make schema-invalid payloads undeserializable by construction. DOMAIN ANCHOR (any language): validate alerts against CAP (Common Alerting Protocol), the OASIS open standard for emergency alerts — a single abstract word fails the required-fields check and never broadcasts. IN-PROCESS JSON Schema validators: ajv (Node/TS), jsonschema (Python), santhosh-tekuri/jsonschema (Go), networknt/json-schema-validator (Java), JsonSchema.Net (.NET), jsonschema crate (Rust). Validate at ingestion, not at consumption. Schema must be versioned and stored in source control alongside the dispatch service.",
+        "trigger": "building dispatch systems, alert publication pipelines, event buses, webhook endpoints, or any boundary where external or semi-trusted data drives outbound actions",
+        "severity": "block",
+        "remediation": "Define a JSON Schema or Protobuf/Avro schema for every dispatch message type. Add schema validation as the first middleware step on every ingestion endpoint. Reject and log schema-invalid payloads with structured error details including the failing field path. For alert systems, validate all required CAP fields (identifier, sender, sent, status, msgType, scope, info blocks) before allowing dispatch."
+      },
+      {
+        "kind": "rule",
+        "stage": "security",
+        "title": "Enforce fine-grained, least-privilege RBAC — prefer a centralized authz service",
+        "body": "Authorization must be explicit, narrowly scoped, and centrally enforced — never assumed from authentication alone. Prefer the network-service option: OpenFGA (CNCF) or SpiceDB (Authzed) expose Zanzibar-style fine-grained authz over gRPC/HTTP with SDKs for Go, Python, Node, Java, .NET, Rust, and more — this is the right home for 'only the highest role, plus quorum, can send Extreme severity.' For in-process embedding, Casbin covers all major languages (casbin/Go, pycasbin/Python, node-casbin, jCasbin/Java, casbin-rs/Rust, Casbin.NET). For simpler role→permission mappings: Keycloak's built-in RBAC. Regardless of implementation: operators must never inherit dispatch or broadcast permissions by default; privileges must be explicitly granted, scoped to specific resource types and severity levels, and must carry an expiry.",
+        "trigger": "designing role systems, permission checks for dispatch, alert severity gates, admin actions, or any endpoint where user privilege determines action availability",
+        "severity": "warn",
+        "remediation": "Replace any implicit 'authenticated = authorized' checks with explicit permission evaluation via OpenFGA or Casbin. Model dispatch authorization as: subject X is allowed to perform action Y on resource Z given conditions C. Audit all permission grants on a scheduled review cycle. Restrict the highest-severity dispatch roles to a named, minimal set of identities with MFA required."
+      },
+      {
+        "kind": "rule",
+        "stage": "security",
+        "title": "Implement immutable audit trail, anomaly detection, rate limiting, and a feature-flag kill switch",
+        "body": "Four production-grade safety layers required on any high-risk dispatch or broadcast system. Prefer infrastructure-tier implementations (language-agnostic) over per-app reimplementation. 1) TAMPER-EVIDENT AUDIT (any language): immudb for cryptographically verifiable, immutable dispatch logs; sigstore/rekor for transparency-log append-only style. 2) ANOMALY DETECTION / SIEM (any language): Wazuh (open-source SIEM/XDR) or OpenSearch Security Analytics — alert on off-hours dispatch, abnormal volumes, or off-protocol content. Avoid Elastic unless current licensing is confirmed. 3) RATE LIMITING — Gateway tier (any language): Apache APISIX or Kong OSS, so limits hold regardless of app language. In-process by language: bucket4j (Java/Quarkus-native), limiter/sliding-window (Go), slowapi/limits (Python), rate-limiter-flexible (Node/TS), governor (Rust), AspNetCoreRateLimit (.NET). 4) KILL SWITCH: implement as an audited feature flag, not manual service takedown. Unleash (self-hostable, fine-grained targeting) or OpenFeature (CNCF standard) + flagd — a flag-based kill switch toggles in seconds without a deployment, is fully audited, and can be scoped to specific channels or severity levels.",
+        "trigger": "building critical dispatch systems, alert publication, autonomous action pipelines, or any system requiring emergency shutdown capability",
+        "severity": "block",
+        "remediation": "Deploy immudb alongside the dispatch service and write a structured log entry for every lifecycle event (created, approved, rejected, sent, failed). Configure Wazuh rules for off-hours and volume anomalies. Integrate gateway-level rate limiting on all dispatch endpoints and add in-process per-identity caps as a second layer. Implement the feature-flag kill switch as the first code path evaluated on every dispatch request — if the flag is off, reject immediately and log."
       }
     ]
   },

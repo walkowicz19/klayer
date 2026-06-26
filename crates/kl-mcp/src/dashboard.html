@@ -305,6 +305,28 @@
     .code-hit-lines { font-size: 11px; color: var(--mute); }
     .code-lang-tag { padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; background: var(--soft); color: var(--charcoal); }
     .code-snippet { font-family: ui-monospace, 'SF Mono', 'Consolas', monospace; font-size: 11.5px; line-height: 1.6; background: var(--soft); border-radius: var(--r-md); padding: 10px 12px; overflow-x: auto; white-space: pre; color: var(--ink); border: 1px solid var(--hairline); max-height: 180px; overflow-y: auto; }
+    .code-repo-select {
+      height: 36px; padding: 0 28px 0 10px; border: 1px solid var(--hairline);
+      border-radius: var(--r-full); font-size: 13px; color: var(--ink); background: var(--canvas);
+      cursor: pointer; outline: none; transition: border-color .12s;
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+    }
+    .code-repo-select:focus { border-color: var(--blue); }
+    .code-file-group { border: 1px solid var(--hairline); border-radius: var(--r-md); margin-bottom: 10px; overflow: hidden; }
+    .code-file-header { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--soft); border-bottom: 1px solid var(--hairline); flex-wrap: wrap; }
+    .code-file-header:last-child { border-bottom: none; }
+    .code-file-name { font-size: 12px; font-weight: 700; color: var(--blue); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .code-file-toggle { margin-left: auto; flex-shrink: 0; font-size: 11px; padding: 2px 9px; border-radius: 4px; border: 1px solid var(--hairline); background: var(--canvas); color: var(--charcoal); cursor: pointer; white-space: nowrap; transition: background .12s; }
+    .code-file-toggle:hover { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
+    .code-chunks-area { padding: 0 12px; }
+    .code-chunk { padding: 10px 0; border-bottom: 1px solid var(--hairline); }
+    .code-chunk:last-child { border-bottom: none; }
+    .code-chunk-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; flex-wrap: wrap; }
+    .code-chunk-symbol { font-size: 11.5px; font-weight: 600; color: var(--charcoal); }
+    .code-full-file { padding: 10px 0; }
+    .code-full-file pre { font-family: ui-monospace, 'SF Mono', 'Consolas', monospace; font-size: 11px; line-height: 1.6; background: var(--soft); border-radius: var(--r-md); padding: 12px 14px; overflow-x: auto; white-space: pre; color: var(--ink); border: 1px solid var(--hairline); max-height: 480px; overflow-y: auto; }
     .repo-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--hairline); }
     .repo-row:last-child { border-bottom: none; }
     .repo-icon { width: 32px; height: 32px; border-radius: var(--r-md); background: var(--soft); border: 1px solid var(--hairline); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
@@ -676,6 +698,9 @@
         </div>
         <div class="cb">
           <div class="code-search-bar">
+            <select class="code-repo-select" id="code-repo-filter">
+              <option value="">All Repos</option>
+            </select>
             <input class="code-search-input" id="code-search-input" type="text" data-i18n-placeholder="codeSearchPlaceholder" />
             <button class="code-search-btn" onclick="runCodeSearch()" data-i18n="codeSearchBtn"></button>
           </div>
@@ -1704,6 +1729,14 @@ function renderCodebase() {
   const reposCount = document.getElementById('repos-count');
   if (reposCount) reposCount.textContent = G.codeRepos.length;
 
+  // Populate the search repo filter dropdown
+  const repoFilter = document.getElementById('code-repo-filter');
+  if (repoFilter) {
+    const selected = repoFilter.value;
+    repoFilter.innerHTML = '<option value="">All Repos</option>' +
+      G.codeRepos.map(r => `<option value="${escHtml(r.path)}"${r.path === selected ? ' selected' : ''}>${escHtml(r.name || r.path.split('/').filter(Boolean).pop() || r.path)}</option>`).join('');
+  }
+
   const list = document.getElementById('repos-list');
   if (!list) return;
   if (!G.codeRepos.length) {
@@ -1987,31 +2020,79 @@ async function clearTraining() {
   } catch(e) { alert('Clear failed: ' + e); }
 }
 
+// Tracks which file groups are showing full-file view vs chunk view
+const _fileViewMode = {}; // key -> 'chunks' | 'file'
+
 async function runCodeSearch() {
   const query = document.getElementById('code-search-input').value.trim();
+  const repoFilter = document.getElementById('code-repo-filter');
+  const selectedRepo = repoFilter ? repoFilter.value : '';
   const results = document.getElementById('code-search-results');
   if (!results) return;
-  if (!query) { results.innerHTML = `<div class="empty" style="padding:1rem;text-align:center;color:var(--muted)">${t('codeSearchPrompt')}</div>`; return; }
+  if (!query) {
+    results.innerHTML = `<div class="empty" style="padding:1rem;text-align:center;color:var(--muted)">${t('codeSearchPrompt')}</div>`;
+    return;
+  }
   results.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--muted)">…</div>';
   try {
-    const hits = await fetch(`/api/code/search?q=${encodeURIComponent(query)}&limit=20`).then(r=>r.json());
-    if (!hits.length) {
+    let url = `/api/code/search?q=${encodeURIComponent(query)}&limit=40`;
+    if (selectedRepo) url += `&repo=${encodeURIComponent(selectedRepo)}`;
+    const hits = await fetch(url).then(r => r.json());
+    if (!Array.isArray(hits) || !hits.length) {
       results.innerHTML = `<div class="empty" style="padding:1rem;text-align:center;color:var(--muted)">${t('codeNoResults')}</div>`;
       return;
     }
-    results.innerHTML = hits.map(h => `
-      <div class="code-hit">
-        <div class="code-hit-header">
-          <span class="code-hit-file">${escHtml(h.rel_path)}</span>
-          ${h.symbol_name ? `<span class="code-hit-file" style="opacity:.7">${escHtml(h.symbol_name)}</span>` : ''}
-          <span class="code-lang-tag">${escHtml(h.language || '')}</span>
-          <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${escHtml(h.repo_name || '')}</span>
-        </div>
-        <pre class="code-snippet">${escHtml(h.snippet || h.content || '')}</pre>
-      </div>`).join('');
+    // Group hits by file (file_path + repo_path)
+    const fileMap = new Map();
+    for (const h of hits) {
+      const filePath = h.file_path || '(path not indexed)';
+      // Derive a friendly repo name from the last non-empty segment of repo_path
+      const repoName = h.repo_path
+        ? h.repo_path.replace(/\/\//g, '').split('/').filter(Boolean).pop() || h.repo_path
+        : '';
+      const key = `${h.repo_path || ''}::${filePath}`;
+      if (!fileMap.has(key)) fileMap.set(key, { filePath, repoName, lang: h.language || '', chunks: [] });
+      fileMap.get(key).chunks.push(h);
+    }
+    results.innerHTML = [...fileMap.entries()].map(([key, grp]) => {
+      const safeKey = btoa(encodeURIComponent(key)).replace(/[^a-z0-9]/gi, '_').slice(0, 40);
+      const mode = _fileViewMode[key] || 'chunks';
+      const toggleLabel = mode === 'chunks' ? 'View full file' : 'View chunks';
+      const chunksHtml = grp.chunks.map(h => `
+        <div class="code-chunk">
+          <div class="code-chunk-meta">
+            ${h.symbol_name ? `<span class="code-chunk-symbol">${escHtml(h.symbol_name)}</span>` : ''}
+            ${h.language ? `<span class="code-lang-tag">${escHtml(h.language)}</span>` : ''}
+          </div>
+          <pre class="code-snippet">${escHtml(h.snippet || h.content || '')}</pre>
+        </div>`).join('');
+      const fullFileHtml = mode === 'file'
+        ? `<div class="code-full-file" id="ff-${safeKey}"><pre>${escHtml(grp.chunks.map(h => h.content || h.snippet || '').join('\n\n--- chunk ---\n\n'))}</pre></div>`
+        : `<div id="ff-${safeKey}"></div>`;
+      return `
+        <div class="code-file-group">
+          <div class="code-file-header">
+            <span class="code-file-name" title="${escHtml(grp.filePath)}">${escHtml(grp.filePath)}</span>
+            ${grp.lang ? `<span class="code-lang-tag">${escHtml(grp.lang)}</span>` : ''}
+            ${grp.repoName ? `<span style="font-size:.72rem;color:var(--muted)">${escHtml(grp.repoName)}</span>` : ''}
+            <span style="font-size:.72rem;color:var(--muted);margin-right:4px">${grp.chunks.length} chunk${grp.chunks.length !== 1 ? 's' : ''}</span>
+            <button class="code-file-toggle" onclick="toggleCodeFileView('${escHtml(key)}', '${safeKey}')">${toggleLabel}</button>
+          </div>
+          <div class="code-chunks-area">
+            ${mode === 'chunks' ? chunksHtml : ''}
+            ${fullFileHtml}
+          </div>
+        </div>`;
+    }).join('');
   } catch(e) {
     results.innerHTML = `<div class="empty" style="padding:1rem;color:var(--danger)">${escHtml(String(e))}</div>`;
   }
+}
+
+function toggleCodeFileView(key, safeKey) {
+  _fileViewMode[key] = (_fileViewMode[key] || 'chunks') === 'chunks' ? 'file' : 'chunks';
+  // Re-run search to re-render with updated mode (lightweight since results are cached in DOM logic)
+  runCodeSearch();
 }
 
 document.getElementById('code-search-input')?.addEventListener('keydown', e => {
