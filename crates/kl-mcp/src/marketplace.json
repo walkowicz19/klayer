@@ -380,8 +380,8 @@
   },
   {
     "slug": "front-end",
-    "description": "Enterprise front-end practices for framework choices, component quality, accessibility, and anti AI-slop validation.",
-    "query_hint": "Recall this domain for Angular, React, shadcn, Chakra, UI architecture, accessibility, and front-end quality reviews.",
+    "description": "Enterprise front-end practices covering framework selection, component design, accessibility (WCAG), IHC usability heuristics, and the Hick-Hyman Law.",
+    "query_hint": "Recall this domain for Angular, React, Vue, Svelte, UI component design, accessibility (WCAG), IHC usability heuristics, and Hick-Hyman choice optimization.",
     "items": [
       {
         "kind": "rule",
@@ -445,6 +445,24 @@
         "trigger": "accepting generated UI, composing component libraries, or building enterprise screens",
         "severity": null,
         "remediation": null
+      },
+      {
+        "kind": "rule",
+        "stage": "frontend",
+        "title": "Apply IHC principles and usability heuristics for user-centered design",
+        "body": "User interfaces must respect Human-Computer Interaction (IHC) principles to ensure usability, learnability, and accessibility. Apply: 1) Nielsen's 10 Usability Heuristics (visibility of system status, match between system and real world, user control/freedom, consistency/standards, error prevention, recognition over recall, flexibility/efficiency, minimalist design, error recovery, help/documentation). 2) Gestalt Principles (proximity, similarity, continuity, closure) to establish visual hierarchy. 3) Fitts's Law to target sizing and placement (interactive elements must be large enough and close enough to minimize target acquisition time). 4) Cognitive Load reduction (avoid clutter, clear mental models).",
+        "trigger": "designing or refactoring user interfaces, navigation layouts, form fields, interaction feedback, or user workflows",
+        "severity": "warn",
+        "remediation": "Audit the UI against the 10 heuristics. Ensure interactive targets are at least 44x44px. Align related controls visually to respect proximity. Replace complex instructions with recognition-based cues (e.g., icons with clear text labels)."
+      },
+      {
+        "kind": "rule",
+        "stage": "frontend",
+        "title": "Optimize decision speed using the Hick-Hyman Law",
+        "body": "The Hick-Hyman Law states that the time it takes for a user to make a decision increases logarithmically with the number and complexity of choices. To prevent choice overload and decision paralysis: 1) Bounded Choices: Limit options presented at any single step (e.g., maximum 5-7 items in navigation, dropdowns, or selection lists). 2) Progressive Disclosure: Hide advanced or secondary options under tabs, collapsible sections, or 'show more' links. 3) Smart Defaults: Pre-select the most common or recommended option to reduce cognitive effort. 4) Chunking: Group related information or actions into distinct, labeled categories.",
+        "trigger": "designing navigation menus, configuration dashboards, settings pages, form choices, onboarding flows, or command lists",
+        "severity": "warn",
+        "remediation": "Analyze list options and menus. If a list contains more than 7 items, category-chunk or use search-with-autocomplete. Apply progressive disclosure to secondary actions. Pre-populate sensible default choices in forms to expedite user flows."
       }
     ]
   },
