@@ -925,7 +925,7 @@ const LANGS = {
     codeStatChunks: 'Chunks', codeStatChunksHint: 'searchable blocks',
     chCodeSearch: 'Search Code', chRepos: 'Indexed Repositories',
     codeSearchPlaceholder: 'Search functions, symbols, file paths…',
-    codeSearchBtn: 'Search',
+    codeSearchBtn: 'Search', viewFullFile: 'View full file', viewChunks: 'View chunks',
     codeNoResults: 'No results', codeSearchPrompt: 'Type a query and press Search',
     repoFiles: 'files', repoChunks: 'chunks', repoIndexed: 'indexed',
     phTrainingSub: 'Trust-gated training examples — only reviewed and user rows are ever exported',
@@ -1024,7 +1024,7 @@ const LANGS = {
     codeStatChunks: 'Blocos', codeStatChunksHint: 'blocos pesquisáveis',
     chCodeSearch: 'Buscar Código', chRepos: 'Repositórios Indexados',
     codeSearchPlaceholder: 'Buscar funções, símbolos, caminhos de arquivo…',
-    codeSearchBtn: 'Buscar',
+    codeSearchBtn: 'Buscar', viewFullFile: 'Ver arquivo completo', viewChunks: 'Ver trechos',
     codeNoResults: 'Sem resultados', codeSearchPrompt: 'Digite uma consulta e pressione Buscar',
     repoFiles: 'arquivos', repoChunks: 'blocos', repoIndexed: 'indexado',
     phTrainingSub: 'Exemplos de treinamento sob controle de confiança — apenas linhas revisadas e do usuário são exportadas',
@@ -1123,7 +1123,7 @@ const LANGS = {
     codeStatChunks: 'Bloques', codeStatChunksHint: 'bloques buscables',
     chCodeSearch: 'Buscar Código', chRepos: 'Repositorios Indexados',
     codeSearchPlaceholder: 'Buscar funciones, símbolos, rutas de archivo…',
-    codeSearchBtn: 'Buscar',
+    codeSearchBtn: 'Buscar', viewFullFile: 'Ver archivo completo', viewChunks: 'Ver fragmentos',
     codeNoResults: 'Sin resultados', codeSearchPrompt: 'Escribe una consulta y presiona Buscar',
     repoFiles: 'archivos', repoChunks: 'bloques', repoIndexed: 'indexado',
     phTrainingSub: 'Ejemplos de entrenamiento controlados por confianza — solo se exportan las filas revisadas y del usuario',
@@ -1222,7 +1222,7 @@ const LANGS = {
     codeStatChunks: '块', codeStatChunksHint: '可搜索块',
     chCodeSearch: '搜索代码', chRepos: '已索引仓库',
     codeSearchPlaceholder: '搜索函数、符号、文件路径…',
-    codeSearchBtn: '搜索',
+    codeSearchBtn: '搜索', viewFullFile: '查看完整文件', viewChunks: '查看代码分块',
     codeNoResults: '无结果', codeSearchPrompt: '输入查询并点击搜索',
     repoFiles: '文件', repoChunks: '块', repoIndexed: '已索引',
     phTrainingSub: '受信任控制的训练样本 — 仅导出已审核和用户行',
@@ -1321,7 +1321,7 @@ const LANGS = {
     codeStatChunks: 'Fragmenty', codeStatChunksHint: 'przeszukiwalne fragmenty',
     chCodeSearch: 'Szukaj Kodu', chRepos: 'Zaindeksowane Repozytoria',
     codeSearchPlaceholder: 'Szukaj funkcji, symboli, ścieżek pliku…',
-    codeSearchBtn: 'Szukaj',
+    codeSearchBtn: 'Szukaj', viewFullFile: 'Zobacz pełny plik', viewChunks: 'Zobacz fragmenty',
     codeNoResults: 'Brak wyników', codeSearchPrompt: 'Wpisz zapytanie i naciśnij Szukaj',
     repoFiles: 'pliki', repoChunks: 'fragmenty', repoIndexed: 'zaindeksowano',
     phTrainingSub: 'Przykłady treningowe pod kontrolą zaufania — eksportowane są tylko wiersze zrecenzowane i użytkownika',
@@ -1425,7 +1425,10 @@ function applyLang(skipRender = false) {
     `).join('');
   }
 
-  if (G.stats && !skipRender) renderAll();
+  if (G.stats && !skipRender) {
+    renderAll();
+    runCodeSearch({ fromCache: true });
+  }
 }
 
 function setLang(code) {
@@ -2034,7 +2037,9 @@ async function clearTraining() {
 // Tracks which file groups are showing full-file view vs chunk view
 const _fileViewMode = {}; // key -> 'chunks' | 'file'
 
-async function runCodeSearch() {
+let _lastCodeSearchHits = null;
+
+async function runCodeSearch(opts = {}) {
   const query = document.getElementById('code-search-input').value.trim();
   const repoFilter = document.getElementById('code-repo-filter');
   const selectedRepo = repoFilter ? repoFilter.value : '';
@@ -2042,14 +2047,28 @@ async function runCodeSearch() {
   if (!results) return;
   if (!query) {
     results.innerHTML = `<div class="empty" style="padding:1rem;text-align:center;color:var(--muted)">${t('codeSearchPrompt')}</div>`;
+    _lastCodeSearchHits = null;
     return;
   }
-  results.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--muted)">…</div>';
-  try {
-    let url = `/api/code/search?q=${encodeURIComponent(query)}&limit=40`;
-    if (selectedRepo) url += `&repo=${encodeURIComponent(selectedRepo)}`;
-    const hits = await fetch(url).then(r => r.json());
-    if (!Array.isArray(hits) || !hits.length) {
+  
+  let hits;
+  if (opts.fromCache && _lastCodeSearchHits) {
+    hits = _lastCodeSearchHits;
+  } else {
+    results.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--muted)">…</div>';
+    try {
+      let url = `/api/code/search?q=${encodeURIComponent(query)}&limit=40`;
+      if (selectedRepo) url += `&repo=${encodeURIComponent(selectedRepo)}`;
+      hits = await fetch(url).then(r => r.json());
+      _lastCodeSearchHits = hits;
+    } catch (e) {
+      results.innerHTML = `<div class="error" style="padding:1rem;text-align:center;color:var(--red)">Search failed: ${e}</div>`;
+      _lastCodeSearchHits = null;
+      return;
+    }
+  }
+
+  if (!Array.isArray(hits) || !hits.length) {
       results.innerHTML = `<div class="empty" style="padding:1rem;text-align:center;color:var(--muted)">${t('codeNoResults')}</div>`;
       return;
     }
@@ -2068,7 +2087,7 @@ async function runCodeSearch() {
     results.innerHTML = [...fileMap.entries()].map(([key, grp]) => {
       const safeKey = btoa(encodeURIComponent(key)).replace(/[^a-z0-9]/gi, '_').slice(0, 40);
       const mode = _fileViewMode[key] || 'chunks';
-      const toggleLabel = mode === 'chunks' ? 'View full file' : 'View chunks';
+      const toggleLabel = t(mode === 'chunks' ? 'viewFullFile' : 'viewChunks');
       const chunksHtml = grp.chunks.map(h => `
         <div class="code-chunk">
           <div class="code-chunk-meta">

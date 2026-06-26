@@ -1735,6 +1735,15 @@ fn get_claude_config_path() -> Option<std::path::PathBuf> {
     }
 }
 
+fn ensure_parent_dir(path: &str) -> Result<()> {
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        if parent.as_os_str().len() > 0 {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -1874,14 +1883,17 @@ async fn main() -> Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(7474);
 
+    ensure_parent_dir(&db)?;
     let store = Arc::new(Store::open(&db)?);
     store.migrate()?;
     tracing::info!("klayer store ready at {db}");
 
+    ensure_parent_dir(&code_db)?;
     let code_store = Arc::new(CodeStore::open(&code_db)?);
     code_store.migrate()?;
     tracing::info!("klayer code store ready at {code_db}");
 
+    ensure_parent_dir(&train_db)?;
     let train_store = Arc::new(TrainStore::open(&train_db)?);
     train_store.migrate()?;
     tracing::info!("klayer train store ready at {train_db}");
