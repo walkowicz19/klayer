@@ -2051,24 +2051,19 @@ async function runCodeSearch(opts = {}) {
     return;
   }
   
-  let hits;
-  if (opts.fromCache && _lastCodeSearchHits) {
-    hits = _lastCodeSearchHits;
-  } else {
-    results.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--muted)">…</div>';
-    try {
+  try {
+    let hits;
+    if (opts.fromCache && _lastCodeSearchHits) {
+      hits = _lastCodeSearchHits;
+    } else {
+      results.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--muted)">…</div>';
       let url = `/api/code/search?q=${encodeURIComponent(query)}&limit=40`;
       if (selectedRepo) url += `&repo=${encodeURIComponent(selectedRepo)}`;
       hits = await fetch(url).then(r => r.json());
       _lastCodeSearchHits = hits;
-    } catch (e) {
-      results.innerHTML = `<div class="error" style="padding:1rem;text-align:center;color:var(--red)">Search failed: ${e}</div>`;
-      _lastCodeSearchHits = null;
-      return;
     }
-  }
 
-  if (!Array.isArray(hits) || !hits.length) {
+    if (!Array.isArray(hits) || !hits.length) {
       results.innerHTML = `<div class="empty" style="padding:1rem;text-align:center;color:var(--muted)">${t('codeNoResults')}</div>`;
       return;
     }
@@ -2116,6 +2111,7 @@ async function runCodeSearch(opts = {}) {
     }).join('');
   } catch(e) {
     results.innerHTML = `<div class="empty" style="padding:1rem;color:var(--danger)">${escHtml(String(e))}</div>`;
+    _lastCodeSearchHits = null;
   }
 }
 
