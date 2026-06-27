@@ -351,62 +351,65 @@ impl CodeStore {
         )?;
 
         // Insert new files and chunks in one transaction.
-        {
-            // We can't call c.transaction() here because c is already borrowed
-            // through the MutexGuard. Use execute_batch with SAVEPOINT instead.
-            c.execute_batch("SAVEPOINT index_repo;")?;
-            let result = (|| -> Result<()> {
-                for entry in &file_data {
-                    c.execute(
-                        "INSERT INTO code_files (repo_id, rel_path, language) VALUES (?1, ?2, ?3)",
-                        params![repo_id, entry.rel_path, entry.language],
-                    )?;
-                    let file_id = c.last_insert_rowid();
-
-                    for chunk in &entry.chunks {
-                        c.execute(
-                            "INSERT INTO code_chunks
-                                 (file_id, line_start, line_end, content, kind, symbol_name)
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                            params![
-                                file_id,
-                                chunk.line_start as i64,
-                                chunk.line_end as i64,
-                                chunk.content,
-                                chunk.kind,
-                                chunk.symbol_name
-                            ],
-                        )?;
-                        let chunk_id = c.last_insert_rowid();
-
-                        let body = format!(
-                            "{} {}\n{}",
-                            chunk.symbol_name.as_deref().unwrap_or(""),
-                            entry.rel_path,
-                            chunk.content
-                        );
-                        c.execute(
-                            "INSERT INTO code_fts (rowid, body) VALUES (?1, ?2)",
-                            params![chunk_id, body],
-                        )?;
-                    }
-                }
-                Ok(())
-            })();
-            match result {
-                Ok(()) => c.execute_batch("RELEASE SAVEPOINT index_repo;")?,
-                Err(e) => {
-                    c.execute_batch("ROLLBACK TO SAVEPOINT index_repo;").ok();
-                    return Err(e);
-                }
-            }
-        }
+        insert_repo_data(&c, repo_id, &file_data)?;
 
         Ok(IndexStats {
             files: total_files,
             chunks: total_chunks,
             skipped,
         })
+    }
+}
+
+fn insert_repo_data(c: &Connection, repo_id: i64, file_data: &[FileEntry]) -> Result<()> {
+    c.execute_batch("SAVEPOINT index_repo;")?;
+    let result = (|| -> Result<()> {
+        for entry in file_data {
+            c.execute(
+                "INSERT INTO code_files (repo_id, rel_path, language) VALUES (?1, ?2, ?3)",
+                params![repo_id, entry.rel_path, entry.language],
+            )?;
+            let file_id = c.last_insert_rowid();
+
+            for chunk in &entry.chunks {
+                c.execute(
+                    "INSERT INTO code_chunks
+                         (file_id, line_start, line_end, content, kind, symbol_name)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        file_id,
+                        chunk.line_start as i64,
+                        chunk.line_end as i64,
+                        chunk.content,
+                        chunk.kind,
+                        chunk.symbol_name
+                    ],
+                )?;
+                let chunk_id = c.last_insert_rowid();
+
+                let body = format!(
+                    "{} {}\n{}",
+                    chunk.symbol_name.as_deref().unwrap_or(""),
+                    entry.rel_path,
+                    chunk.content
+                );
+                c.execute(
+                    "INSERT INTO code_fts (rowid, body) VALUES (?1, ?2)",
+                    params![chunk_id, body],
+                )?;
+            }
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            c.execute_batch("RELEASE SAVEPOINT index_repo;")?;
+            Ok(())
+        }
+        Err(e) => {
+            c.execute_batch("ROLLBACK TO SAVEPOINT index_repo;").ok();
+            Err(e)
+        }
     }
 }
 
@@ -439,6 +442,41 @@ struct ChunkEntry {
     content: String,
     kind: Option<String>,
     symbol_name: Option<String>,
+}
+
+fn process_file_entry(
+    root: &Path,
+    path: &Path,
+    lang: &str,
+    out: &mut Vec<FileEntry>,
+    skipped: &mut usize,
+) -> Result<()> {
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() > MAX_FILE_BYTES {
+            *skipped += 1;
+            return Ok(());
+        }
+    }
+
+    let Ok(content) = std::fs::read_to_string(path) else {
+        *skipped += 1;
+        return Ok(());
+    };
+    if content.trim().is_empty() {
+        return Ok(());
+    }
+
+    let rel = path.strip_prefix(root).unwrap_or(path);
+    let rel_str = rel.to_string_lossy().replace('\\', "/");
+    let chunks = chunk_file(&content, lang);
+    if !chunks.is_empty() {
+        out.push(FileEntry {
+            rel_path: rel_str,
+            language: lang.to_string(),
+            chunks,
+        });
+    }
+    Ok(())
 }
 
 fn collect_files(
@@ -478,72 +516,78 @@ fn collect_files(
             continue;
         };
 
-        if let Ok(meta) = std::fs::metadata(&path) {
-            if meta.len() > MAX_FILE_BYTES {
-                *skipped += 1;
-                continue;
-            }
-        }
-
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            *skipped += 1;
-            continue;
-        };
-        if content.trim().is_empty() {
-            continue;
-        }
-
-        let rel = path.strip_prefix(root).unwrap_or(&path);
-        let rel_str = rel.to_string_lossy().replace('\\', "/");
-        let chunks = chunk_file(&content, lang);
-        if !chunks.is_empty() {
-            out.push(FileEntry {
-                rel_path: rel_str,
-                language: lang.to_string(),
-                chunks,
-            });
-        }
+        process_file_entry(root, &path, lang, out, skipped)?;
     }
 
     Ok(())
 }
 
 fn detect_language(path: &Path) -> Option<&'static str> {
-    match path.extension()?.to_str()? {
-        "rs" => Some("rust"),
-        "py" => Some("python"),
-        "js" | "mjs" | "cjs" => Some("javascript"),
-        "ts" | "mts" => Some("typescript"),
-        "tsx" => Some("tsx"),
-        "jsx" => Some("jsx"),
-        "go" => Some("go"),
-        "java" => Some("java"),
-        "cpp" | "cc" | "cxx" => Some("cpp"),
-        "c" => Some("c"),
-        "h" | "hpp" => Some("cpp"),
-        "cs" => Some("csharp"),
-        "rb" => Some("ruby"),
-        "kt" | "kts" => Some("kotlin"),
-        "swift" => Some("swift"),
-        "md" | "markdown" => Some("markdown"),
-        "toml" => Some("toml"),
-        "json" => Some("json"),
-        "yaml" | "yml" => Some("yaml"),
-        "html" | "htm" => Some("html"),
-        "css" | "scss" | "sass" => Some("css"),
-        "sh" | "bash" => Some("shell"),
-        "sql" => Some("sql"),
-        "php" => Some("php"),
-        "lua" => Some("lua"),
-        "zig" => Some("zig"),
-        // ── Legacy / Enterprise languages ─────────────────────────────
-        "cbl" | "cob" | "cpy" | "cobol" => Some("cobol"),
-        "nsp" | "nse" | "nsd" | "nsl" | "nst" => Some("natural"),
-        "rpg" | "rpgle" | "sqlrpgle" => Some("rpg"),
-        "sru" | "sra" | "srd" | "srw" | "pbl" => Some("powerscript"),
-        _ => None,
-    }
+    let ext = path.extension()?.to_str()?;
+    const EXT_MAP: &[(&str, &str)] = &[
+        ("rs", "rust"),
+        ("py", "python"),
+        ("js", "javascript"),
+        ("mjs", "javascript"),
+        ("cjs", "javascript"),
+        ("ts", "typescript"),
+        ("mts", "typescript"),
+        ("tsx", "tsx"),
+        ("jsx", "jsx"),
+        ("go", "go"),
+        ("java", "java"),
+        ("cpp", "cpp"),
+        ("cc", "cpp"),
+        ("cxx", "cpp"),
+        ("c", "c"),
+        ("h", "cpp"),
+        ("hpp", "cpp"),
+        ("cs", "csharp"),
+        ("rb", "ruby"),
+        ("kt", "kotlin"),
+        ("kts", "kotlin"),
+        ("swift", "swift"),
+        ("md", "markdown"),
+        ("markdown", "markdown"),
+        ("toml", "toml"),
+        ("json", "json"),
+        ("yaml", "yaml"),
+        ("yml", "yaml"),
+        ("html", "html"),
+        ("htm", "html"),
+        ("css", "css"),
+        ("scss", "css"),
+        ("sass", "css"),
+        ("sh", "shell"),
+        ("bash", "shell"),
+        ("sql", "sql"),
+        ("php", "php"),
+        ("lua", "lua"),
+        ("zig", "zig"),
+        ("cbl", "cobol"),
+        ("cob", "cobol"),
+        ("cpy", "cobol"),
+        ("cobol", "cobol"),
+        ("nsp", "natural"),
+        ("nse", "natural"),
+        ("nsd", "natural"),
+        ("nsl", "natural"),
+        ("nst", "natural"),
+        ("rpg", "rpg"),
+        ("rpgle", "rpg"),
+        ("sqlrpgle", "rpg"),
+        ("sru", "powerscript"),
+        ("sra", "powerscript"),
+        ("srd", "powerscript"),
+        ("srw", "powerscript"),
+        ("pbl", "powerscript"),
+    ];
+
+    EXT_MAP.iter()
+        .find(|&&(e, _)| e == ext)
+        .map(|&(_, lang)| lang)
 }
+
 
 fn chunk_file(content: &str, lang: &str) -> Vec<ChunkEntry> {
     let lines: Vec<&str> = content.lines().collect();
@@ -578,261 +622,274 @@ fn detect_symbol(lang: &str, lines: &[&str]) -> (Option<String>, Option<String>)
     (None, None)
 }
 
+fn parse_rust_symbol(s: &str) -> Option<(String, String)> {
+    for (prefix, kind) in [
+        ("pub async fn ", "fn"),
+        ("pub fn ", "fn"),
+        ("async fn ", "fn"),
+        ("fn ", "fn"),
+        ("pub struct ", "struct"),
+        ("struct ", "struct"),
+        ("pub enum ", "enum"),
+        ("enum ", "enum"),
+        ("pub trait ", "trait"),
+        ("trait ", "trait"),
+        ("pub type ", "type"),
+        ("type ", "type"),
+    ] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            let name = rest.split(['(', '<', '{', ' ', '\n']).next()?.to_string();
+            if valid_ident(&name) {
+                return Some((kind.into(), name));
+            }
+        }
+    }
+    for prefix in ["pub impl ", "impl "] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            let part = rest.split_once(" for ").map(|(_, b)| b).unwrap_or(rest);
+            let name = part.split(['<', '{', ' ']).next()?.to_string();
+            if valid_ident(&name) {
+                return Some(("impl".into(), name));
+            }
+        }
+    }
+    None
+}
+
+fn parse_python_symbol(s: &str) -> Option<(String, String)> {
+    for (prefix, kind) in [("async def ", "fn"), ("def ", "fn"), ("class ", "class")] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            let name = rest.split(['(', ':', ' ']).next()?.to_string();
+            if valid_ident(&name) {
+                return Some((kind.into(), name));
+            }
+        }
+    }
+    None
+}
+
+fn parse_js_ts_symbol(s: &str) -> Option<(String, String)> {
+    for (prefix, kind) in [
+        ("export default async function ", "fn"),
+        ("export async function ", "fn"),
+        ("export function ", "fn"),
+        ("async function ", "fn"),
+        ("function ", "fn"),
+        ("export default class ", "class"),
+        ("export abstract class ", "class"),
+        ("export class ", "class"),
+        ("abstract class ", "class"),
+        ("class ", "class"),
+    ] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            let name = rest.split(['(', '<', '{', ' ']).next()?.to_string();
+            if valid_ident(&name) {
+                return Some((kind.into(), name));
+            }
+        }
+    }
+    for prefix in ["export const ", "const "] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            if rest.contains("=>") || rest.contains("= function") {
+                let name = rest.split(['=', ':', ' ']).next()?.to_string();
+                if valid_ident(&name) {
+                    return Some(("const".into(), name));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn parse_go_symbol(s: &str) -> Option<(String, String)> {
+    if let Some(rest) = s.strip_prefix("func ") {
+        let rest = if rest.starts_with('(') {
+            rest.splitn(2, ')').nth(1)?.trim_start_matches([' ', '\t'])
+        } else {
+            rest
+        };
+        let name = rest.split(['(', ' ']).next()?.to_string();
+        if valid_ident(&name) {
+            return Some(("fn".into(), name));
+        }
+    }
+    if let Some(rest) = s.strip_prefix("type ") {
+        let name = rest.split([' ', '[']).next()?.to_string();
+        if valid_ident(&name) {
+            return Some(("type".into(), name));
+        }
+    }
+    None
+}
+
+fn parse_jvm_dotnet_symbol(s: &str) -> Option<(String, String)> {
+    if s.contains('(')
+        && !s.starts_with("if ")
+        && !s.starts_with("for ")
+        && !s.starts_with("while ")
+    {
+        let before = s.split('(').next()?;
+        let name = before.split_whitespace().last()?.to_string();
+        if valid_ident(&name) && name.len() > 1 {
+            return Some(("method".into(), name));
+        }
+    }
+    None
+}
+
+fn parse_cobol_symbol(s: &str) -> Option<(String, String)> {
+    let su = s.to_uppercase();
+    for (suffix, kind) in [(" DIVISION.", "division"), (" SECTION.", "section")] {
+        if su.ends_with(suffix) {
+            let name = su[..su.len() - suffix.len()]
+                .split_whitespace()
+                .last()?
+                .to_string();
+            if !name.is_empty() {
+                return Some((kind.into(), name));
+            }
+        }
+    }
+    if su.ends_with('.') && !su.contains(' ') && su.len() > 1 {
+        let name = su.trim_end_matches('.').to_string();
+        if !name.is_empty() && name.len() <= 64 {
+            return Some(("paragraph".into(), name));
+        }
+    }
+    for prefix in ["PERFORM ", "CALL "] {
+        if let Some(rest) = su.strip_prefix(prefix) {
+            let name = rest
+                .split_whitespace()
+                .next()?
+                .trim_end_matches(".")
+                .to_string();
+            if !name.is_empty() && name.len() <= 64 {
+                return Some(("call".into(), name));
+            }
+        }
+    }
+    None
+}
+
+fn parse_natural_symbol(s: &str) -> Option<(String, String)> {
+    let su = s.to_uppercase();
+    for (prefix, kind) in [
+        ("DEFINE SUBROUTINE ", "subroutine"),
+        ("DEFINE FUNCTION ", "function"),
+        ("DEFINE DATA", "data-section"),
+        ("DEFINE WINDOW ", "window"),
+    ] {
+        if su.starts_with(prefix) {
+            let rest = &su[prefix.len()..];
+            let name = rest.split_whitespace().next().unwrap_or("").to_string();
+            if !name.is_empty() {
+                return Some((kind.into(), name));
+            }
+            if prefix.ends_with("DATA") {
+                return Some(("data-section".into(), "DATA".into()));
+            }
+        }
+    }
+    for prefix in ["SUBROUTINE ", "FUNCTION "] {
+        if let Some(rest) = su.strip_prefix(prefix) {
+            let name = rest.split_whitespace().next().unwrap_or("").to_string();
+            if valid_ident(&name) {
+                return Some(("subroutine".into(), name));
+            }
+        }
+    }
+    None
+}
+
+fn parse_rpg_symbol(s: &str) -> Option<(String, String)> {
+    let su = s.to_uppercase();
+    for (prefix, kind) in [
+        ("DCL-PROC ", "procedure"),
+        ("DCL-DS ", "data-struct"),
+        ("DCL-S ", "variable"),
+        ("DCL-C ", "constant"),
+        ("DCL-F ", "file"),
+    ] {
+        if let Some(rest) = su.strip_prefix(prefix) {
+            let name = rest.split_whitespace().next().unwrap_or("").to_string();
+            if valid_ident(&name) {
+                return Some((kind.into(), name));
+            }
+        }
+    }
+    if su.starts_with('P') && su.len() > 1 {
+        let name_part: String = su.chars().skip(6).take(14).collect();
+        let name = name_part.trim().to_string();
+        if valid_ident(&name) {
+            return Some(("procedure".into(), name));
+        }
+    }
+    for prefix in ["BEGSR ", "BEGSR\n"] {
+        if su.starts_with(prefix) {
+            let name = su[prefix.len()..]
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_string();
+            if valid_ident(&name) {
+                return Some(("subroutine".into(), name));
+            }
+        }
+    }
+    None
+}
+
+fn parse_powerscript_symbol(s: &str) -> Option<(String, String)> {
+    let sl = s.to_lowercase();
+    for (prefix, kind) in [
+        ("forward\n", "forward"),
+        ("type ", "type"),
+        ("global type ", "global-type"),
+    ] {
+        if sl.starts_with(prefix) {
+            let rest = &s[prefix.len()..];
+            let name = rest.split_whitespace().next().unwrap_or("").to_string();
+            if valid_ident(&name) {
+                return Some((kind.into(), name));
+            }
+        }
+    }
+    for (prefix, kind) in [
+        ("public function ", "function"),
+        ("private function ", "function"),
+        ("protected function ", "function"),
+        ("function ", "function"),
+        ("public subroutine ", "subroutine"),
+        ("private subroutine ", "subroutine"),
+        ("subroutine ", "subroutine"),
+        ("on ", "event"),
+        ("event ", "event"),
+    ] {
+        if sl.starts_with(prefix) {
+            let rest = &s[prefix.len()..];
+            let name = rest.split(['(', ' ']).next().unwrap_or("").to_string();
+            if valid_ident(&name) {
+                return Some((kind.into(), name));
+            }
+        }
+    }
+    None
+}
+
 fn parse_symbol(lang: &str, line: &str) -> Option<(String, String)> {
     let s = line.trim();
     match lang {
-        "rust" => {
-            for (prefix, kind) in [
-                ("pub async fn ", "fn"),
-                ("pub fn ", "fn"),
-                ("async fn ", "fn"),
-                ("fn ", "fn"),
-                ("pub struct ", "struct"),
-                ("struct ", "struct"),
-                ("pub enum ", "enum"),
-                ("enum ", "enum"),
-                ("pub trait ", "trait"),
-                ("trait ", "trait"),
-                ("pub type ", "type"),
-                ("type ", "type"),
-            ] {
-                if let Some(rest) = s.strip_prefix(prefix) {
-                    let name = rest.split(['(', '<', '{', ' ', '\n']).next()?.to_string();
-                    if valid_ident(&name) {
-                        return Some((kind.into(), name));
-                    }
-                }
-            }
-            for prefix in ["pub impl ", "impl "] {
-                if let Some(rest) = s.strip_prefix(prefix) {
-                    let part = rest.split_once(" for ").map(|(_, b)| b).unwrap_or(rest);
-                    let name = part.split(['<', '{', ' ']).next()?.to_string();
-                    if valid_ident(&name) {
-                        return Some(("impl".into(), name));
-                    }
-                }
-            }
-        }
-        "python" => {
-            for (prefix, kind) in [("async def ", "fn"), ("def ", "fn"), ("class ", "class")] {
-                if let Some(rest) = s.strip_prefix(prefix) {
-                    let name = rest.split(['(', ':', ' ']).next()?.to_string();
-                    if valid_ident(&name) {
-                        return Some((kind.into(), name));
-                    }
-                }
-            }
-        }
-        "javascript" | "typescript" | "tsx" | "jsx" => {
-            for (prefix, kind) in [
-                ("export default async function ", "fn"),
-                ("export async function ", "fn"),
-                ("export function ", "fn"),
-                ("async function ", "fn"),
-                ("function ", "fn"),
-                ("export default class ", "class"),
-                ("export abstract class ", "class"),
-                ("export class ", "class"),
-                ("abstract class ", "class"),
-                ("class ", "class"),
-            ] {
-                if let Some(rest) = s.strip_prefix(prefix) {
-                    let name = rest.split(['(', '<', '{', ' ']).next()?.to_string();
-                    if valid_ident(&name) {
-                        return Some((kind.into(), name));
-                    }
-                }
-            }
-            for prefix in ["export const ", "const "] {
-                if let Some(rest) = s.strip_prefix(prefix) {
-                    if rest.contains("=>") || rest.contains("= function") {
-                        let name = rest.split(['=', ':', ' ']).next()?.to_string();
-                        if valid_ident(&name) {
-                            return Some(("const".into(), name));
-                        }
-                    }
-                }
-            }
-        }
-        "go" => {
-            if let Some(rest) = s.strip_prefix("func ") {
-                let rest = if rest.starts_with('(') {
-                    rest.splitn(2, ')').nth(1)?.trim_start_matches([' ', '\t'])
-                } else {
-                    rest
-                };
-                let name = rest.split(['(', ' ']).next()?.to_string();
-                if valid_ident(&name) {
-                    return Some(("fn".into(), name));
-                }
-            }
-            if let Some(rest) = s.strip_prefix("type ") {
-                let name = rest.split([' ', '[']).next()?.to_string();
-                if valid_ident(&name) {
-                    return Some(("type".into(), name));
-                }
-            }
-        }
-        "java" | "kotlin" | "csharp" => {
-            if s.contains('(')
-                && !s.starts_with("if ")
-                && !s.starts_with("for ")
-                && !s.starts_with("while ")
-            {
-                let before = s.split('(').next()?;
-                let name = before.split_whitespace().last()?.to_string();
-                if valid_ident(&name) && name.len() > 1 {
-                    return Some(("method".into(), name));
-                }
-            }
-        }
-        "cobol" => {
-            // COBOL divisions and sections: e.g. "IDENTIFICATION DIVISION."
-            let su = s.to_uppercase();
-            for (suffix, kind) in [(" DIVISION.", "division"), (" SECTION.", "section")] {
-                if su.ends_with(suffix) {
-                    let name = su[..su.len() - suffix.len()]
-                        .split_whitespace()
-                        .last()?
-                        .to_string();
-                    if !name.is_empty() {
-                        return Some((kind.into(), name));
-                    }
-                }
-            }
-            // COBOL paragraphs: a word on its own line followed by '.'
-            // e.g. "0100-INIT-DATA."
-            if su.ends_with('.') && !su.contains(' ') && su.len() > 1 {
-                let name = su.trim_end_matches('.').to_string();
-                if !name.is_empty() && name.len() <= 64 {
-                    return Some(("paragraph".into(), name));
-                }
-            }
-            // PERFORM / CALL targets
-            for prefix in ["PERFORM ", "CALL "] {
-                if let Some(rest) = su.strip_prefix(prefix) {
-                    let name = rest
-                        .split_whitespace()
-                        .next()?
-                        .trim_end_matches(".")
-                        .to_string();
-                    if !name.is_empty() && name.len() <= 64 {
-                        return Some(("call".into(), name));
-                    }
-                }
-            }
-        }
-        "natural" => {
-            // Natural: DEFINE SUBROUTINE, DEFINE FUNCTION, DEFINE DATA, DEFINE WORK FILE
-            let su = s.to_uppercase();
-            for (prefix, kind) in [
-                ("DEFINE SUBROUTINE ", "subroutine"),
-                ("DEFINE FUNCTION ", "function"),
-                ("DEFINE DATA", "data-section"),
-                ("DEFINE WINDOW ", "window"),
-            ] {
-                if su.starts_with(prefix) {
-                    let rest = &su[prefix.len()..];
-                    let name = rest.split_whitespace().next().unwrap_or("").to_string();
-                    if !name.is_empty() {
-                        return Some((kind.into(), name));
-                    }
-                    if prefix.ends_with("DATA") {
-                        return Some(("data-section".into(), "DATA".into()));
-                    }
-                }
-            }
-            // SUBROUTINE / FUNCTION header (short form)
-            for prefix in ["SUBROUTINE ", "FUNCTION "] {
-                if let Some(rest) = su.strip_prefix(prefix) {
-                    let name = rest.split_whitespace().next().unwrap_or("").to_string();
-                    if valid_ident(&name) {
-                        return Some(("subroutine".into(), name));
-                    }
-                }
-            }
-        }
-        "rpg" => {
-            // RPG free-form (ILE RPG / RPGLE)
-            let su = s.to_uppercase();
-            // DCL-PROC, DCL-PARM, DCL-SUBF, DCL-DS
-            for (prefix, kind) in [
-                ("DCL-PROC ", "procedure"),
-                ("DCL-DS ", "data-struct"),
-                ("DCL-S ", "variable"),
-                ("DCL-C ", "constant"),
-                ("DCL-F ", "file"),
-            ] {
-                if let Some(rest) = su.strip_prefix(prefix) {
-                    let name = rest.split_whitespace().next().unwrap_or("").to_string();
-                    if valid_ident(&name) {
-                        return Some((kind.into(), name));
-                    }
-                }
-            }
-            // Fixed-form: P spec (procedure boundary) — col 1 is 'P'
-            if su.starts_with('P') && su.len() > 1 {
-                let name_part: String = su.chars().skip(6).take(14).collect();
-                let name = name_part.trim().to_string();
-                if valid_ident(&name) {
-                    return Some(("procedure".into(), name));
-                }
-            }
-            // BEG / END / BEGSR / ENDSR
-            for prefix in ["BEGSR ", "BEGSR\n"] {
-                if su.starts_with(prefix) {
-                    let name = su[prefix.len()..]
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or("")
-                        .to_string();
-                    if valid_ident(&name) {
-                        return Some(("subroutine".into(), name));
-                    }
-                }
-            }
-        }
-        "powerscript" => {
-            // PowerBuilder PowerScript
-            let sl = s.to_lowercase();
-            // forward / type declarations
-            for (prefix, kind) in [
-                ("forward\n", "forward"),
-                ("type ", "type"),
-                ("global type ", "global-type"),
-            ] {
-                if sl.starts_with(prefix) {
-                    let rest = &s[prefix.len()..];
-                    let name = rest.split_whitespace().next().unwrap_or("").to_string();
-                    if valid_ident(&name) {
-                        return Some((kind.into(), name));
-                    }
-                }
-            }
-            // function / event / subroutine definitions
-            for (prefix, kind) in [
-                ("public function ", "function"),
-                ("private function ", "function"),
-                ("protected function ", "function"),
-                ("function ", "function"),
-                ("public subroutine ", "subroutine"),
-                ("private subroutine ", "subroutine"),
-                ("subroutine ", "subroutine"),
-                ("on ", "event"),
-                ("event ", "event"),
-            ] {
-                if sl.starts_with(prefix) {
-                    let rest = &s[prefix.len()..];
-                    let name = rest.split(['(', ' ']).next().unwrap_or("").to_string();
-                    if valid_ident(&name) {
-                        return Some((kind.into(), name));
-                    }
-                }
-            }
-        }
-        _ => {}
+        "rust" => parse_rust_symbol(s),
+        "python" => parse_python_symbol(s),
+        "javascript" | "typescript" | "tsx" | "jsx" => parse_js_ts_symbol(s),
+        "go" => parse_go_symbol(s),
+        "java" | "kotlin" | "csharp" => parse_jvm_dotnet_symbol(s),
+        "cobol" => parse_cobol_symbol(s),
+        "natural" => parse_natural_symbol(s),
+        "rpg" => parse_rpg_symbol(s),
+        "powerscript" => parse_powerscript_symbol(s),
+        _ => None,
     }
-    None
 }
 
 fn valid_ident(s: &str) -> bool {

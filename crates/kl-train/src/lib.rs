@@ -401,16 +401,14 @@ impl TrainStore {
     /// registers or creates a domain (the crate has no `domains` table) — it only
     /// writes `training_examples` for the `domain` it is told about. Deduplicated
     /// by `(domain, question)`.
-    pub fn seed_from_topics(
+    fn seed_knowledge_topics(
         &self,
         domain: &str,
         stage: Option<&str>,
         knowledge: &[KnowledgeRow],
-        stages: &[StageRow],
+        seen: &mut HashSet<String>,
     ) -> Result<usize> {
-        let mut seen: HashSet<String> = HashSet::new();
         let mut inserted = 0usize;
-
         for k in knowledge {
             if k.domain != domain {
                 continue;
@@ -422,10 +420,20 @@ impl TrainStore {
             }
             let rref = format!("knowledge:#{}", k.id);
             for q in topic_questions(k) {
-                inserted += self.seed_one(domain, &q, &rref, &mut seen)?;
+                inserted += self.seed_one(domain, &q, &rref, seen)?;
             }
         }
+        Ok(inserted)
+    }
 
+    fn seed_stage_topics(
+        &self,
+        domain: &str,
+        stage: Option<&str>,
+        stages: &[StageRow],
+        seen: &mut HashSet<String>,
+    ) -> Result<usize> {
+        let mut inserted = 0usize;
         for s in stages {
             if let Some(st) = stage {
                 if s.name != st {
@@ -442,8 +450,23 @@ impl TrainStore {
                     s.name
                 ),
             };
-            inserted += self.seed_one(domain, &q, &rref, &mut seen)?;
+            inserted += self.seed_one(domain, &q, &rref, seen)?;
         }
+        Ok(inserted)
+    }
+
+    pub fn seed_from_topics(
+        &self,
+        domain: &str,
+        stage: Option<&str>,
+        knowledge: &[KnowledgeRow],
+        stages: &[StageRow],
+    ) -> Result<usize> {
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut inserted = 0usize;
+
+        inserted += self.seed_knowledge_topics(domain, stage, knowledge, &mut seen)?;
+        inserted += self.seed_stage_topics(domain, stage, stages, &mut seen)?;
 
         Ok(inserted)
     }
