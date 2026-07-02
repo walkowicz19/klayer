@@ -1758,16 +1758,19 @@ function renderCodebase() {
     return;
   }
   list.innerHTML = G.codeRepos.map(r => `
-    <div class="repo-row">
+    <div class="repo-row" style="display:flex;align-items:center;justify-content:space-between">
       <span class="repo-icon">⬡</span>
-      <div style="flex:1;min-width:0">
+      <div style="flex:1;min-width:0;margin-right:1rem">
         <div class="repo-name">${escHtml(r.name)}</div>
         <div class="repo-path">${escHtml(r.path)}</div>
       </div>
-      <div class="repo-stats">
-        <span>${r.file_count} ${t('repoFiles')}</span>
-        <span>${r.chunk_count} ${t('repoChunks')}</span>
-        <span>${t('repoIndexed')} ${r.indexed_at ? new Date(r.indexed_at * 1000).toISOString().slice(0,10) : '—'}</span>
+      <div class="repo-stats" style="display:flex;align-items:center;gap:1.25rem">
+        <div style="display:flex;flex-direction:column;align-items:flex-end">
+          <span>${r.file_count} ${t('repoFiles')}</span>
+          <span>${r.chunk_count} ${t('repoChunks')}</span>
+          <span style="font-size:.7rem;color:var(--muted)">${t('repoIndexed')} ${r.indexed_at ? new Date(r.indexed_at * 1000).toISOString().slice(0,10) : '—'}</span>
+        </div>
+        <button onclick="removeRepo('${escHtml(r.path).replace(/'/g, "\\'")}')" style="padding:.2rem .45rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:4px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'">✕</button>
       </div>
     </div>`).join('');
 }
@@ -1928,6 +1931,15 @@ async function clearCodebase() {
     if (r.ok) { await loadData(); }
     else alert('Clear failed: ' + (r.error || 'unknown error'));
   } catch(e) { alert('Clear failed: ' + e); }
+}
+
+async function removeRepo(path) {
+  if (!confirm('Remove repository "' + path + '" from codebase memory?')) return;
+  try {
+    const r = await fetch('/api/code/repo/delete?path=' + encodeURIComponent(path)).then(res => res.json());
+    if (r.ok) { await loadData(); }
+    else alert('Remove failed: ' + (r.error || 'unknown error'));
+  } catch(e) { alert('Remove failed: ' + e); }
 }
 
 async function clearDomains() {

@@ -380,6 +380,11 @@ struct ApiIdDelete {
 }
 
 #[derive(Deserialize)]
+struct ApiCodeRepoDelete {
+    path: String,
+}
+
+#[derive(Deserialize)]
 struct ApiRunFilter {
     run_id: Option<String>,
 }
@@ -669,6 +674,16 @@ async fn dash_code_clear(State(cs): State<Arc<CodeStore>>) -> Json<serde_json::V
     }
 }
 
+async fn dash_code_repo_delete(
+    State(cs): State<Arc<CodeStore>>,
+    Query(q): Query<ApiCodeRepoDelete>,
+) -> Json<serde_json::Value> {
+    match cs.forget_repo(&q.path) {
+        Ok(ok) => Json(serde_json::json!({ "ok": true, "deleted": ok })),
+        Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
+    }
+}
+
 async fn dash_domains_clear(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
     match store.clear_all_domains() {
         Ok(n) => Json(serde_json::json!({ "ok": true, "deleted": n })),
@@ -812,6 +827,7 @@ async fn start_dashboard(
         .route("/api/code/repos", get(dash_code_repos))
         .route("/api/code/search", get(dash_code_search))
         .route("/api/code/clear", get(dash_code_clear))
+        .route("/api/code/repo/delete", get(dash_code_repo_delete))
         .route("/api/training", get(dash_training))
         .route("/api/training/stats", get(dash_training_stats))
         .route("/api/training/clear", get(dash_training_clear))
@@ -1746,6 +1762,17 @@ fn get_claude_config_path() -> Option<std::path::PathBuf> {
     }
 }
 
+fn get_klayer_dir() -> std::path::PathBuf {
+    let home = if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_else(|_| ".".to_string())
+    } else {
+        std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
+    };
+    std::path::PathBuf::from(home).join(".klayer")
+}
+
 fn ensure_parent_dir(path: &str) -> Result<()> {
     if let Some(parent) = std::path::Path::new(path).parent() {
         if parent.as_os_str().len() > 0 {
@@ -1761,27 +1788,25 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
     }
 
     let exe_path = std::env::current_exe()?;
-    let parent = exe_path
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("No parent directory"))?;
+    let klayer_dir = get_klayer_dir();
 
     let (exe_str, db_str, code_db_str, train_db_str, skill_str) = if cfg!(target_os = "windows")
     {
         (
             exe_path.to_string_lossy().replace("/", "\\"),
-            parent
+            klayer_dir
                 .join("klayer.db")
                 .to_string_lossy()
                 .replace("/", "\\"),
-            parent
+            klayer_dir
                 .join("klayer_code.db")
                 .to_string_lossy()
                 .replace("/", "\\"),
-            parent
+            klayer_dir
                 .join("klayer_train.db")
                 .to_string_lossy()
                 .replace("/", "\\"),
-            parent
+            klayer_dir
                 .join("skills")
                 .join("klayer")
                 .join("SKILL.md")
@@ -1791,19 +1816,19 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
     } else {
         (
             exe_path.to_string_lossy().replace("\\", "/"),
-            parent
+            klayer_dir
                 .join("klayer.db")
                 .to_string_lossy()
                 .replace("\\", "/"),
-            parent
+            klayer_dir
                 .join("klayer_code.db")
                 .to_string_lossy()
                 .replace("\\", "/"),
-            parent
+            klayer_dir
                 .join("klayer_train.db")
                 .to_string_lossy()
                 .replace("\\", "/"),
-            parent
+            klayer_dir
                 .join("skills")
                 .join("klayer")
                 .join("SKILL.md")
@@ -1893,12 +1918,24 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let db = std::env::var("KLAYER_DB").unwrap_or_else(|_| "klayer.db".to_string());
-    let code_db = std::env::var("KLAYER_CODE_DB").unwrap_or_else(|_| "klayer_code.db".to_string());
-    let train_db =
-        std::env::var("KLAYER_TRAIN_DB").unwrap_or_else(|_| "klayer_train.db".to_string());
-    let skill =
-        std::env::var("KLAYER_SKILL").unwrap_or_else(|_| "skills/klayer/SKILL.md".to_string());
+    let klayer_dir = get_klayer_dir();
+    let db = std::env::var("KLAYER_DB").unwrap_or_else(|_| {
+        klayer_dir.join("klayer.db").to_string_lossy().to_string()
+    });
+    let code_db = std::env::var("KLAYER_CODE_DB").unwrap_or_else(|_| {
+        klayer_dir.join("klayer_code.db").to_string_lossy().to_string()
+    });
+    let train_db = std::env::var("KLAYER_TRAIN_DB").unwrap_or_else(|_| {
+        klayer_dir.join("klayer_train.db").to_string_lossy().to_string()
+    });
+    let skill = std::env::var("KLAYER_SKILL").unwrap_or_else(|_| {
+        klayer_dir
+            .join("skills")
+            .join("klayer")
+            .join("SKILL.md")
+            .to_string_lossy()
+            .to_string()
+    });
     let port: u16 = std::env::var("KLAYER_DASHBOARD_PORT")
         .ok()
         .and_then(|s| s.parse().ok())
