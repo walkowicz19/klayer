@@ -168,14 +168,7 @@ lives locally in your `klayer.db`.
 > Approve, deny, and import are gated behind the `admin` cargo feature. Regular
 > user binaries (built with the default features) can **publish** and **manage**
 > (view / export / withdraw) their own domains, but cannot approve submissions or
-> mutate the marketplace. Build the admin binary with:
->
-> ```bash
-> cargo build --release --features admin
-> ```
->
-> The dashboard queries `GET /api/admin` and hides the review controls on
-> non-admin builds.
+> mutate the marketplace.
 
 ![Marketplace](docs/screenshots/marketplace.png?v=1.3.0)
 
