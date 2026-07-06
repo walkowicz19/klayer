@@ -179,16 +179,16 @@ lives locally in your `klayer.db`.
 
 ![Marketplace](docs/screenshots/marketplace.png?v=1.3.0)
 
-### Submissions
+### My Published Domains
 
-The **Submissions** page is the review queue. Each pending submission shows its
-snapshotted item count and the publisher (`by <name>`); **View items** inspects
-the content, and — on the admin build — **Approve** appends it to the marketplace
-or **Deny** records a reason. **Export** downloads a submission to share, and
-**Import** adds one to the queue. On a user (non-admin) build this page is titled
-*My Published Domains* and only exposes View / Export / Withdraw.
+When you **Publish** one of your own domains it lands here as a *pending*
+submission for the marketplace admin to review. From this page you can **View**
+its snapshotted items, **Export** it to a JSON file to send to the admin, or
+**Withdraw** it. Each row is stamped with your author name (`by <name>`).
+Approving or denying submissions is the admin's job and is not part of the normal
+user build.
 
-![Submissions](docs/screenshots/submissions.png?v=1.5.0)
+![My Published Domains](docs/screenshots/submissions.png?v=1.5.0)
 
 ### Knowledge
 
@@ -218,12 +218,12 @@ Pick a repository from the dropdown to focus on one codebase.
 
 ![Session Memory](docs/screenshots/sessions.png?v=1.5.0)
 
-### Editing domains, knowledge & sources
+### Editing domains & knowledge
 
-Domains, knowledge items, and sources each have an **Edit** button that opens an
-inline form so you can refine stored information without deleting and re-creating
-it. Sources also expose an **Edit content** button to add, edit, or remove
-individual reference chunks (the full-text index is kept in sync automatically).
+Domains and knowledge items each have an **Edit** button that opens an inline form
+so you can refine stored information without deleting and re-creating it. Sources
+are ingested files and URLs — they are not hand-edited; re-ingest or remove them
+instead.
 
 ### Sources & Agent Memory
 

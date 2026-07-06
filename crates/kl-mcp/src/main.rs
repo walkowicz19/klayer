@@ -706,6 +706,17 @@ async fn dash_admin() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "admin": is_admin() }))
 }
 
+/// Liveness of each of the three databases. A trivial query is run against each
+/// store; `true` means it responded. The dashboard's status pill uses this to
+/// show that all databases are live, or exactly which one is failing.
+async fn dash_health(State(s): State<DashState>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "knowledge": s.store.list_domains().is_ok(),
+        "code":      s.code_store.stats().is_ok(),
+        "train":     s.train_store.stats().is_ok(),
+    }))
+}
+
 // ----- code store dashboard handlers ----------------------------------------
 
 async fn dash_code_stats(State(cs): State<Arc<CodeStore>>) -> Json<serde_json::Value> {
@@ -954,6 +965,24 @@ async fn dash_submission_publish(
             "error": "domain has no enforceable (reviewed/user) knowledge to publish"
         }));
     }
+    // You cannot re-publish a domain you applied from the marketplace — that would
+    // re-submit someone else's authored template under your name. Such domains carry
+    // a 'marketplace-template' source (uri marketplace://<slug>).
+    if store
+        .list_sources(Some(&p.domain))
+        .unwrap_or_default()
+        .iter()
+        .any(|s| {
+            s.kind == "marketplace-template"
+                || s.uri.as_deref().map(|u| u.starts_with("marketplace://")).unwrap_or(false)
+        })
+    {
+        return Json(serde_json::json!({
+            "ok": false,
+            "from_marketplace": true,
+            "error": "this domain was applied from the marketplace and cannot be re-published"
+        }));
+    }
     // Attribution: a publisher must have registered an author name once. The UI
     // prompts for it on first publish, then it is reused for every domain.
     let author = match store.get_author() {
@@ -1190,30 +1219,6 @@ struct ApiKnowledgeUpdate {
     remediation: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct ApiSourceUpdate {
-    id: i64,
-    title: Option<String>,
-    uri: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ApiSourceChunks {
-    source_id: i64,
-}
-
-#[derive(Deserialize)]
-struct ApiChunkUpdate {
-    id: i64,
-    text: String,
-}
-
-#[derive(Deserialize)]
-struct ApiChunkAdd {
-    source_id: i64,
-    text: String,
-}
-
 fn ok_or_err(result: Result<bool>) -> Json<serde_json::Value> {
     match result {
         Ok(ok) => Json(serde_json::json!({ "ok": ok })),
@@ -1243,55 +1248,6 @@ async fn dash_knowledge_update(
     ))
 }
 
-async fn dash_source_update(
-    State(store): State<Arc<Store>>,
-    Json(p): Json<ApiSourceUpdate>,
-) -> Json<serde_json::Value> {
-    ok_or_err(store.update_source(p.id, p.title.as_deref(), p.uri.as_deref()))
-}
-
-async fn dash_source_chunks(
-    State(store): State<Arc<Store>>,
-    Query(q): Query<ApiSourceChunks>,
-) -> Json<serde_json::Value> {
-    match store.list_source_chunks(q.source_id) {
-        Ok(rows) => Json(serde_json::json!(rows
-            .into_iter()
-            .map(|(id, ord, text)| serde_json::json!({ "id": id, "ord": ord, "text": text }))
-            .collect::<Vec<_>>())),
-        Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
-    }
-}
-
-async fn dash_chunk_update(
-    State(store): State<Arc<Store>>,
-    Json(p): Json<ApiChunkUpdate>,
-) -> Json<serde_json::Value> {
-    ok_or_err(store.update_chunk(p.id, &p.text))
-}
-
-async fn dash_chunk_add(
-    State(store): State<Arc<Store>>,
-    Json(p): Json<ApiChunkAdd>,
-) -> Json<serde_json::Value> {
-    let domain = match store.source_domain(p.source_id) {
-        Ok(Some(d)) => d,
-        Ok(None) => return Json(serde_json::json!({ "ok": false, "error": "source not found" })),
-        Err(e) => return Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
-    };
-    match store.add_chunk(p.source_id, &domain, &p.text) {
-        Ok(id) => Json(serde_json::json!({ "ok": true, "id": id })),
-        Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
-    }
-}
-
-async fn dash_chunk_delete(
-    State(store): State<Arc<Store>>,
-    Query(q): Query<ApiIdDelete>,
-) -> Json<serde_json::Value> {
-    ok_or_err(store.delete_chunk(q.id))
-}
-
 async fn start_dashboard(
     store: Arc<Store>,
     code_store: Arc<CodeStore>,
@@ -1308,6 +1264,7 @@ async fn start_dashboard(
     let app = Router::new()
         .route("/", get(dash_index))
         .route("/api/stats", get(dash_stats))
+        .route("/api/health", get(dash_health))
         .route("/api/domains", get(dash_domains))
         .route("/api/knowledge", get(dash_knowledge))
         .route("/api/sources", get(dash_sources))
@@ -1328,11 +1285,6 @@ async fn start_dashboard(
         .route("/api/author", get(dash_author_get).post(dash_author_set))
         .route("/api/domain/update", axum::routing::post(dash_domain_update))
         .route("/api/knowledge/update", axum::routing::post(dash_knowledge_update))
-        .route("/api/source/update", axum::routing::post(dash_source_update))
-        .route("/api/source/chunks", get(dash_source_chunks))
-        .route("/api/chunk/update", axum::routing::post(dash_chunk_update))
-        .route("/api/chunk/add", axum::routing::post(dash_chunk_add))
-        .route("/api/chunk/delete", get(dash_chunk_delete))
         .route("/api/code/stats", get(dash_code_stats))
         .route("/api/code/repos", get(dash_code_repos))
         .route("/api/code/search", get(dash_code_search))

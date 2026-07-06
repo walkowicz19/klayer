@@ -259,6 +259,19 @@
     /* ── Sources ── */
     .src-item { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--hairline); }
     .src-item:last-child { border-bottom: none; }
+    /* Submission rows: info column + a right-aligned, uniformly sized action group */
+    .sub-item { display: flex; align-items: flex-start; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--hairline); flex-wrap: wrap; }
+    .sub-item:last-child { border-bottom: none; }
+    .sub-info { flex: 1 1 300px; min-width: 0; }
+    .sub-title { font-weight: 700; color: var(--navy); display: flex; align-items: center; gap: 8px; }
+    .sub-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; flex-shrink: 0; margin-left: auto; }
+    .sub-btn { font-size: 12px; font-weight: 600; height: 28px; padding: 0 12px; border-radius: var(--r-full); border: 1px solid transparent; cursor: pointer; white-space: nowrap; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; transition: background .12s, border-color .12s; }
+    .sub-btn-neutral { background: var(--soft); color: var(--body); border-color: var(--hairline); }
+    .sub-btn-neutral:hover { border-color: var(--hairline-strong); color: var(--navy); }
+    .sub-btn-primary { background: var(--brand); color: var(--on-brand); }
+    .sub-btn-primary:hover { background: var(--brand-hover); }
+    .sub-btn-danger { background: transparent; color: var(--red); border-color: rgba(239,68,68,.35); }
+    .sub-btn-danger:hover { background: rgba(239,68,68,.08); }
     .src-icon { width: 28px; height: 28px; border-radius: var(--r-md); background: var(--soft); border: 1px solid var(--hairline); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
     .src-url { font-size: 12px; font-weight: 600; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px; }
     .src-meta { font-size: 11px; color: var(--mute); margin-top: 1px; }
@@ -978,6 +991,7 @@ const LANGS = {
     navSources: 'Sources', navMemory: 'Agent Memory', navTrust: 'Trust Lifecycle', navCodebase: 'Codebase', navTraining: 'Training Data', navMarketplace: 'Marketplace', navSettings: 'Settings',
     btnRefresh: '↺ Refresh', btnLoading: '↺ Loading…',
     statusConnecting: 'connecting…', statusLive: 'klayer.db · live', statusError: 'API unreachable',
+    statusDbsLive: n => `${n} databases · live`, statusDbDown: names => `${names} · unavailable`,
     statDomains: 'Domains', statDomainsHint: 'active namespaces',
     statDocs: 'Documents', statRules: 'Rules',
     statEps: 'Episodes', statEpsHint: 'agentic steps',
@@ -1096,6 +1110,7 @@ const LANGS = {
     publishBtn: 'Publish', publishHint: 'Submit this domain to the marketplace review queue',
     publishConfirm: name => `Publish domain "${name}" to the marketplace review queue? Its reviewed and user knowledge will be snapshotted for the admin to review.`,
     publishDone: (name, n) => `Published "${name}" (${n} items) — pending admin review in the Submissions tab.`,
+    publishFromMarketplace: 'This domain was applied from the marketplace, so it cannot be re-published — it belongs to its original author.',
     editBtn: 'Edit', editChunksBtn: 'Edit content',
     editDomainTitle: 'Edit domain', editKnowledgeTitle: 'Edit knowledge item', editSourceTitle: 'Edit source',
     editChunksTitle: 'Edit source content',
@@ -1122,6 +1137,7 @@ const LANGS = {
     navSources: 'Fontes', navMemory: 'Memória do Agente', navTrust: 'Ciclo de Confiança', navCodebase: 'Base de Código', navTraining: 'Dados de Treinamento', navMarketplace: 'Marketplace', navSettings: 'Configurações',
     btnRefresh: '↺ Atualizar', btnLoading: '↺ Carregando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · ativo', statusError: 'API inacessível',
+    statusDbsLive: n => `${n} bancos de dados · ativos`, statusDbDown: names => `${names} · indisponível`,
     statDomains: 'Domínios', statDomainsHint: 'namespaces ativos',
     statDocs: 'Documentos', statRules: 'Regras',
     statEps: 'Episódios', statEpsHint: 'etapas agênticas',
@@ -1240,6 +1256,7 @@ const LANGS = {
     publishBtn: 'Publicar', publishHint: 'Enviar este domínio para a fila de revisão do marketplace',
     publishConfirm: name => `Publicar o domínio "${name}" na fila de revisão do marketplace? Seu conhecimento revisado e do usuário será capturado para o administrador revisar.`,
     publishDone: (name, n) => `"${name}" publicado (${n} itens) — aguardando revisão do administrador na aba Submissões.`,
+    publishFromMarketplace: 'Este domínio foi aplicado a partir do marketplace, então não pode ser republicado — ele pertence ao autor original.',
     editBtn: 'Editar', editChunksBtn: 'Editar conteúdo',
     editDomainTitle: 'Editar domínio', editKnowledgeTitle: 'Editar item de conhecimento', editSourceTitle: 'Editar fonte',
     editChunksTitle: 'Editar conteúdo da fonte',
@@ -1266,6 +1283,7 @@ const LANGS = {
     navSources: 'Fuentes', navMemory: 'Memoria del Agente', navTrust: 'Ciclo de Confianza', navCodebase: 'Base de Código', navTraining: 'Datos de Entrenamiento', navMarketplace: 'Marketplace', navSettings: 'Configuración',
     btnRefresh: '↺ Actualizar', btnLoading: '↺ Cargando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · activo', statusError: 'API no disponible',
+    statusDbsLive: n => `${n} bases de datos · activas`, statusDbDown: names => `${names} · no disponible`,
     statDomains: 'Dominios', statDomainsHint: 'espacios de nombres activos',
     statDocs: 'Documentos', statRules: 'Reglas',
     statEps: 'Episodios', statEpsHint: 'pasos agénticos',
@@ -1384,6 +1402,7 @@ const LANGS = {
     publishBtn: 'Publicar', publishHint: 'Enviar este dominio a la cola de revisión del marketplace',
     publishConfirm: name => `¿Publicar el dominio "${name}" en la cola de revisión del marketplace? Su conocimiento revisado y de usuario se capturará para que el administrador lo revise.`,
     publishDone: (name, n) => `"${name}" publicado (${n} elementos) — pendiente de revisión del administrador en la pestaña Envíos.`,
+    publishFromMarketplace: 'Este dominio se aplicó desde el marketplace, por lo que no puede volver a publicarse — pertenece a su autor original.',
     editBtn: 'Editar', editChunksBtn: 'Editar contenido',
     editDomainTitle: 'Editar dominio', editKnowledgeTitle: 'Editar elemento de conocimiento', editSourceTitle: 'Editar fuente',
     editChunksTitle: 'Editar contenido de la fuente',
@@ -1410,6 +1429,7 @@ const LANGS = {
     navSources: '来源', navMemory: '智能体记忆', navTrust: '信任生命周期', navCodebase: '代码库', navTraining: '训练数据', navMarketplace: '市场', navSettings: '设置',
     btnRefresh: '↺ 刷新', btnLoading: '↺ 加载中…',
     statusConnecting: '连接中…', statusLive: 'klayer.db · 在线', statusError: 'API 不可达',
+    statusDbsLive: n => `${n} 个数据库 · 在线`, statusDbDown: names => `${names} · 不可用`,
     statDomains: '域', statDomainsHint: '活跃命名空间',
     statDocs: '文档', statRules: '规则',
     statEps: '事件', statEpsHint: '智能体步骤',
@@ -1528,6 +1548,7 @@ const LANGS = {
     publishBtn: '发布', publishHint: '将此域提交到市场审核队列',
     publishConfirm: name => `将域 "${name}" 发布到市场审核队列？其已审核和用户知识将被快照以供管理员审核。`,
     publishDone: (name, n) => `已发布 "${name}"（${n} 项）——在“提交”标签中等待管理员审核。`,
+    publishFromMarketplace: '该域是从市场应用的，因此无法重新发布——它属于其原作者。',
     editBtn: '编辑', editChunksBtn: '编辑内容',
     editDomainTitle: '编辑域', editKnowledgeTitle: '编辑知识条目', editSourceTitle: '编辑来源',
     editChunksTitle: '编辑来源内容',
@@ -1554,6 +1575,7 @@ const LANGS = {
     navSources: 'Źródła', navMemory: 'Pamięć Agenta', navTrust: 'Cykl Zaufania', navCodebase: 'Baza Kodu', navTraining: 'Dane Treningowe', navMarketplace: 'Marketplace', navSettings: 'Ustawienia',
     btnRefresh: '↺ Odśwież', btnLoading: '↺ Ładowanie…',
     statusConnecting: 'łączenie…', statusLive: 'klayer.db · aktywny', statusError: 'API niedostępne',
+    statusDbsLive: n => `${n} baz danych · aktywne`, statusDbDown: names => `${names} · niedostępne`,
     statDomains: 'Domeny', statDomainsHint: 'aktywne przestrzenie nazw',
     statDocs: 'Dokumenty', statRules: 'Reguły',
     statEps: 'Epizody', statEpsHint: 'kroki agenta',
@@ -1672,6 +1694,7 @@ const LANGS = {
     publishBtn: 'Opublikuj', publishHint: 'Zgłoś tę domenę do kolejki przeglądu marketplace',
     publishConfirm: name => `Opublikować domenę "${name}" w kolejce przeglądu marketplace? Jej zweryfikowana i użytkownika wiedza zostanie zapisana do przeglądu przez administratora.`,
     publishDone: (name, n) => `Opublikowano "${name}" (${n} elementów) — oczekuje na przegląd administratora w zakładce Zgłoszenia.`,
+    publishFromMarketplace: 'Ta domena została zastosowana z marketplace, więc nie można jej ponownie opublikować — należy do jej pierwotnego autora.',
     editBtn: 'Edytuj', editChunksBtn: 'Edytuj treść',
     editDomainTitle: 'Edytuj domenę', editKnowledgeTitle: 'Edytuj element wiedzy', editSourceTitle: 'Edytuj źródło',
     editChunksTitle: 'Edytuj treść źródła',
@@ -1933,6 +1956,13 @@ function renderOverview() {
     t('overviewSub')(domains.length, knowledge.length, new Date().toLocaleTimeString());
 }
 
+// A domain applied from the marketplace carries a 'marketplace-template' source;
+// it cannot be re-published (it is someone else's authored template).
+function domainFromMarketplace(name) {
+  return G.sources.some(s => s.domain === name &&
+    (s.kind === 'marketplace-template' || (s.uri || '').startsWith('marketplace://')));
+}
+
 function renderDomains() {
   const { domains } = G;
   const max = Math.max(...domains.map(d => d.rule_count), 1);
@@ -1941,10 +1971,10 @@ function renderDomains() {
         <div class="dcard">
           <div class="dcard-head">
             <div class="dcard-name">${escHtml(d.name)}</div>
-            <div style="display:flex;gap:4px;flex-shrink:0">
-              <button class="code-search-btn" data-domain="${escHtml(d.name)}" onclick="publishDomain(this.dataset.domain,this)" title="${escHtml(t('publishHint'))}">${t('publishBtn')}</button>
-              <button class="code-search-btn" data-domain="${escHtml(d.name)}" onclick="editDomain(this.dataset.domain)">${t('editBtn')}</button>
-              <button class="danger-btn" data-domain="${escHtml(d.name)}" onclick="deleteDomain(this.dataset.domain,this)">${t('removeBtn')}</button>
+            <div class="sub-actions" style="margin-left:0">
+              ${domainFromMarketplace(d.name) ? '' : `<button class="sub-btn sub-btn-primary" data-domain="${escHtml(d.name)}" onclick="publishDomain(this.dataset.domain,this)" title="${escHtml(t('publishHint'))}">${t('publishBtn')}</button>`}
+              <button class="sub-btn sub-btn-neutral" data-domain="${escHtml(d.name)}" onclick="editDomain(this.dataset.domain)">${t('editBtn')}</button>
+              <button class="sub-btn sub-btn-danger" data-domain="${escHtml(d.name)}" onclick="deleteDomain(this.dataset.domain,this)">${t('removeBtn')}</button>
             </div>
           </div>
           <div class="dcard-desc">${escHtml(d.description||'—')}</div>
@@ -2013,8 +2043,6 @@ function renderSources() {
             <div class="src-meta">${escHtml(s.title||'')} · ${t('ingestedDate')(fmtDate(s.fetched_at))}</div>
           </div>
           <div class="src-end">${domainTag(s.domain)}</div>
-          <button class="code-search-btn" onclick="editChunks(${s.id})" title="${escHtml(t('editChunksBtn'))}">${t('editChunksBtn')}</button>
-          <button class="code-search-btn" onclick="editSource(${s.id})">${t('editBtn')}</button>
           <button class="danger-btn" data-title="${escHtml(uri || s.title || 'source')}" onclick="deleteSource(${s.id},this.dataset.title,this)">${t('removeBtn')}</button>
         </div>`;}).join('')
     : `<div class="empty">${t('emptySources')}</div>`;
@@ -2298,19 +2326,19 @@ function renderSubmissions() {
   if (!list) return;
   list.innerHTML = rows.length
     ? rows.map(s => `
-        <div class="src-item" style="align-items:flex-start;flex-wrap:wrap">
-          <div style="min-width:0;flex:1;">
-            <div style="font-weight:700;color:var(--navy)">${escHtml(s.slug)} ${submitStatusBadge(s.status)}</div>
+        <div class="sub-item">
+          <div class="sub-info">
+            <div class="sub-title">${escHtml(s.slug)} ${submitStatusBadge(s.status)}</div>
             <div class="src-meta">${escHtml(s.description||'—')}</div>
             <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${t('submitItems')(s.item_count)}${s.author?` · ${escHtml(t('byAuthor')(s.author))}`:''} · ${fmtTs(s.submitted_at)}${s.note?` · ${escHtml(s.note)}`:''}</div>
           </div>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <button class="code-search-btn" onclick="viewSubmission(${s.id})">${t('submitView')}</button>
-            <a class="code-search-btn" href="/api/submissions/export?id=${s.id}" style="text-decoration:none">${t('submitExport')}</a>
+          <div class="sub-actions">
+            <button class="sub-btn sub-btn-neutral" onclick="viewSubmission(${s.id})">${t('submitView')}</button>
+            <a class="sub-btn sub-btn-neutral" href="/api/submissions/export?id=${s.id}">${t('submitExport')}</a>
             ${admin && s.status==='pending' ? `
-              <button class="promote-btn" onclick="reviewSubmission(${s.id},'approve',this)">${t('submitApprove')}</button>
-              <button class="danger-btn" onclick="reviewSubmission(${s.id},'deny',this)">${t('submitDeny')}</button>` : ''}
-            <button class="danger-btn" onclick="withdrawSubmission(${s.id},this)">${t('submitWithdraw')}</button>
+              <button class="sub-btn sub-btn-primary" onclick="reviewSubmission(${s.id},'approve',this)">${t('submitApprove')}</button>
+              <button class="sub-btn sub-btn-danger" onclick="reviewSubmission(${s.id},'deny',this)">${t('submitDeny')}</button>` : ''}
+            <button class="sub-btn sub-btn-danger" onclick="withdrawSubmission(${s.id},this)">${t('submitWithdraw')}</button>
           </div>
         </div>`).join('')
     : `<div class="empty">${t('emptySubmissions')}</div>`;
@@ -2407,7 +2435,11 @@ async function publishDomain(name, btn) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain: name }),
     }).then(res => res.json());
-    if (!r.ok) { alert('Publish failed: ' + (r.error || 'unknown error')); return; }
+    if (!r.ok) {
+      if (r.from_marketplace) alert(t('publishFromMarketplace'));
+      else alert('Publish failed: ' + (r.error || 'unknown error'));
+      return;
+    }
     await loadData();
     alert(t('publishDone')(name, r.items ?? 0));
     showPage('submissions');
@@ -2469,18 +2501,6 @@ async function saveKnowledge(id) {
   });
 }
 
-function editSource(id) {
-  const s = G.sources.find(x => x.id === id);
-  if (!s) return;
-  openModal(t('editSourceTitle'),
-    fieldRow(t('fldTitle'), 'es-title', s.title, false) +
-    fieldRow(t('fldUri'), 'es-uri', s.uri, false) +
-    modalFooter(`saveSource(${id})`));
-}
-async function saveSource(id) {
-  await postEdit('/api/source/update', { id, title: val('es-title'), uri: val('es-uri') });
-}
-
 async function postEdit(url, payload) {
   try {
     const r = await fetch(url, {
@@ -2490,63 +2510,6 @@ async function postEdit(url, payload) {
     if (!r.ok) { alert(t('saveFailed') + (r.error || 'unknown error')); return; }
     closeModal();
     await loadData();
-  } catch(e) { alert(t('saveFailed') + e); }
-}
-
-// ── Chunk editor ──────────────────────────────────────────────────────────────
-async function editChunks(sourceId) {
-  openModal(t('editChunksTitle'), `<div id="chunks-container" class="empty">…</div>`);
-  await refreshChunks(sourceId);
-}
-async function refreshChunks(sourceId) {
-  const box = document.getElementById('chunks-container');
-  if (!box) return;
-  try {
-    const rows = await fetch(`/api/source/chunks?source_id=${sourceId}`).then(r => r.json());
-    const list = Array.isArray(rows) ? rows : [];
-    box.className = '';
-    box.innerHTML =
-      list.map(c => `
-        <div style="margin-bottom:8px">
-          <textarea id="chunk-${c.id}" rows="3" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px;border:1px solid var(--hairline);border-radius:7px;background:var(--soft);color:var(--navy);resize:vertical">${escHtml(c.text)}</textarea>
-          <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:3px">
-            <button class="code-search-btn" onclick="saveChunk(${c.id},${sourceId})">${t('saveBtn')}</button>
-            <button class="danger-btn" onclick="deleteChunk(${c.id},${sourceId})">${t('removeBtn')}</button>
-          </div>
-        </div>`).join('') +
-      `<div style="margin-top:12px;border-top:1px solid var(--hairline);padding-top:10px">
-        <textarea id="new-chunk-${sourceId}" rows="3" placeholder="${escHtml(t('fldNewChunk'))}" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px;border:1px solid var(--hairline);border-radius:7px;background:var(--soft);color:var(--navy);resize:vertical"></textarea>
-        <div style="display:flex;justify-content:flex-end;margin-top:3px">
-          <button class="promote-btn" onclick="addChunk(${sourceId})">${t('addChunkBtn')}</button>
-        </div>
-      </div>`;
-  } catch(e) { box.innerHTML = t('saveFailed') + e; }
-}
-async function saveChunk(id, sourceId) {
-  const text = val('chunk-' + id);
-  await chunkOp(fetch('/api/chunk/update', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, text }),
-  }), sourceId);
-}
-async function deleteChunk(id, sourceId) {
-  if (!confirm(t('chunkDeleteConfirm'))) return;
-  await chunkOp(fetch(`/api/chunk/delete?id=${id}`), sourceId);
-}
-async function addChunk(sourceId) {
-  const text = (val('new-chunk-' + sourceId) || '').trim();
-  if (!text) return;
-  await chunkOp(fetch('/api/chunk/add', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source_id: sourceId, text }),
-  }), sourceId);
-}
-async function chunkOp(fetchPromise, sourceId) {
-  try {
-    const r = await fetchPromise.then(res => res.json());
-    if (!r.ok) { alert(t('saveFailed') + (r.error || 'unknown error')); return; }
-    await refreshChunks(sourceId);
-    loadData({ silent: true });
   } catch(e) { alert(t('saveFailed') + e); }
 }
 
@@ -2563,7 +2526,7 @@ async function loadData(opts = {}) {
   if (btn && !silent) { btn.classList.add('spinning'); btn.textContent = t('btnLoading'); }
   try {
     const ok = v => v.status === 'fulfilled' ? v.value : null;
-    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos, training, trainStats, marketplaceTemplates, journal, submissions, admin, author] =
+    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos, training, trainStats, marketplaceTemplates, journal, submissions, admin, author, health] =
       (await Promise.allSettled([
         fetch('/api/stats').then(r=>r.json()),
         fetch('/api/domains').then(r=>r.json()),
@@ -2580,13 +2543,27 @@ async function loadData(opts = {}) {
         fetch('/api/submissions').then(r=>r.json()),
         fetch('/api/admin').then(r=>r.json()),
         fetch('/api/author').then(r=>r.json()),
+        fetch('/api/health').then(r=>r.json()),
       ])).map(ok);
     const live = !!stats;
     const dot = document.getElementById('status-dot');
     dot.style.background = '';
-    dot.classList.toggle('live',  live);
-    dot.classList.toggle('error', !live);
-    updateStatusText(t(live ? 'statusLive' : 'statusError'));
+    // The status pill reflects all three databases: green only when every DB
+    // responds; otherwise it names the failing one(s).
+    const DB_LABELS = { knowledge: 'klayer.db', code: 'klayer_code.db', train: 'klayer_train.db' };
+    let allLive = live;
+    if (!live) {
+      updateStatusText(t('statusError'));
+    } else if (health && typeof health === 'object') {
+      const entries = ['knowledge','code','train'].filter(k => k in health);
+      const failing = entries.filter(k => health[k] === false).map(k => DB_LABELS[k]);
+      allLive = failing.length === 0;
+      updateStatusText(allLive ? t('statusDbsLive')(entries.length) : t('statusDbDown')(failing.join(', ')));
+    } else {
+      updateStatusText(t('statusLive'));  // health endpoint absent — fall back
+    }
+    dot.classList.toggle('live',  allLive);
+    dot.classList.toggle('error', !allLive);
     if (!live) return;  // backend unreachable — keep the last good render
 
     const next = {
