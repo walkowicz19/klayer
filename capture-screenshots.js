@@ -5,25 +5,25 @@
 const { chromium } = require('playwright');
 const path = require('path');
 
-const BASE = 'http://localhost:7474';
+const BASE = 'http://localhost:7475';  // user build — no admin features
 const OUT  = path.join(__dirname, 'docs', 'screenshots');
 const W    = 1440;
 const H    = 900;
 
-// Pages to capture: [filename, nav-page-id]
+// Pages to capture: [filename, nav-page-id, pre-capture setup fn (optional)]
 const PAGES = [
-  ['dashboard',       'overview'],
-  ['domains',         'domains'],
-  ['marketplace',     'marketplace'],
-  ['submissions',     'submissions'],
-  ['knowledge',       'knowledge'],
-  ['trust-lifecycle', 'trust'],
-  ['sessions',        'sessions'],
-  ['sources',         'sources'],
-  ['agent-memory',    'memory'],
-  ['codebase',        'codebase'],
-  ['training',        'training'],
-  ['settings',        'settings'],
+  ['dashboard',       'overview',    null],
+  ['domains',         'domains',     null],
+  ['marketplace',     'marketplace', null],
+  ['submissions',     'submissions', null],  // user build: no Import card
+  ['knowledge',       'knowledge',   null],
+  ['trust-lifecycle', 'trust',       null],
+  ['sessions',        'sessions',    null],
+  ['sources',         'sources',     null],
+  ['agent-memory',    'memory',      null],
+  ['codebase',        'codebase',    null],
+  ['training',        'training',    null],
+  ['settings',        'settings',    null],
 ];
 
 (async () => {
