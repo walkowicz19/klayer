@@ -163,13 +163,6 @@ marketplace on approval (shown as "by <name>" on template cards). You can change
 your name from **Settings → Author**, but only **once every 14 days**. The name
 lives locally in your `klayer.db`.
 
-> [!IMPORTANT]
-> **The review/approval workflow is admin-only and compiled out of user binaries.**
-> Approve, deny, and import are gated behind the `admin` cargo feature. Regular
-> user binaries (built with the default features) can **publish** and **manage**
-> (view / export / withdraw) their own domains, but cannot approve submissions or
-> mutate the marketplace.
-
 ![Marketplace](docs/screenshots/marketplace.png?v=1.3.0)
 
 ### My Published Domains
