@@ -208,9 +208,9 @@
     .domain-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 12px; margin-bottom: 20px; }
     .dcard { background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 18px 20px; transition: border-color .15s; }
     .dcard:hover { border-color: var(--hairline-strong); }
-    .dcard-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+    .dcard-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
     .dcard-name { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
-    .dcard-head .dcard-name { margin-bottom: 0; flex: 1; min-width: 0; }
+    .dcard-head .dcard-name { margin-bottom: 6px; flex: 1 1 100%; min-width: 0; }
     .dcard-desc { font-size: 12px; color: var(--body); margin-bottom: 14px; line-height: 1.45; }
     .dcard-row { display: flex; gap: 20px; }
     .dcard-stat-val { font-family: 'SF Pro Rounded','Nunito',system-ui,sans-serif; font-size: 20px; font-weight: 700; color: var(--blue); letter-spacing: -.5px; line-height: 1; }

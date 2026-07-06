@@ -130,9 +130,11 @@ The dashboard is fully localised — switch language in the **Settings** page (a
 
 ### Domains
 
-Each registered domain is an isolated namespace for rules, facts, and ingested sources.
+Each registered domain is an isolated namespace for rules, facts, and ingested
+sources. Every card has **Publish** (send the domain to the marketplace review
+queue), **Edit** (change its description and query hint in place), and **Remove**.
 
-![Domains](docs/screenshots/domains.png?v=1.3.0)
+![Domains](docs/screenshots/domains.png?v=1.5.0)
 
 ### Marketplace
 
@@ -177,6 +179,17 @@ lives locally in your `klayer.db`.
 
 ![Marketplace](docs/screenshots/marketplace.png?v=1.3.0)
 
+### Submissions
+
+The **Submissions** page is the review queue. Each pending submission shows its
+snapshotted item count and the publisher (`by <name>`); **View items** inspects
+the content, and — on the admin build — **Approve** appends it to the marketplace
+or **Deny** records a reason. **Export** downloads a submission to share, and
+**Import** adds one to the queue. On a user (non-admin) build this page is titled
+*My Published Domains* and only exposes View / Export / Withdraw.
+
+![Submissions](docs/screenshots/submissions.png?v=1.5.0)
+
 ### Knowledge
 
 All items in the store — rules, facts, and procedures — sorted newest first.
@@ -203,6 +216,8 @@ start of a session on an indexed repo the agent calls `recall_session(repo)` to
 replay this journal and re-establish context, so it does not repeat past mistakes.
 Pick a repository from the dropdown to focus on one codebase.
 
+![Session Memory](docs/screenshots/sessions.png?v=1.5.0)
+
 ### Editing domains, knowledge & sources
 
 Domains, knowledge items, and sources each have an **Edit** button that opens an
@@ -226,7 +241,7 @@ individual reference chunks (the full-text index is kept in sync automatically).
 
 | Codebase | Settings |
 |----------|----------|
-| ![Codebase](docs/screenshots/codebase.png?v=1.3.0) | ![Settings](docs/screenshots/settings.png?v=1.3.0) |
+| ![Codebase](docs/screenshots/codebase.png?v=1.3.0) | ![Settings](docs/screenshots/settings.png?v=1.5.0) |
 
 ### Training Data
 
