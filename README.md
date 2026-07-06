@@ -126,7 +126,7 @@ All pages fetch real-time data from the store via a built-in REST API.
 
 The dashboard is fully localised — switch language in the **Settings** page (accessed via the System section in the sidebar) between **English**, **Portuguese (PT)**, **Spanish (ES)**, **Mandarin (ZH)**, and **Polish (PL)**. You can also toggle between light and dark themes using the mode switcher button in the top-right corner of the topbar. All selections are saved in `localStorage`.
 
-![Dashboard overview](docs/screenshots/dashboard.png?v=1.3.0)
+![Dashboard overview](docs/screenshots/dashboard.png?v=1.5.0)
 
 ### Domains
 
@@ -163,7 +163,7 @@ marketplace on approval (shown as "by <name>" on template cards). You can change
 your name from **Settings → Author**, but only **once every 14 days**. The name
 lives locally in your `klayer.db`.
 
-![Marketplace](docs/screenshots/marketplace.png?v=1.3.0)
+![Marketplace](docs/screenshots/marketplace.png?v=1.5.0)
 
 ### My Published Domains
 
@@ -182,7 +182,7 @@ All items in the store — rules, facts, and procedures — sorted newest first.
 Trust tier is colour-coded: `proposed` (amber) · `reviewed` (blue) · `user` (green).
 Only **reviewed** and **user** items are ever enforced.
 
-![Knowledge](docs/screenshots/knowledge.png?v=1.3.0)
+![Knowledge](docs/screenshots/knowledge.png?v=1.5.0)
 
 ### Trust Lifecycle
 
@@ -191,7 +191,7 @@ candidates into `proposed`; a human calls `promote()` to make them `reviewed`
 (enforced). The Proposed table lists every item awaiting that gate, with
 severity badges and a Promote button.
 
-![Trust Lifecycle](docs/screenshots/trust-lifecycle.png?v=1.3.0)
+![Trust Lifecycle](docs/screenshots/trust-lifecycle.png?v=1.5.0)
 
 ### Session Memory
 
@@ -218,7 +218,7 @@ instead.
 
 | Sources | Agent Memory |
 |---------|--------------|
-| ![Sources](docs/screenshots/sources.png?v=1.3.0) | ![Agent Memory](docs/screenshots/agent-memory.png?v=1.3.0) |
+| ![Sources](docs/screenshots/sources.png?v=1.5.0) | ![Agent Memory](docs/screenshots/agent-memory.png?v=1.5.0) |
 
 ### Codebase & Settings
 
@@ -227,7 +227,7 @@ instead.
 
 | Codebase | Settings |
 |----------|----------|
-| ![Codebase](docs/screenshots/codebase.png?v=1.3.0) | ![Settings](docs/screenshots/settings.png?v=1.5.0) |
+| ![Codebase](docs/screenshots/codebase.png?v=1.5.0) | ![Settings](docs/screenshots/settings.png?v=1.5.0) |
 
 ### Training Data
 
@@ -238,7 +238,7 @@ total / proposed / reviewed / user counts. Only **reviewed** and **user** rows a
 ever exported — proposed rows and unanswered stubs never leak into a dataset. See
 [Training data layer](#training-data-layer-kl-train) for the full pipeline.
 
-![Training Data](docs/screenshots/training.png?v=1.3.0)
+![Training Data](docs/screenshots/training.png?v=1.5.0)
 
 ### Dashboard port & REST API
 
