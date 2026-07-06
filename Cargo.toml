@@ -5,14 +5,13 @@ members = [
     "crates/kl-store",
     "crates/kl-ingest",
     "crates/kl-search",
-    "crates/kl-skill",
     "crates/kl-code",
     "crates/kl-train",
     "crates/kl-mcp",
 ]
 
 [workspace.package]
-version = "1.4.0"
+version = "1.5.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.82"
@@ -41,6 +40,5 @@ kl-core   = { path = "crates/kl-core" }
 kl-store  = { path = "crates/kl-store" }
 kl-ingest = { path = "crates/kl-ingest" }
 kl-search = { path = "crates/kl-search" }
-kl-skill  = { path = "crates/kl-skill" }
 kl-code   = { path = "crates/kl-code" }
 kl-train  = { path = "crates/kl-train" }

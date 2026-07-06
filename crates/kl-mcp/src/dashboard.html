@@ -452,6 +452,11 @@
         <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 6.5h12l-1 7H3L2 6.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5 6.5V5a3 3 0 0 1 6 0v1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5.5 10h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         <span data-i18n="navMarketplace"></span>
       </button>
+      <button class="nav-btn" data-page="submissions">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l2 2.5H6l2-2.5z" fill="currentColor"/><path d="M8 4v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="2.5" y="10" width="11" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/></svg>
+        <span data-i18n="navSubmissions"></span>
+        <span class="nav-badge" id="nb-submissions">—</span>
+      </button>
     </div>
     <div class="nav-group">
       <div class="nav-group-label" data-i18n="navGroupKnowledge"></div>
@@ -477,6 +482,11 @@
         <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M5 5L2 8l3 3M11 5l3 3-3 3M9 3l-2 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span data-i18n="navCodebase"></span>
         <span class="nav-badge" id="nb-repos">—</span>
+      </button>
+      <button class="nav-btn" data-page="sessions">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 4.5V8l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="navSessions"></span>
+        <span class="nav-badge" id="nb-sessions">—</span>
       </button>
     </div>
     <div class="nav-group">
@@ -801,6 +811,7 @@
           <span class="market-kicker" data-i18n="marketPublishBadge"></span>
           <div class="market-title" data-i18n="marketPublishTitle"></div>
           <p class="market-copy" data-i18n="marketPublishCopy"></p>
+          <button class="code-search-btn" style="margin-top:10px" onclick="showPage('submissions')" data-i18n="navSubmissions"></button>
         </div>
       </div>
 
@@ -829,6 +840,21 @@
         </div>
         <div class="cb">
           <div class="lang-grid" id="lang-grid"></div>
+        </div>
+      </div>
+
+      <div class="card card-fw">
+        <div class="ch">
+          <svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 13.5c0-2.5 2.2-4 5-4s5 1.5 5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span class="ch-title" data-i18n="settingsAuthor"></span>
+        </div>
+        <div class="cb">
+          <div style="font-size:.78rem;color:var(--body);margin-bottom:.6rem" data-i18n="settingsAuthorHint"></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="author-name-input" maxlength="60" style="flex:1;min-width:180px;box-sizing:border-box;font-size:13px;padding:8px;border:1px solid var(--hairline);border-radius:8px;background:var(--soft);color:var(--navy)">
+            <button id="author-save-btn" onclick="saveAuthor(this)" class="promote-btn" data-i18n="saveBtn"></button>
+          </div>
+          <div id="author-status" style="font-size:.72rem;color:var(--muted);margin-top:.5rem"></div>
         </div>
       </div>
 
@@ -875,7 +901,71 @@
       </div>
     </div>
 
+    <!-- Session Memory -->
+    <div id="page-sessions" class="page">
+      <div class="ph">
+        <div class="ph-title" data-i18n="navSessions"></div>
+        <div class="ph-sub" data-i18n="phSessionsSub"></div>
+      </div>
+      <div class="card">
+        <div class="ch" style="border-bottom: 1px solid var(--hairline); display: flex; align-items: center; justify-content: space-between;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:12px;color:var(--body);" data-i18n="sessionRepoLabel"></span>
+            <select id="session-repo-filter" onchange="renderSessions()" style="font-size:12px;font-weight:500;color:var(--body);background:var(--soft);border:1px solid var(--hairline);border-radius:var(--r-full);padding:2px 24px 2px 10px;height:26px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url(&quot;data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239BA8C0' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 8px center;">
+              <option value="" data-i18n="sessionAllRepos"></option>
+            </select>
+          </div>
+          <button onclick="clearSessionJournal()" style="padding:.3rem .8rem;font-size:.72rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="sessionClearBtn"></button>
+        </div>
+        <div class="tw"><table>
+          <thead><tr>
+            <th data-i18n="thKind"></th><th data-i18n="thEntry"></th><th data-i18n="thWhen"></th>
+          </tr></thead>
+          <tbody id="tb-journal"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- Submissions -->
+    <div id="page-submissions" class="page">
+      <div class="ph">
+        <div class="ph-title" id="submissions-page-title" data-i18n="navSubmissions"></div>
+        <div class="ph-sub" id="submissions-page-sub" data-i18n="phSubmissionsSub"></div>
+      </div>
+      <div class="card">
+        <div class="ch" style="border-bottom:1px solid var(--hairline);display:flex;align-items:center;justify-content:space-between;">
+          <span class="ch-title" data-i18n="navSubmissions"></span>
+          <select id="submissions-status-filter" onchange="renderSubmissions()" style="font-size:12px;font-weight:500;color:var(--body);background:var(--soft);border:1px solid var(--hairline);border-radius:var(--r-full);padding:2px 24px 2px 10px;height:26px;cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;background-image:url(&quot;data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239BA8C0' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 8px center;">
+            <option value="" data-i18n="submitFilterAll"></option>
+            <option value="pending" data-i18n="submitStatusPending"></option>
+            <option value="approved" data-i18n="submitStatusApproved"></option>
+            <option value="denied" data-i18n="submitStatusDenied"></option>
+          </select>
+        </div>
+        <div class="cb" id="submissions-list"></div>
+      </div>
+      <div class="card" id="submission-import-card">
+        <div class="ch"><span class="ch-title" data-i18n="submitImportTitle"></span></div>
+        <div class="cb">
+          <div style="font-size:.78rem;color:var(--body);margin-bottom:.5rem" data-i18n="submitImportHint"></div>
+          <textarea id="submission-import-json" rows="4" style="width:100%;box-sizing:border-box;font-family:ui-monospace,'SF Mono',monospace;font-size:12px;padding:8px;border:1px solid var(--hairline);border-radius:8px;background:var(--soft);color:var(--navy);resize:vertical" placeholder='{"slug":"…","description":"…","query_hint":"…","items":[…]}'></textarea>
+          <button onclick="importSubmission(this)" style="margin-top:.6rem;padding:.4rem 1rem;font-size:.78rem;border:1px solid var(--brand);color:var(--on-brand);background:var(--brand);border-radius:6px;cursor:pointer" data-i18n="submitImportBtn"></button>
+        </div>
+      </div>
+    </div>
+
   </main>
+</div>
+
+<!-- Edit modal overlay -->
+<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(13,27,62,.45);z-index:1000;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)closeModal()">
+  <div style="background:var(--canvas,#fff);border-radius:14px;max-width:640px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--hairline);display:flex;align-items:center;justify-content:space-between;">
+      <div id="modal-title" style="font-size:16px;font-weight:700;color:var(--navy);"></div>
+      <button onclick="closeModal()" style="border:none;background:transparent;font-size:20px;line-height:1;color:var(--body);cursor:pointer;">×</button>
+    </div>
+    <div id="modal-body" style="padding:18px 20px;"></div>
+  </div>
 </div>
 
 <script>
@@ -979,6 +1069,51 @@ const LANGS = {
     removeDomainWarning: name => `Remove domain "${name}" and all its knowledge, sources, and chunks? This cannot be undone.`,
     removeKnowledgeWarning: title => `Remove knowledge item "${title}"? This cannot be undone.`,
     removeSourceWarning: title => `Remove source "${title}" and its chunks? This cannot be undone.`,
+    navSessions: 'Session Memory', navSubmissions: 'Submissions',
+    phSessionsSub: 'Per-repo journal the agent writes as it works — what it did, what failed, mistakes to avoid',
+    phSubmissionsSub: 'Review domains published for the marketplace — approve to add them, deny with a reason',
+    publishedTitle: 'My Published Domains',
+    phPublishedSub: 'Domains you published for review — export one to send to the marketplace admin for approval',
+    submitWithdraw: 'Withdraw', submitWithdrawConfirm: 'Withdraw this submission from your local queue? This cannot be undone.',
+    sessionRepoLabel: 'Repository:',
+    sessionAllRepos: 'All repos',
+    sessionClearBtn: 'Clear this repo\'s journal',
+    sessionClearWarning: 'Clear the session journal for this repository? This cannot be undone.',
+    emptyJournal: 'No session entries yet — the agent logs them via log_work()',
+    thWhen: 'When', thEntry: 'Entry',
+    submitFilterAll: 'All statuses',
+    submitStatusPending: 'pending', submitStatusApproved: 'approved', submitStatusDenied: 'denied',
+    submitItems: n => `${n} item${n===1?'':'s'}`,
+    submitApprove: 'Approve', submitDeny: 'Deny', submitExport: 'Export', submitView: 'View items',
+    submitImportTitle: 'Import a submission',
+    submitImportHint: 'Paste an exported submission JSON (from another user) to add it to the review queue.',
+    submitImportBtn: 'Import to queue',
+    submitDenyReason: 'Reason for denial (optional):',
+    submitApproved: slug => `Approved "${slug}" — it is now in the marketplace.`,
+    submitDenied: 'Submission denied.',
+    submitImported: slug => `Imported "${slug}" into the review queue.`,
+    emptySubmissions: 'No submissions yet',
+    publishBtn: 'Publish', publishHint: 'Submit this domain to the marketplace review queue',
+    publishConfirm: name => `Publish domain "${name}" to the marketplace review queue? Its reviewed and user knowledge will be snapshotted for the admin to review.`,
+    publishDone: (name, n) => `Published "${name}" (${n} items) — pending admin review in the Submissions tab.`,
+    editBtn: 'Edit', editChunksBtn: 'Edit content',
+    editDomainTitle: 'Edit domain', editKnowledgeTitle: 'Edit knowledge item', editSourceTitle: 'Edit source',
+    editChunksTitle: 'Edit source content',
+    fldDescription: 'Description', fldQueryHint: 'Query hint', fldTitle: 'Title', fldBody: 'Body',
+    fldStage: 'Stage', fldSeverity: 'Severity',
+    fldUri: 'URI', fldNewChunk: 'Add a new chunk…',
+    saveBtn: 'Save', cancelBtn: 'Cancel', addChunkBtn: 'Add chunk',
+    saveFailed: 'Save failed: ',
+    chunkDeleteConfirm: 'Delete this chunk? This cannot be undone.',
+    settingsAuthor: 'Author', byAuthor: name => `by ${name}`,
+    settingsAuthorHint: 'The name attached to every domain you publish. You can change it once every 14 days.',
+    authorNotSet: 'Not set yet — you will be asked to register it when you first publish.',
+    authorRegisteredOn: d => `Registered on ${d}. You can change it once every 14 days.`,
+    authorLockedUntil: d => `Name locked — you can change it again on ${d}.`,
+    authorRegisterPrompt: 'Enter your author name (used for every domain you publish):',
+    authorEmpty: 'Author name cannot be empty.',
+    authorRegistered: 'Author name registered.',
+    authorUpdated: 'Author name updated.',
   },
   pt: {
     topbarSub: 'painel de conhecimento',
@@ -1078,6 +1213,51 @@ const LANGS = {
     removeDomainWarning: name => `Remover o domínio "${name}" e todo seu conhecimento, fontes e fragmentos? Esta ação não pode ser desfeita.`,
     removeKnowledgeWarning: title => `Remover o item de conhecimento "${title}"? Esta ação não pode ser desfeita.`,
     removeSourceWarning: title => `Remover a fonte "${title}" e seus fragmentos? Esta ação não pode ser desfeita.`,
+    navSessions: 'Memória de Sessão', navSubmissions: 'Submissões',
+    phSessionsSub: 'Diário por repositório que o agente escreve enquanto trabalha — o que fez, o que falhou, erros a evitar',
+    phSubmissionsSub: 'Revise domínios publicados para o marketplace — aprove para adicioná-los, recuse com um motivo',
+    publishedTitle: 'Meus Domínios Publicados',
+    phPublishedSub: 'Domínios que você publicou para revisão — exporte um para enviar ao administrador do marketplace para aprovação',
+    submitWithdraw: 'Retirar', submitWithdrawConfirm: 'Retirar esta submissão da sua fila local? Esta ação não pode ser desfeita.',
+    sessionRepoLabel: 'Repositório:',
+    sessionAllRepos: 'Todos os repositórios',
+    sessionClearBtn: 'Limpar o diário deste repositório',
+    sessionClearWarning: 'Limpar o diário de sessão deste repositório? Esta ação não pode ser desfeita.',
+    emptyJournal: 'Nenhuma entrada de sessão ainda — o agente as registra via log_work()',
+    thWhen: 'Quando', thEntry: 'Entrada',
+    submitFilterAll: 'Todos os status',
+    submitStatusPending: 'pendente', submitStatusApproved: 'aprovado', submitStatusDenied: 'recusado',
+    submitItems: n => `${n} ${n===1?'item':'itens'}`,
+    submitApprove: 'Aprovar', submitDeny: 'Recusar', submitExport: 'Exportar', submitView: 'Ver itens',
+    submitImportTitle: 'Importar uma submissão',
+    submitImportHint: 'Cole um JSON de submissão exportado (de outro usuário) para adicioná-lo à fila de revisão.',
+    submitImportBtn: 'Importar para a fila',
+    submitDenyReason: 'Motivo da recusa (opcional):',
+    submitApproved: slug => `"${slug}" aprovado — agora está no marketplace.`,
+    submitDenied: 'Submissão recusada.',
+    submitImported: slug => `"${slug}" importado para a fila de revisão.`,
+    emptySubmissions: 'Nenhuma submissão ainda',
+    publishBtn: 'Publicar', publishHint: 'Enviar este domínio para a fila de revisão do marketplace',
+    publishConfirm: name => `Publicar o domínio "${name}" na fila de revisão do marketplace? Seu conhecimento revisado e do usuário será capturado para o administrador revisar.`,
+    publishDone: (name, n) => `"${name}" publicado (${n} itens) — aguardando revisão do administrador na aba Submissões.`,
+    editBtn: 'Editar', editChunksBtn: 'Editar conteúdo',
+    editDomainTitle: 'Editar domínio', editKnowledgeTitle: 'Editar item de conhecimento', editSourceTitle: 'Editar fonte',
+    editChunksTitle: 'Editar conteúdo da fonte',
+    fldDescription: 'Descrição', fldQueryHint: 'Dica de consulta', fldTitle: 'Título', fldBody: 'Corpo',
+    fldStage: 'Estágio', fldSeverity: 'Severidade',
+    fldUri: 'URI', fldNewChunk: 'Adicionar um novo fragmento…',
+    saveBtn: 'Salvar', cancelBtn: 'Cancelar', addChunkBtn: 'Adicionar fragmento',
+    saveFailed: 'Falha ao salvar: ',
+    chunkDeleteConfirm: 'Excluir este fragmento? Esta ação não pode ser desfeita.',
+    settingsAuthor: 'Autor', byAuthor: name => `por ${name}`,
+    settingsAuthorHint: 'O nome anexado a cada domínio que você publica. Você pode alterá-lo uma vez a cada 14 dias.',
+    authorNotSet: 'Ainda não definido — será solicitado o registro quando você publicar pela primeira vez.',
+    authorRegisteredOn: d => `Registrado em ${d}. Você pode alterá-lo uma vez a cada 14 dias.`,
+    authorLockedUntil: d => `Nome bloqueado — você pode alterá-lo novamente em ${d}.`,
+    authorRegisterPrompt: 'Digite seu nome de autor (usado em cada domínio que você publica):',
+    authorEmpty: 'O nome de autor não pode ficar vazio.',
+    authorRegistered: 'Nome de autor registrado.',
+    authorUpdated: 'Nome de autor atualizado.',
   },
   es: {
     topbarSub: 'panel de conocimiento',
@@ -1177,6 +1357,51 @@ const LANGS = {
     removeDomainWarning: name => `¿Eliminar el dominio "${name}" y todo su conocimiento, fuentes y fragmentos? Esta acción no se puede deshacer.`,
     removeKnowledgeWarning: title => `¿Eliminar el elemento de conocimiento "${title}"? Esta acción no se puede deshacer.`,
     removeSourceWarning: title => `¿Eliminar la fuente "${title}" y sus fragmentos? Esta acción no se puede deshacer.`,
+    navSessions: 'Memoria de Sesión', navSubmissions: 'Envíos',
+    phSessionsSub: 'Diario por repositorio que el agente escribe mientras trabaja — qué hizo, qué falló, errores a evitar',
+    phSubmissionsSub: 'Revisa dominios publicados para el marketplace — aprueba para añadirlos, rechaza con un motivo',
+    publishedTitle: 'Mis Dominios Publicados',
+    phPublishedSub: 'Dominios que publicaste para revisión — exporta uno para enviarlo al administrador del marketplace para su aprobación',
+    submitWithdraw: 'Retirar', submitWithdrawConfirm: '¿Retirar este envío de tu cola local? Esta acción no se puede deshacer.',
+    sessionRepoLabel: 'Repositorio:',
+    sessionAllRepos: 'Todos los repositorios',
+    sessionClearBtn: 'Borrar el diario de este repositorio',
+    sessionClearWarning: '¿Borrar el diario de sesión de este repositorio? Esta acción no se puede deshacer.',
+    emptyJournal: 'Aún no hay entradas de sesión — el agente las registra vía log_work()',
+    thWhen: 'Cuándo', thEntry: 'Entrada',
+    submitFilterAll: 'Todos los estados',
+    submitStatusPending: 'pendiente', submitStatusApproved: 'aprobado', submitStatusDenied: 'rechazado',
+    submitItems: n => `${n} ${n===1?'elemento':'elementos'}`,
+    submitApprove: 'Aprobar', submitDeny: 'Rechazar', submitExport: 'Exportar', submitView: 'Ver elementos',
+    submitImportTitle: 'Importar un envío',
+    submitImportHint: 'Pega un JSON de envío exportado (de otro usuario) para añadirlo a la cola de revisión.',
+    submitImportBtn: 'Importar a la cola',
+    submitDenyReason: 'Motivo del rechazo (opcional):',
+    submitApproved: slug => `"${slug}" aprobado — ya está en el marketplace.`,
+    submitDenied: 'Envío rechazado.',
+    submitImported: slug => `"${slug}" importado a la cola de revisión.`,
+    emptySubmissions: 'Aún no hay envíos',
+    publishBtn: 'Publicar', publishHint: 'Enviar este dominio a la cola de revisión del marketplace',
+    publishConfirm: name => `¿Publicar el dominio "${name}" en la cola de revisión del marketplace? Su conocimiento revisado y de usuario se capturará para que el administrador lo revise.`,
+    publishDone: (name, n) => `"${name}" publicado (${n} elementos) — pendiente de revisión del administrador en la pestaña Envíos.`,
+    editBtn: 'Editar', editChunksBtn: 'Editar contenido',
+    editDomainTitle: 'Editar dominio', editKnowledgeTitle: 'Editar elemento de conocimiento', editSourceTitle: 'Editar fuente',
+    editChunksTitle: 'Editar contenido de la fuente',
+    fldDescription: 'Descripción', fldQueryHint: 'Pista de consulta', fldTitle: 'Título', fldBody: 'Cuerpo',
+    fldStage: 'Etapa', fldSeverity: 'Severidad',
+    fldUri: 'URI', fldNewChunk: 'Añadir un nuevo fragmento…',
+    saveBtn: 'Guardar', cancelBtn: 'Cancelar', addChunkBtn: 'Añadir fragmento',
+    saveFailed: 'Error al guardar: ',
+    chunkDeleteConfirm: '¿Eliminar este fragmento? Esta acción no se puede deshacer.',
+    settingsAuthor: 'Autor', byAuthor: name => `por ${name}`,
+    settingsAuthorHint: 'El nombre adjunto a cada dominio que publicas. Puedes cambiarlo una vez cada 14 días.',
+    authorNotSet: 'Aún no definido — se te pedirá registrarlo cuando publiques por primera vez.',
+    authorRegisteredOn: d => `Registrado el ${d}. Puedes cambiarlo una vez cada 14 días.`,
+    authorLockedUntil: d => `Nombre bloqueado — puedes cambiarlo de nuevo el ${d}.`,
+    authorRegisterPrompt: 'Introduce tu nombre de autor (usado en cada dominio que publiques):',
+    authorEmpty: 'El nombre de autor no puede estar vacío.',
+    authorRegistered: 'Nombre de autor registrado.',
+    authorUpdated: 'Nombre de autor actualizado.',
   },
   zh: {
     topbarSub: '知识控制台',
@@ -1276,6 +1501,51 @@ const LANGS = {
     removeDomainWarning: name => `删除域 "${name}" 及其所有知识、来源和片段？此操作无法撤销。`,
     removeKnowledgeWarning: title => `删除知识条目 "${title}"？此操作无法撤销。`,
     removeSourceWarning: title => `删除来源 "${title}" 及其片段？此操作无法撤销。`,
+    navSessions: '会话记忆', navSubmissions: '提交',
+    phSessionsSub: '代理工作时按仓库记录的日记——做了什么、失败了什么、要避免的错误',
+    phSubmissionsSub: '审核为市场发布的域——批准以添加它们，或附理由拒绝',
+    publishedTitle: '我发布的域',
+    phPublishedSub: '你提交审核的域——导出一个发送给市场管理员以获得批准',
+    submitWithdraw: '撤回', submitWithdrawConfirm: '从本地队列中撤回此提交？此操作无法撤销。',
+    sessionRepoLabel: '仓库：',
+    sessionAllRepos: '所有仓库',
+    sessionClearBtn: '清除此仓库的日记',
+    sessionClearWarning: '清除此仓库的会话日记？此操作无法撤销。',
+    emptyJournal: '暂无会话记录——代理通过 log_work() 记录它们',
+    thWhen: '时间', thEntry: '条目',
+    submitFilterAll: '所有状态',
+    submitStatusPending: '待审核', submitStatusApproved: '已批准', submitStatusDenied: '已拒绝',
+    submitItems: n => `${n} 项`,
+    submitApprove: '批准', submitDeny: '拒绝', submitExport: '导出', submitView: '查看条目',
+    submitImportTitle: '导入提交',
+    submitImportHint: '粘贴导出的提交 JSON（来自其他用户）以将其添加到审核队列。',
+    submitImportBtn: '导入到队列',
+    submitDenyReason: '拒绝原因（可选）：',
+    submitApproved: slug => `已批准 "${slug}"——现已在市场中。`,
+    submitDenied: '提交已拒绝。',
+    submitImported: slug => `已将 "${slug}" 导入审核队列。`,
+    emptySubmissions: '暂无提交',
+    publishBtn: '发布', publishHint: '将此域提交到市场审核队列',
+    publishConfirm: name => `将域 "${name}" 发布到市场审核队列？其已审核和用户知识将被快照以供管理员审核。`,
+    publishDone: (name, n) => `已发布 "${name}"（${n} 项）——在“提交”标签中等待管理员审核。`,
+    editBtn: '编辑', editChunksBtn: '编辑内容',
+    editDomainTitle: '编辑域', editKnowledgeTitle: '编辑知识条目', editSourceTitle: '编辑来源',
+    editChunksTitle: '编辑来源内容',
+    fldDescription: '描述', fldQueryHint: '查询提示', fldTitle: '标题', fldBody: '正文',
+    fldStage: '阶段', fldSeverity: '严重性',
+    fldUri: 'URI', fldNewChunk: '添加新片段…',
+    saveBtn: '保存', cancelBtn: '取消', addChunkBtn: '添加片段',
+    saveFailed: '保存失败：',
+    chunkDeleteConfirm: '删除此片段？此操作无法撤销。',
+    settingsAuthor: '作者', byAuthor: name => `作者：${name}`,
+    settingsAuthorHint: '附加到你发布的每个域的名称。每 14 天可更改一次。',
+    authorNotSet: '尚未设置——首次发布时会要求你注册。',
+    authorRegisteredOn: d => `注册于 ${d}。每 14 天可更改一次。`,
+    authorLockedUntil: d => `名称已锁定——你可在 ${d} 再次更改。`,
+    authorRegisterPrompt: '输入你的作者名称（用于你发布的每个域）：',
+    authorEmpty: '作者名称不能为空。',
+    authorRegistered: '作者名称已注册。',
+    authorUpdated: '作者名称已更新。',
   },
   pl: {
     topbarSub: 'panel wiedzy',
@@ -1375,6 +1645,51 @@ const LANGS = {
     removeDomainWarning: name => `Usunąć domenę "${name}" oraz całą jej wiedzę, źródła i fragmenty? Tej operacji nie można cofnąć.`,
     removeKnowledgeWarning: title => `Usunąć element wiedzy "${title}"? Tej operacji nie można cofnąć.`,
     removeSourceWarning: title => `Usunąć źródło "${title}" i jego fragmenty? Tej operacji nie można cofnąć.`,
+    navSessions: 'Pamięć Sesji', navSubmissions: 'Zgłoszenia',
+    phSessionsSub: 'Dziennik per-repozytorium, który agent zapisuje podczas pracy — co zrobił, co się nie udało, błędy do uniknięcia',
+    phSubmissionsSub: 'Przeglądaj domeny zgłoszone do marketplace — zatwierdź, aby je dodać, lub odrzuć z podaniem powodu',
+    publishedTitle: 'Moje Opublikowane Domeny',
+    phPublishedSub: 'Domeny, które zgłosiłeś do przeglądu — wyeksportuj jedną, aby wysłać ją do administratora marketplace do zatwierdzenia',
+    submitWithdraw: 'Wycofaj', submitWithdrawConfirm: 'Wycofać to zgłoszenie z lokalnej kolejki? Tej operacji nie można cofnąć.',
+    sessionRepoLabel: 'Repozytorium:',
+    sessionAllRepos: 'Wszystkie repozytoria',
+    sessionClearBtn: 'Wyczyść dziennik tego repozytorium',
+    sessionClearWarning: 'Wyczyścić dziennik sesji dla tego repozytorium? Tej operacji nie można cofnąć.',
+    emptyJournal: 'Brak wpisów sesji — agent zapisuje je przez log_work()',
+    thWhen: 'Kiedy', thEntry: 'Wpis',
+    submitFilterAll: 'Wszystkie statusy',
+    submitStatusPending: 'oczekujące', submitStatusApproved: 'zatwierdzone', submitStatusDenied: 'odrzucone',
+    submitItems: n => `${n} ${n===1?'element':'elementów'}`,
+    submitApprove: 'Zatwierdź', submitDeny: 'Odrzuć', submitExport: 'Eksportuj', submitView: 'Zobacz elementy',
+    submitImportTitle: 'Importuj zgłoszenie',
+    submitImportHint: 'Wklej wyeksportowany JSON zgłoszenia (od innego użytkownika), aby dodać go do kolejki przeglądu.',
+    submitImportBtn: 'Importuj do kolejki',
+    submitDenyReason: 'Powód odrzucenia (opcjonalnie):',
+    submitApproved: slug => `Zatwierdzono "${slug}" — jest teraz w marketplace.`,
+    submitDenied: 'Zgłoszenie odrzucone.',
+    submitImported: slug => `Zaimportowano "${slug}" do kolejki przeglądu.`,
+    emptySubmissions: 'Brak zgłoszeń',
+    publishBtn: 'Opublikuj', publishHint: 'Zgłoś tę domenę do kolejki przeglądu marketplace',
+    publishConfirm: name => `Opublikować domenę "${name}" w kolejce przeglądu marketplace? Jej zweryfikowana i użytkownika wiedza zostanie zapisana do przeglądu przez administratora.`,
+    publishDone: (name, n) => `Opublikowano "${name}" (${n} elementów) — oczekuje na przegląd administratora w zakładce Zgłoszenia.`,
+    editBtn: 'Edytuj', editChunksBtn: 'Edytuj treść',
+    editDomainTitle: 'Edytuj domenę', editKnowledgeTitle: 'Edytuj element wiedzy', editSourceTitle: 'Edytuj źródło',
+    editChunksTitle: 'Edytuj treść źródła',
+    fldDescription: 'Opis', fldQueryHint: 'Wskazówka zapytania', fldTitle: 'Tytuł', fldBody: 'Treść',
+    fldStage: 'Etap', fldSeverity: 'Ważność',
+    fldUri: 'URI', fldNewChunk: 'Dodaj nowy fragment…',
+    saveBtn: 'Zapisz', cancelBtn: 'Anuluj', addChunkBtn: 'Dodaj fragment',
+    saveFailed: 'Zapis nie powiódł się: ',
+    chunkDeleteConfirm: 'Usunąć ten fragment? Tej operacji nie można cofnąć.',
+    settingsAuthor: 'Autor', byAuthor: name => `autor: ${name}`,
+    settingsAuthorHint: 'Nazwa dołączana do każdej domeny, którą publikujesz. Możesz ją zmienić raz na 14 dni.',
+    authorNotSet: 'Jeszcze nieustawione — zostaniesz poproszony o rejestrację przy pierwszej publikacji.',
+    authorRegisteredOn: d => `Zarejestrowano ${d}. Możesz zmienić raz na 14 dni.`,
+    authorLockedUntil: d => `Nazwa zablokowana — możesz ją zmienić ponownie ${d}.`,
+    authorRegisterPrompt: 'Podaj swoją nazwę autora (używaną dla każdej publikowanej domeny):',
+    authorEmpty: 'Nazwa autora nie może być pusta.',
+    authorRegistered: 'Nazwa autora zarejestrowana.',
+    authorUpdated: 'Nazwa autora zaktualizowana.',
   },
 };
 
@@ -1438,7 +1753,7 @@ function setLang(code) {
 }
 
 // ── Global state ────────────────────────────────────────────────────────────
-let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [], training: [], trainStats: null, marketplaceTemplates: [] };
+let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [], training: [], trainStats: null, marketplaceTemplates: [], journal: [], submissions: [], isAdmin: false, author: null };
 
 // ── Filter state ─────────────────────────────────────────────────────────────
 let selectedDomainFilter = '';
@@ -1626,7 +1941,11 @@ function renderDomains() {
         <div class="dcard">
           <div class="dcard-head">
             <div class="dcard-name">${escHtml(d.name)}</div>
-            <button class="danger-btn" data-domain="${escHtml(d.name)}" onclick="deleteDomain(this.dataset.domain,this)">${t('removeBtn')}</button>
+            <div style="display:flex;gap:4px;flex-shrink:0">
+              <button class="code-search-btn" data-domain="${escHtml(d.name)}" onclick="publishDomain(this.dataset.domain,this)" title="${escHtml(t('publishHint'))}">${t('publishBtn')}</button>
+              <button class="code-search-btn" data-domain="${escHtml(d.name)}" onclick="editDomain(this.dataset.domain)">${t('editBtn')}</button>
+              <button class="danger-btn" data-domain="${escHtml(d.name)}" onclick="deleteDomain(this.dataset.domain,this)">${t('removeBtn')}</button>
+            </div>
           </div>
           <div class="dcard-desc">${escHtml(d.description||'—')}</div>
           <div class="dcard-row">
@@ -1657,7 +1976,10 @@ function renderKnowledge() {
           <td>${domainTag(k.domain)}</td>
           <td>${trustBadge(k.trust)}</td>
           <td class="td-dim">${fmtDate(k.created_at)}</td>
-          <td><button class="danger-btn" data-title="${escHtml(k.title)}" onclick="deleteKnowledge(${k.id},this.dataset.title,this,event)">${t('removeBtn')}</button></td>
+          <td><div style="display:flex;gap:4px">
+            <button class="code-search-btn" onclick="editKnowledge(${k.id});event.stopPropagation()">${t('editBtn')}</button>
+            <button class="danger-btn" data-title="${escHtml(k.title)}" onclick="deleteKnowledge(${k.id},this.dataset.title,this,event)">${t('removeBtn')}</button>
+          </div></td>
         </tr>
         <tr id="kd-${i}" style="display:none">
           <td colspan="6" style="padding:.75rem 1.25rem 1rem;background:var(--bg);font-size:.79rem;color:var(--body);white-space:pre-wrap;word-break:break-word;border-bottom:1px solid var(--border);line-height:1.55">${escHtml(k.body||k.content||k.text||'(no body)')}</td>
@@ -1691,6 +2013,8 @@ function renderSources() {
             <div class="src-meta">${escHtml(s.title||'')} · ${t('ingestedDate')(fmtDate(s.fetched_at))}</div>
           </div>
           <div class="src-end">${domainTag(s.domain)}</div>
+          <button class="code-search-btn" onclick="editChunks(${s.id})" title="${escHtml(t('editChunksBtn'))}">${t('editChunksBtn')}</button>
+          <button class="code-search-btn" onclick="editSource(${s.id})">${t('editBtn')}</button>
           <button class="danger-btn" data-title="${escHtml(uri || s.title || 'source')}" onclick="deleteSource(${s.id},this.dataset.title,this)">${t('removeBtn')}</button>
         </div>`;}).join('')
     : `<div class="empty">${t('emptySources')}</div>`;
@@ -1817,6 +2141,48 @@ function renderSettings() {
   if (portEl) portEl.textContent = window.location.port || '80';
   const urlEl = document.getElementById('settings-url-val');
   if (urlEl) { urlEl.textContent = window.location.origin; urlEl.href = window.location.origin; }
+  renderAuthorSettings();
+}
+
+function renderAuthorSettings() {
+  const a = G.author;
+  const input = document.getElementById('author-name-input');
+  const status = document.getElementById('author-status');
+  const btn = document.getElementById('author-save-btn');
+  if (!input || !status || !btn) return;
+  // Don't clobber the field while the user is typing in it.
+  if (document.activeElement !== input) input.value = (a && a.name) ? a.name : '';
+  const canChange = !a || a.can_change !== false;
+  input.disabled = !canChange;
+  btn.disabled = !canChange;
+  if (!a || !a.registered) {
+    status.textContent = t('authorNotSet');
+  } else if (canChange) {
+    status.textContent = t('authorRegisteredOn')(fmtDate(a.registered_at));
+  } else {
+    status.textContent = t('authorLockedUntil')(fmtDate(a.next_change_at));
+  }
+}
+
+async function saveAuthor(btn) {
+  const input = document.getElementById('author-name-input');
+  const name = (input.value || '').trim();
+  if (!name) { alert(t('authorEmpty')); return; }
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/author', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }).then(res => res.json());
+    if (!r.ok) {
+      if (r.blocked) alert(t('authorLockedUntil')(fmtDate(r.next_change_at)));
+      else alert(t('saveFailed') + (r.error || 'unknown error'));
+      return;
+    }
+    await loadData();
+    alert(r.status === 'updated' ? t('authorUpdated') : t('authorRegistered'));
+  } catch(e) { alert(t('saveFailed') + e); }
+  finally { if (btn) btn.disabled = false; }
 }
 
 function renderAll() {
@@ -1826,6 +2192,10 @@ function renderAll() {
   document.getElementById('nb-episodes').textContent  = G.episodes.length;
   document.getElementById('nb-repos').textContent     = G.codeRepos.length;
   document.getElementById('nb-training').textContent  = G.training.length;
+  const nbSessions = document.getElementById('nb-sessions');
+  if (nbSessions) nbSessions.textContent = G.journal.length;
+  const nbSubs = document.getElementById('nb-submissions');
+  if (nbSubs) nbSubs.textContent = G.submissions.filter(s => s.status === 'pending').length;
   populateSourcesFilter();
   populateKnowledgeFilter();
   applyLang(true);
@@ -1833,6 +2203,7 @@ function renderAll() {
   renderSources(); renderEpisodes(); renderTrust();
   renderCodebase(); renderTraining(); renderSettings();
   renderMarketplace();
+  renderSessions(); renderSubmissions();
   updateMarketplaceButtons();
 }
 
@@ -1847,6 +2218,7 @@ function renderMarketplace() {
     return `
       <div class="template-card">
         <div class="template-card-title">${escHtml(tmpl.slug)}</div>
+        ${tmpl.author ? `<div style="font-size:.7rem;color:var(--muted);margin-bottom:5px">${escHtml(t('byAuthor')(tmpl.author))}</div>` : ''}
         <div class="template-card-copy">${escHtml(copy)}</div>
         <div class="template-card-meta">
           <button class="code-search-btn template-apply-btn" 
@@ -1858,6 +2230,324 @@ function renderMarketplace() {
       </div>
     `;
   }).join('');
+}
+
+// ── Session Memory ────────────────────────────────────────────────────────────
+const jkindBadge = k => {
+  const c = {done:'b-user', failed:'b-untrusted', avoid:'b-proposed', decision:'b-reviewed', note:''}[k] || '';
+  return `<span class="badge ${c}">${escHtml(k)}</span>`;
+};
+
+function renderSessions() {
+  const sel = document.getElementById('session-repo-filter');
+  if (sel) {
+    const repos = [...new Set(G.journal.map(j => j.repo))].sort();
+    const current = sel.value;
+    sel.innerHTML = `<option value="">${escHtml(t('sessionAllRepos'))}</option>` +
+      repos.map(r => `<option value="${escHtml(r)}"${r===current?' selected':''}>${escHtml(r)}</option>`).join('');
+  }
+  const repo = sel ? sel.value : '';
+  const rows = repo ? G.journal.filter(j => j.repo === repo) : G.journal;
+  const body = document.getElementById('tb-journal');
+  if (!body) return;
+  body.innerHTML = rows.length
+    ? rows.map(j => `
+        <tr>
+          <td>${jkindBadge(j.kind)}</td>
+          <td class="td-main" style="white-space:normal;max-width:none">
+            <div style="font-weight:600;color:var(--navy)">${escHtml(j.title)}</div>
+            ${j.body ? `<div style="font-size:.78rem;color:var(--body);white-space:pre-wrap;margin-top:2px">${escHtml(j.body)}</div>` : ''}
+            ${repo ? '' : `<div style="font-size:.7rem;color:var(--muted);margin-top:2px">${escHtml(j.repo)}</div>`}
+          </td>
+          <td class="td-dim" style="white-space:nowrap">${fmtTs(j.ts)}</td>
+        </tr>`).join('')
+    : `<tr><td colspan="3" class="empty">${t('emptyJournal')}</td></tr>`;
+}
+
+async function clearSessionJournal() {
+  const sel = document.getElementById('session-repo-filter');
+  const repo = sel ? sel.value : '';
+  if (!confirm(t('sessionClearWarning'))) return;
+  const url = repo ? `/api/journal/clear?repo=${encodeURIComponent(repo)}` : '/api/journal/clear';
+  try {
+    const r = await fetch(url).then(res => res.json());
+    if (r.ok) await loadData(); else alert('Clear failed: ' + (r.error || 'unknown error'));
+  } catch(e) { alert('Clear failed: ' + e); }
+}
+
+// ── Submissions ───────────────────────────────────────────────────────────────
+const submitStatusBadge = s => {
+  const c = {pending:'b-proposed', approved:'b-user', denied:'b-untrusted'}[s] || '';
+  return `<span class="badge ${c}">${escHtml(s)}</span>`;
+};
+
+function renderSubmissions() {
+  const admin = !!G.isAdmin;
+  // Retitle for non-admins: they manage their own published domains, not review others'.
+  const titleEl = document.getElementById('submissions-page-title');
+  if (titleEl) titleEl.textContent = admin ? t('navSubmissions') : t('publishedTitle');
+  const subEl = document.getElementById('submissions-page-sub');
+  if (subEl) subEl.textContent = admin ? t('phSubmissionsSub') : t('phPublishedSub');
+  const importCard = document.getElementById('submission-import-card');
+  if (importCard) importCard.style.display = admin ? '' : 'none';
+
+  const filterEl = document.getElementById('submissions-status-filter');
+  const status = filterEl ? filterEl.value : '';
+  const rows = status ? G.submissions.filter(s => s.status === status) : G.submissions;
+  const list = document.getElementById('submissions-list');
+  if (!list) return;
+  list.innerHTML = rows.length
+    ? rows.map(s => `
+        <div class="src-item" style="align-items:flex-start;flex-wrap:wrap">
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:700;color:var(--navy)">${escHtml(s.slug)} ${submitStatusBadge(s.status)}</div>
+            <div class="src-meta">${escHtml(s.description||'—')}</div>
+            <div style="font-size:.72rem;color:var(--muted);margin-top:2px">${t('submitItems')(s.item_count)}${s.author?` · ${escHtml(t('byAuthor')(s.author))}`:''} · ${fmtTs(s.submitted_at)}${s.note?` · ${escHtml(s.note)}`:''}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button class="code-search-btn" onclick="viewSubmission(${s.id})">${t('submitView')}</button>
+            <a class="code-search-btn" href="/api/submissions/export?id=${s.id}" style="text-decoration:none">${t('submitExport')}</a>
+            ${admin && s.status==='pending' ? `
+              <button class="promote-btn" onclick="reviewSubmission(${s.id},'approve',this)">${t('submitApprove')}</button>
+              <button class="danger-btn" onclick="reviewSubmission(${s.id},'deny',this)">${t('submitDeny')}</button>` : ''}
+            <button class="danger-btn" onclick="withdrawSubmission(${s.id},this)">${t('submitWithdraw')}</button>
+          </div>
+        </div>`).join('')
+    : `<div class="empty">${t('emptySubmissions')}</div>`;
+}
+
+async function withdrawSubmission(id, btn) {
+  if (!confirm(t('submitWithdrawConfirm'))) return;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/submissions/delete?id=${id}`).then(res => res.json());
+    if (r.ok) await loadData(); else alert('Withdraw failed: ' + (r.error || 'unknown error'));
+  } catch(e) { alert('Withdraw failed: ' + e); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+async function viewSubmission(id) {
+  try {
+    const r = await fetch(`/api/submissions/get?id=${id}`).then(res => res.json());
+    if (!r.ok) { alert('Load failed: ' + (r.error || 'not found')); return; }
+    const items = (r.items || []).map(it => `
+      <div style="padding:8px 10px;border:1px solid var(--hairline);border-radius:8px;margin-bottom:8px;">
+        <div style="font-weight:600;color:var(--navy);font-size:.82rem">${escHtml(it.title)} <span class="ktag">${escHtml(it.kind)}</span>${it.stage?` <span class="dtag">${escHtml(it.stage)}</span>`:''}</div>
+        <div style="font-size:.78rem;color:var(--body);white-space:pre-wrap;margin-top:4px">${escHtml(it.body||'')}</div>
+        ${it.remediation?`<div style="font-size:.74rem;color:var(--muted);margin-top:4px"><strong>remediation:</strong> ${escHtml(it.remediation)}</div>`:''}
+      </div>`).join('') || `<div class="empty">—</div>`;
+    openModal(`${r.slug}`, `
+      <div style="font-size:.78rem;color:var(--body);margin-bottom:10px">${escHtml(r.query_hint||'')}</div>
+      ${items}`);
+  } catch(e) { alert('Load failed: ' + e); }
+}
+
+async function reviewSubmission(id, action, btn) {
+  let note = null;
+  if (action === 'deny') {
+    note = prompt(t('submitDenyReason'));
+    if (note === null) return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await fetch('/api/submissions/review', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, action, note: note || null }),
+    }).then(res => res.json());
+    if (!r.ok) { alert('Review failed: ' + (r.error || 'unknown error')); return; }
+    await loadData();
+    alert(action === 'approve' ? t('submitApproved')(r.slug) : t('submitDenied'));
+  } catch(e) { alert('Review failed: ' + e); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+async function importSubmission(btn) {
+  const ta = document.getElementById('submission-import-json');
+  const json = (ta.value || '').trim();
+  if (!json) return;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/submissions/import', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ json }),
+    }).then(res => res.json());
+    if (!r.ok) { alert('Import failed: ' + (r.error || 'unknown error')); return; }
+    ta.value = '';
+    await loadData();
+    alert(t('submitImported')(r.slug));
+  } catch(e) { alert('Import failed: ' + e); }
+  finally { if (btn) btn.disabled = false; }
+}
+
+// First-time publishers register an author name once; it is then reused for
+// every domain they publish (changeable in Settings, once every 14 days).
+async function ensureAuthorRegistered() {
+  if (G.author && G.author.registered) return true;
+  const name = prompt(t('authorRegisterPrompt'));
+  if (name === null) return false;
+  const trimmed = name.trim();
+  if (!trimmed) { alert(t('authorEmpty')); return false; }
+  try {
+    const r = await fetch('/api/author', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: trimmed }),
+    }).then(res => res.json());
+    if (!r.ok) { alert(t('saveFailed') + (r.error || 'unknown error')); return false; }
+    await loadData();
+    return true;
+  } catch(e) { alert(t('saveFailed') + e); return false; }
+}
+
+async function publishDomain(name, btn) {
+  if (!(await ensureAuthorRegistered())) return;
+  if (!confirm(t('publishConfirm')(name))) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await fetch('/api/submissions/publish', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: name }),
+    }).then(res => res.json());
+    if (!r.ok) { alert('Publish failed: ' + (r.error || 'unknown error')); return; }
+    await loadData();
+    alert(t('publishDone')(name, r.items ?? 0));
+    showPage('submissions');
+  } catch(e) { alert('Publish failed: ' + e); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = t('publishBtn'); } }
+}
+
+// ── Edit modal ────────────────────────────────────────────────────────────────
+function openModal(title, bodyHtml) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = bodyHtml;
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+function closeModal() { document.getElementById('edit-modal').style.display = 'none'; }
+
+const fieldRow = (label, id, value, multiline) => `
+  <label style="display:block;margin-bottom:10px">
+    <span style="display:block;font-size:.74rem;font-weight:600;color:var(--body);margin-bottom:3px">${escHtml(label)}</span>
+    ${multiline
+      ? `<textarea id="${id}" rows="4" style="width:100%;box-sizing:border-box;font-size:13px;padding:7px;border:1px solid var(--hairline);border-radius:7px;background:var(--soft);color:var(--navy);resize:vertical">${escHtml(value||'')}</textarea>`
+      : `<input id="${id}" value="${escHtml(value||'')}" style="width:100%;box-sizing:border-box;font-size:13px;padding:7px;border:1px solid var(--hairline);border-radius:7px;background:var(--soft);color:var(--navy)">`}
+  </label>`;
+
+const modalFooter = onsave => `
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+    <button onclick="closeModal()" class="code-search-btn" data-i18n="cancelBtn">${t('cancelBtn')}</button>
+    <button onclick="${onsave}" class="promote-btn">${t('saveBtn')}</button>
+  </div>`;
+
+function val(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+
+function editDomain(name) {
+  const d = G.domains.find(x => x.name === name);
+  if (!d) return;
+  openModal(t('editDomainTitle') + ' · ' + name,
+    fieldRow(t('fldDescription'), 'ed-desc', d.description, true) +
+    fieldRow(t('fldQueryHint'), 'ed-hint', d.query_hint, true) +
+    modalFooter(`saveDomain('${encodeURIComponent(name)}')`));
+}
+async function saveDomain(nameEnc) {
+  const name = decodeURIComponent(nameEnc);
+  await postEdit('/api/domain/update', { name, description: val('ed-desc'), query_hint: val('ed-hint') });
+}
+
+function editKnowledge(id) {
+  const k = G.knowledge.find(x => x.id === id);
+  if (!k) return;
+  openModal(t('editKnowledgeTitle'),
+    fieldRow(t('fldTitle'), 'ek-title', k.title, false) +
+    fieldRow(t('fldBody'), 'ek-body', k.body || k.content || k.text, true) +
+    fieldRow(t('fldStage'), 'ek-stage', k.stage, false) +
+    fieldRow(t('fldSeverity'), 'ek-sev', k.severity, false) +
+    modalFooter(`saveKnowledge(${id})`));
+}
+async function saveKnowledge(id) {
+  await postEdit('/api/knowledge/update', {
+    id, title: val('ek-title'), body: val('ek-body'),
+    stage: val('ek-stage') || null, severity: val('ek-sev') || null,
+  });
+}
+
+function editSource(id) {
+  const s = G.sources.find(x => x.id === id);
+  if (!s) return;
+  openModal(t('editSourceTitle'),
+    fieldRow(t('fldTitle'), 'es-title', s.title, false) +
+    fieldRow(t('fldUri'), 'es-uri', s.uri, false) +
+    modalFooter(`saveSource(${id})`));
+}
+async function saveSource(id) {
+  await postEdit('/api/source/update', { id, title: val('es-title'), uri: val('es-uri') });
+}
+
+async function postEdit(url, payload) {
+  try {
+    const r = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(res => res.json());
+    if (!r.ok) { alert(t('saveFailed') + (r.error || 'unknown error')); return; }
+    closeModal();
+    await loadData();
+  } catch(e) { alert(t('saveFailed') + e); }
+}
+
+// ── Chunk editor ──────────────────────────────────────────────────────────────
+async function editChunks(sourceId) {
+  openModal(t('editChunksTitle'), `<div id="chunks-container" class="empty">…</div>`);
+  await refreshChunks(sourceId);
+}
+async function refreshChunks(sourceId) {
+  const box = document.getElementById('chunks-container');
+  if (!box) return;
+  try {
+    const rows = await fetch(`/api/source/chunks?source_id=${sourceId}`).then(r => r.json());
+    const list = Array.isArray(rows) ? rows : [];
+    box.className = '';
+    box.innerHTML =
+      list.map(c => `
+        <div style="margin-bottom:8px">
+          <textarea id="chunk-${c.id}" rows="3" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px;border:1px solid var(--hairline);border-radius:7px;background:var(--soft);color:var(--navy);resize:vertical">${escHtml(c.text)}</textarea>
+          <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:3px">
+            <button class="code-search-btn" onclick="saveChunk(${c.id},${sourceId})">${t('saveBtn')}</button>
+            <button class="danger-btn" onclick="deleteChunk(${c.id},${sourceId})">${t('removeBtn')}</button>
+          </div>
+        </div>`).join('') +
+      `<div style="margin-top:12px;border-top:1px solid var(--hairline);padding-top:10px">
+        <textarea id="new-chunk-${sourceId}" rows="3" placeholder="${escHtml(t('fldNewChunk'))}" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px;border:1px solid var(--hairline);border-radius:7px;background:var(--soft);color:var(--navy);resize:vertical"></textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:3px">
+          <button class="promote-btn" onclick="addChunk(${sourceId})">${t('addChunkBtn')}</button>
+        </div>
+      </div>`;
+  } catch(e) { box.innerHTML = t('saveFailed') + e; }
+}
+async function saveChunk(id, sourceId) {
+  const text = val('chunk-' + id);
+  await chunkOp(fetch('/api/chunk/update', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, text }),
+  }), sourceId);
+}
+async function deleteChunk(id, sourceId) {
+  if (!confirm(t('chunkDeleteConfirm'))) return;
+  await chunkOp(fetch(`/api/chunk/delete?id=${id}`), sourceId);
+}
+async function addChunk(sourceId) {
+  const text = (val('new-chunk-' + sourceId) || '').trim();
+  if (!text) return;
+  await chunkOp(fetch('/api/chunk/add', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_id: sourceId, text }),
+  }), sourceId);
+}
+async function chunkOp(fetchPromise, sourceId) {
+  try {
+    const r = await fetchPromise.then(res => res.json());
+    if (!r.ok) { alert(t('saveFailed') + (r.error || 'unknown error')); return; }
+    await refreshChunks(sourceId);
+    loadData({ silent: true });
+  } catch(e) { alert(t('saveFailed') + e); }
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -1873,7 +2563,7 @@ async function loadData(opts = {}) {
   if (btn && !silent) { btn.classList.add('spinning'); btn.textContent = t('btnLoading'); }
   try {
     const ok = v => v.status === 'fulfilled' ? v.value : null;
-    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos, training, trainStats, marketplaceTemplates] =
+    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos, training, trainStats, marketplaceTemplates, journal, submissions, admin, author] =
       (await Promise.allSettled([
         fetch('/api/stats').then(r=>r.json()),
         fetch('/api/domains').then(r=>r.json()),
@@ -1886,6 +2576,10 @@ async function loadData(opts = {}) {
         fetch('/api/training').then(r=>r.json()),
         fetch('/api/training/stats').then(r=>r.json()),
         fetch('/api/marketplace/templates').then(r=>r.json()),
+        fetch('/api/journal').then(r=>r.json()),
+        fetch('/api/submissions').then(r=>r.json()),
+        fetch('/api/admin').then(r=>r.json()),
+        fetch('/api/author').then(r=>r.json()),
       ])).map(ok);
     const live = !!stats;
     const dot = document.getElementById('status-dot');
@@ -1907,6 +2601,10 @@ async function loadData(opts = {}) {
       training:    training    ?? G.training,
       trainStats:  trainStats  ?? G.trainStats,
       marketplaceTemplates: marketplaceTemplates ?? G.marketplaceTemplates,
+      journal:     Array.isArray(journal)     ? journal     : G.journal,
+      submissions: Array.isArray(submissions) ? submissions : G.submissions,
+      isAdmin:     admin ? !!admin.admin : G.isAdmin,
+      author:      author ?? G.author,
     };
     const sig = JSON.stringify(next);
     if (silent && sig === lastSig) return;  // nothing changed — don't disrupt UI

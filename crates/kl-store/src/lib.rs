@@ -9,10 +9,26 @@ use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use kl_core::{DomainRow, EpisodeRow, Kind, KnowledgeRow, RecallHit, SourceRow, StageRow, Trust};
+use kl_core::{
+    DomainRow, EpisodeRow, JournalRow, Kind, KnowledgeRow, MarketplaceItem, RecallHit, SourceRow,
+    StageRow, SubmissionRow, Trust,
+};
 use rusqlite::{params, Connection, OptionalExtension};
 
 const MIGRATION: &str = include_str!("migrations/0001_init.sql");
+const MIGRATION_2: &str = include_str!("migrations/0002_journal_submissions.sql");
+const MIGRATION_3: &str = include_str!("migrations/0003_author.sql");
+
+/// Seconds in the author-name change cooldown window (14 days).
+pub const AUTHOR_COOLDOWN_SECS: i64 = 14 * 24 * 60 * 60;
+
+/// Result of `set_author` — either the first registration, an allowed change, or
+/// a change blocked by the 14-day cooldown (carrying when it next unlocks).
+pub enum AuthorSetOutcome {
+    Registered,
+    Updated,
+    Blocked { next_allowed_at: i64 },
+}
 
 pub struct Store {
     conn: Mutex<Connection>,
@@ -32,6 +48,12 @@ impl Store {
         let c = self.conn.lock().unwrap();
         c.execute_batch(MIGRATION)
             .context("running migration 0001")?;
+        c.execute_batch(MIGRATION_2)
+            .context("running migration 0002")?;
+        c.execute_batch(MIGRATION_3)
+            .context("running migration 0003")?;
+        // SQLite has no ADD COLUMN IF NOT EXISTS; guard it so migrate() is idempotent.
+        ensure_column(&c, "submissions", "author", "TEXT")?;
         Ok(())
     }
 
@@ -610,6 +632,326 @@ impl Store {
         Ok(n as u64)
     }
 
+    // ---- repo-scoped session memory (journal) ----------------------------
+
+    /// Append one curated entry to a repo's session journal.
+    /// `kind` is one of 'done' | 'failed' | 'avoid' | 'decision' | 'note'.
+    pub fn log_work(&self, repo: &str, kind: &str, title: &str, body: Option<&str>) -> Result<i64> {
+        let now = Utc::now().timestamp();
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "INSERT INTO journal (repo, kind, title, body, ts) VALUES (?1,?2,?3,?4,?5)",
+            params![repo, kind, title, body, now],
+        )?;
+        Ok(c.last_insert_rowid())
+    }
+
+    /// Replay a repo's journal, newest first. Optional `kind` filter; `limit` caps rows.
+    pub fn recall_session(
+        &self,
+        repo: &str,
+        kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<JournalRow>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, repo, kind, title, body, ts FROM journal
+              WHERE repo = ?1 AND (?2 IS NULL OR kind = ?2)
+              ORDER BY ts DESC, id DESC
+              LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(params![repo, kind, limit as i64], journal_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// List journal entries for the dashboard: one repo, or all repos if None.
+    pub fn list_journal(&self, repo: Option<&str>) -> Result<Vec<JournalRow>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, repo, kind, title, body, ts FROM journal
+              WHERE (?1 IS NULL OR repo = ?1)
+              ORDER BY ts DESC, id DESC
+              LIMIT 300",
+        )?;
+        let rows = stmt.query_map(params![repo], journal_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Clear a repo's journal, or every repo's journal if None. Returns rows deleted.
+    pub fn clear_journal(&self, repo: Option<&str>) -> Result<u64> {
+        let c = self.conn.lock().unwrap();
+        let n = c.execute(
+            "DELETE FROM journal WHERE (?1 IS NULL OR repo = ?1)",
+            params![repo],
+        )?;
+        Ok(n as u64)
+    }
+
+    // ---- marketplace publish queue (submissions) --------------------------
+
+    /// File a marketplace publish request at status='pending'. `items_json` is the
+    /// serialized Vec<MarketplaceItem> snapshot (serialization happens in the caller).
+    pub fn create_submission(
+        &self,
+        slug: &str,
+        description: Option<&str>,
+        query_hint: Option<&str>,
+        items_json: &str,
+        author: Option<&str>,
+    ) -> Result<i64> {
+        let now = Utc::now().timestamp();
+        let c = self.conn.lock().unwrap();
+        c.execute(
+            "INSERT INTO submissions (slug, description, query_hint, items_json, status, submitted_at, author)
+             VALUES (?1,?2,?3,?4,'pending',?5,?6)",
+            params![slug, description, query_hint, items_json, now, author],
+        )?;
+        Ok(c.last_insert_rowid())
+    }
+
+    /// List submissions, newest first, optionally filtered by status.
+    pub fn list_submissions(&self, status: Option<&str>) -> Result<Vec<SubmissionRow>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, slug, description, query_hint, items_json, status, note, submitted_at, reviewed_at, author
+               FROM submissions
+              WHERE (?1 IS NULL OR status = ?1)
+              ORDER BY submitted_at DESC, id DESC
+              LIMIT 200",
+        )?;
+        let rows = stmt.query_map(params![status], submission_from_row)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Fetch one submission's summary row plus its raw items_json (for the review panel).
+    pub fn get_submission(&self, id: i64) -> Result<Option<(SubmissionRow, String)>> {
+        let c = self.conn.lock().unwrap();
+        let row = c
+            .query_row(
+                "SELECT id, slug, description, query_hint, items_json, status, note, submitted_at, reviewed_at, author
+                   FROM submissions WHERE id = ?1",
+                params![id],
+                |r| Ok((submission_from_row(r)?, r.get::<_, String>(4)?)),
+            )
+            .optional()?;
+        Ok(row)
+    }
+
+    // ---- author identity (14-day change cooldown) -------------------------
+
+    /// The registered author: (name, registered_at, updated_at), or None if unset.
+    pub fn get_author(&self) -> Result<Option<(String, i64, i64)>> {
+        let c = self.conn.lock().unwrap();
+        Ok(c.query_row(
+            "SELECT name, registered_at, updated_at FROM author WHERE id = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?)
+    }
+
+    /// Register (first time, always allowed) or change the author name. A change
+    /// is only permitted once every `AUTHOR_COOLDOWN_SECS`; otherwise the current
+    /// name stands and the caller is told when the next change unlocks.
+    pub fn set_author(&self, name: &str, cooldown_secs: i64) -> Result<AuthorSetOutcome> {
+        let now = Utc::now().timestamp();
+        let c = self.conn.lock().unwrap();
+        let existing: Option<i64> = c
+            .query_row("SELECT updated_at FROM author WHERE id = 1", [], |r| r.get(0))
+            .optional()?;
+        match existing {
+            None => {
+                c.execute(
+                    "INSERT INTO author (id, name, registered_at, updated_at) VALUES (1, ?1, ?2, ?2)",
+                    params![name, now],
+                )?;
+                Ok(AuthorSetOutcome::Registered)
+            }
+            Some(updated_at) => {
+                let next_allowed_at = updated_at + cooldown_secs;
+                if now >= next_allowed_at {
+                    c.execute(
+                        "UPDATE author SET name = ?1, updated_at = ?2 WHERE id = 1",
+                        params![name, now],
+                    )?;
+                    Ok(AuthorSetOutcome::Updated)
+                } else {
+                    Ok(AuthorSetOutcome::Blocked { next_allowed_at })
+                }
+            }
+        }
+    }
+
+    /// Withdraw a submission from the local queue. Returns true if a row was removed.
+    pub fn delete_submission(&self, id: i64) -> Result<bool> {
+        let c = self.conn.lock().unwrap();
+        let n = c.execute("DELETE FROM submissions WHERE id = ?1", params![id])?;
+        Ok(n > 0)
+    }
+
+    /// Record an admin review decision: status becomes 'approved' or 'denied'.
+    pub fn set_submission_status(&self, id: i64, status: &str, note: Option<&str>) -> Result<bool> {
+        let now = Utc::now().timestamp();
+        let c = self.conn.lock().unwrap();
+        let n = c.execute(
+            "UPDATE submissions SET status = ?2, note = ?3, reviewed_at = ?4 WHERE id = ?1",
+            params![id, status, note, now],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Snapshot a domain's enforceable (reviewed + user) knowledge as marketplace
+    /// items. Uses a dedicated select because KnowledgeRow drops trigger/remediation.
+    pub fn export_domain_items(&self, domain: &str) -> Result<Vec<MarketplaceItem>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT kind, stage, title, body, trigger, severity, remediation
+               FROM knowledge
+              WHERE domain = ?1 AND trust IN ('reviewed','user')
+              ORDER BY id ASC",
+        )?;
+        let rows = stmt.query_map(params![domain], |r| {
+            let kind_s: String = r.get(0)?;
+            Ok(MarketplaceItem {
+                kind: Kind::parse(&kind_s).unwrap_or(Kind::Fact),
+                stage: r.get(1)?,
+                title: r.get(2)?,
+                body: r.get(3)?,
+                trigger: r.get(4)?,
+                severity: r.get(5)?,
+                remediation: r.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    // ---- manual edits (dashboard-only) ------------------------------------
+
+    /// Overwrite a domain's description and query_hint. Unlike register_domain
+    /// (which COALESCEs and cannot clear a field), this sets the values verbatim.
+    pub fn update_domain(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        query_hint: Option<&str>,
+    ) -> Result<bool> {
+        let now = Utc::now().timestamp();
+        let c = self.conn.lock().unwrap();
+        let n = c.execute(
+            "UPDATE domains SET description = ?2, query_hint = ?3, last_updated = ?4 WHERE name = ?1",
+            params![name, description, query_hint, now],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Edit a knowledge item's fields in place. Trust and domain are unchanged.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_knowledge(
+        &self,
+        id: i64,
+        title: &str,
+        body: &str,
+        stage: Option<&str>,
+        trigger: Option<&str>,
+        severity: Option<&str>,
+        remediation: Option<&str>,
+    ) -> Result<bool> {
+        let now = Utc::now().timestamp();
+        let c = self.conn.lock().unwrap();
+        let n = c.execute(
+            "UPDATE knowledge
+                SET title = ?2, body = ?3, stage = ?4, trigger = ?5,
+                    severity = ?6, remediation = ?7, updated_at = ?8
+              WHERE id = ?1",
+            params![id, title, body, stage, trigger, severity, remediation, now],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Edit a source's title and/or URI. Passing None leaves that column unchanged.
+    pub fn update_source(&self, id: i64, title: Option<&str>, uri: Option<&str>) -> Result<bool> {
+        let c = self.conn.lock().unwrap();
+        let n = c.execute(
+            "UPDATE sources
+                SET title = COALESCE(?2, title), uri = COALESCE(?3, uri)
+              WHERE id = ?1",
+            params![id, title, uri],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// The domain a source is filed under (needed when adding a chunk to it).
+    pub fn source_domain(&self, id: i64) -> Result<Option<String>> {
+        let c = self.conn.lock().unwrap();
+        let d: Option<String> = c
+            .query_row(
+                "SELECT domain FROM sources WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(d)
+    }
+
+    /// List a source's reference chunks (id, ord, text) in order — for the chunk editor.
+    pub fn list_source_chunks(&self, source_id: i64) -> Result<Vec<(i64, i64, String)>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, ord, text FROM chunks WHERE source_id = ?1 ORDER BY ord ASC",
+        )?;
+        let rows = stmt.query_map(params![source_id], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Edit a chunk's text, keeping the FTS index (rowid == chunk id) in sync.
+    pub fn update_chunk(&self, id: i64, text: &str) -> Result<bool> {
+        let mut c = self.conn.lock().unwrap();
+        let tx = c.transaction()?;
+        let n = tx.execute("UPDATE chunks SET text = ?2 WHERE id = ?1", params![id, text])?;
+        if n > 0 {
+            tx.execute(
+                "UPDATE chunks_fts SET text = ?2 WHERE rowid = ?1",
+                params![id, text],
+            )?;
+        }
+        tx.commit()?;
+        Ok(n > 0)
+    }
+
+    /// Append a new chunk to a source (ord after the current max), mirrored into FTS.
+    pub fn add_chunk(&self, source_id: i64, domain: &str, text: &str) -> Result<i64> {
+        let mut c = self.conn.lock().unwrap();
+        let tx = c.transaction()?;
+        let next_ord: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(ord), -1) + 1 FROM chunks WHERE source_id = ?1",
+            params![source_id],
+            |r| r.get(0),
+        )?;
+        tx.execute(
+            "INSERT INTO chunks (source_id, domain, ord, text) VALUES (?1,?2,?3,?4)",
+            params![source_id, domain, next_ord, text],
+        )?;
+        let id = tx.last_insert_rowid();
+        tx.execute(
+            "INSERT INTO chunks_fts (rowid, text) VALUES (?1, ?2)",
+            params![id, text],
+        )?;
+        tx.commit()?;
+        Ok(id)
+    }
+
+    /// Delete a single chunk and its FTS row.
+    pub fn delete_chunk(&self, id: i64) -> Result<bool> {
+        let mut c = self.conn.lock().unwrap();
+        let tx = c.transaction()?;
+        tx.execute("DELETE FROM chunks_fts WHERE rowid = ?1", params![id])?;
+        let n = tx.execute("DELETE FROM chunks WHERE id = ?1", params![id])?;
+        tx.commit()?;
+        Ok(n > 0)
+    }
+
     pub fn domain_exists(&self, name: &str) -> Result<bool> {
         let c = self.conn.lock().unwrap();
         let found: Option<String> = c
@@ -621,6 +963,53 @@ impl Store {
             .optional()?;
         Ok(found.is_some())
     }
+}
+
+fn journal_from_row(r: &rusqlite::Row) -> rusqlite::Result<JournalRow> {
+    Ok(JournalRow {
+        id: r.get(0)?,
+        repo: r.get(1)?,
+        kind: r.get(2)?,
+        title: r.get(3)?,
+        body: r.get(4)?,
+        ts: r.get(5)?,
+    })
+}
+
+fn submission_from_row(r: &rusqlite::Row) -> rusqlite::Result<SubmissionRow> {
+    let items_json: String = r.get(4)?;
+    let item_count = serde_json::from_str::<serde_json::Value>(&items_json)
+        .ok()
+        .and_then(|v| v.as_array().map(|a| a.len()))
+        .unwrap_or(0) as i64;
+    Ok(SubmissionRow {
+        id: r.get(0)?,
+        slug: r.get(1)?,
+        description: r.get(2)?,
+        query_hint: r.get(3)?,
+        item_count,
+        status: r.get(5)?,
+        note: r.get(6)?,
+        submitted_at: r.get(7)?,
+        reviewed_at: r.get(8)?,
+        author: r.get(9)?,
+    })
+}
+
+/// Add a column to a table if it does not already exist (idempotent migration
+/// helper — SQLite lacks ADD COLUMN IF NOT EXISTS).
+fn ensure_column(c: &Connection, table: &str, col: &str, decl: &str) -> Result<()> {
+    let mut stmt = c.prepare(&format!("PRAGMA table_info({table})"))?;
+    let has = stmt
+        .query_map([], |r| r.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<String>>>()?
+        .iter()
+        .any(|n| n == col);
+    drop(stmt);
+    if !has {
+        c.execute(&format!("ALTER TABLE {table} ADD COLUMN {col} {decl}"), [])?;
+    }
+    Ok(())
 }
 
 /// Build a safe FTS5 MATCH expression: each whitespace token quoted, OR-joined.

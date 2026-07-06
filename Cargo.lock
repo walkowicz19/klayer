@@ -881,7 +881,7 @@ dependencies = [
 
 [[package]]
 name = "kl-code"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "kl-core"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -901,7 +901,7 @@ dependencies = [
 
 [[package]]
 name = "kl-ingest"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "pdf-extract",
@@ -912,7 +912,7 @@ dependencies = [
 
 [[package]]
 name = "kl-mcp"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -921,7 +921,6 @@ dependencies = [
  "kl-core",
  "kl-ingest",
  "kl-search",
- "kl-skill",
  "kl-store",
  "kl-train",
  "rmcp",
@@ -935,7 +934,7 @@ dependencies = [
 
 [[package]]
 name = "kl-search"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -947,25 +946,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "kl-skill"
-version = "1.4.0"
-dependencies = [
- "kl-core",
-]
-
-[[package]]
 name = "kl-store"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
  "kl-core",
  "rusqlite",
+ "serde_json",
 ]
 
 [[package]]
 name = "kl-train"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",

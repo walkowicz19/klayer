@@ -151,6 +151,61 @@ pub struct SourceRow {
     pub trust: String,
 }
 
+/// A row returned by list_journal / recall_session — one entry of a repo-scoped
+/// session journal (curated "what I did / failed / must not repeat" memory).
+#[derive(Debug, Clone, Serialize)]
+pub struct JournalRow {
+    pub id: i64,
+    pub repo: String,
+    pub kind: String, // 'done' | 'failed' | 'avoid' | 'decision' | 'note'
+    pub title: String,
+    pub body: Option<String>,
+    pub ts: i64,
+}
+
+/// A row returned by list_submissions — a marketplace publish request awaiting
+/// admin review. `item_count` summarizes the snapshotted knowledge items.
+#[derive(Debug, Clone, Serialize)]
+pub struct SubmissionRow {
+    pub id: i64,
+    pub slug: String,
+    pub description: Option<String>,
+    pub query_hint: Option<String>,
+    pub item_count: i64,
+    pub status: String, // 'pending' | 'approved' | 'denied'
+    pub note: Option<String>,
+    pub submitted_at: i64,
+    pub reviewed_at: Option<i64>,
+    pub author: Option<String>,
+}
+
+/// A single curated knowledge item inside a marketplace template. Shared by the
+/// server (apply) and the store (publish snapshot) so publish/apply are inverse.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceItem {
+    pub kind: Kind,
+    pub stage: Option<String>,
+    pub title: String,
+    pub body: String,
+    pub trigger: Option<String>,
+    pub severity: Option<String>,
+    pub remediation: Option<String>,
+}
+
+/// A domain template in the marketplace: a slug, discovery metadata, and its
+/// curated items. Serialized as one element of the marketplace.json array.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceTemplate {
+    pub slug: String,
+    pub description: String,
+    pub query_hint: String,
+    /// The publisher's registered author name. Optional so existing
+    /// marketplace.json entries (which predate attribution) still deserialize.
+    #[serde(default)]
+    pub author: Option<String>,
+    pub items: Vec<MarketplaceItem>,
+}
+
 /// A row returned by list_episodes.
 #[derive(Debug, Clone, Serialize)]
 pub struct EpisodeRow {

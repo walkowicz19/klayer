@@ -13,13 +13,16 @@ default = []
 # Vector retrieval (sqlite-vec + local ONNX embeddings). Not wired in v0; the
 # Embedder trait + chunks_vec table are the extension points. See README.
 embed-local = []
+# Admin build: enables the marketplace submission review/approval workflow
+# (approve/deny/import). Distributed user binaries are built WITHOUT this, so
+# they can publish and manage their own domains but cannot approve submissions.
+admin = []
 
 [dependencies]
 kl-core.workspace = true
 kl-store.workspace = true
 kl-ingest.workspace = true
 kl-search.workspace = true
-kl-skill.workspace = true
 kl-code.workspace = true
 kl-train.workspace = true
 anyhow.workspace = true

@@ -69,8 +69,7 @@ You can install and use klayer on any machine either by **downloading the pre-bu
       "env": {
         "KLAYER_DB": "C:\\Users\\you\\klayer\\klayer.db",
         "KLAYER_CODE_DB": "C:\\Users\\you\\klayer\\klayer_code.db",
-        "KLAYER_TRAIN_DB": "C:\\Users\\you\\klayer\\klayer_train.db",
-        "KLAYER_SKILL": "C:\\Users\\you\\klayer\\skills\\klayer\\SKILL.md"
+        "KLAYER_TRAIN_DB": "C:\\Users\\you\\klayer\\klayer_train.db"
       }
     }
   }
@@ -86,8 +85,7 @@ You can install and use klayer on any machine either by **downloading the pre-bu
       "env": {
         "KLAYER_DB": "/Users/you/klayer/klayer.db",
         "KLAYER_CODE_DB": "/Users/you/klayer/klayer_code.db",
-        "KLAYER_TRAIN_DB": "/Users/you/klayer/klayer_train.db",
-        "KLAYER_SKILL": "/Users/you/klayer/skills/klayer/SKILL.md"
+        "KLAYER_TRAIN_DB": "/Users/you/klayer/klayer_train.db"
       }
     }
   }
@@ -103,16 +101,12 @@ You can install and use klayer on any machine either by **downloading the pre-bu
       "env": {
         "KLAYER_DB": "/home/you/klayer/klayer.db",
         "KLAYER_CODE_DB": "/home/you/klayer/klayer_code.db",
-        "KLAYER_TRAIN_DB": "/home/you/klayer/klayer_train.db",
-        "KLAYER_SKILL": "/home/you/klayer/skills/klayer/SKILL.md"
+        "KLAYER_TRAIN_DB": "/home/you/klayer/klayer_train.db"
       }
     }
   }
 }
 ```
-
-> [!TIP]
-> Setting `KLAYER_SKILL` explicitly ensures that the `compile_skill` tool writes directly to your workspace's skill file regardless of which working directory the MCP client uses when it spawns the server.
 
 4. **Start your client**: When you launch your IDE or Claude client, klayer will start automatically.
 
@@ -148,11 +142,38 @@ marketplace source, and seeds reviewed knowledge items for that domain. If a
 domain has already been applied, its button becomes disabled until the domain is
 removed.
 
-Templates are loaded dynamically from `marketplace.json`. You can customize the available templates by placing a `marketplace.json` file in your working directory; if not present, the system defaults to its built-in set of templates.
+Templates are loaded dynamically from the marketplace file (see `KLAYER_MARKETPLACE`);
+a `marketplace.json` in the working directory takes precedence, otherwise the
+built-in set is used.
 
-Publishing new templates is intentionally gated: users who want to share a domain
-publicly should contact the creator for validation and approval before it is
-listed for everyone.
+**Publishing is gated by review.** Any domain can be published from the
+**Domains** page — its reviewed/user knowledge is snapshotted into a *pending
+submission*. The admin reviews it on the **Submissions** page and either
+**approves** it (the template is appended to the marketplace file and becomes
+available to everyone immediately) or **denies** it with a reason. Because klayer
+is a local single-binary server, submissions travel between users out-of-band:
+**Export** a submission to a JSON file, hand it to the admin, who **Imports** it
+into their review queue.
+
+**Author attribution.** The first time you publish, you register an **author
+name** once; it is then attached to every domain you publish and carried into the
+marketplace on approval (shown as "by <name>" on template cards). You can change
+your name from **Settings → Author**, but only **once every 14 days**. The name
+lives locally in your `klayer.db`.
+
+> [!IMPORTANT]
+> **The review/approval workflow is admin-only and compiled out of user binaries.**
+> Approve, deny, and import are gated behind the `admin` cargo feature. Regular
+> user binaries (built with the default features) can **publish** and **manage**
+> (view / export / withdraw) their own domains, but cannot approve submissions or
+> mutate the marketplace. Build the admin binary with:
+>
+> ```bash
+> cargo build --release --features admin
+> ```
+>
+> The dashboard queries `GET /api/admin` and hides the review controls on
+> non-admin builds.
 
 ![Marketplace](docs/screenshots/marketplace.png?v=1.3.0)
 
@@ -173,6 +194,22 @@ severity badges and a Promote button.
 
 ![Trust Lifecycle](docs/screenshots/trust-lifecycle.png?v=1.3.0)
 
+### Session Memory
+
+The **Session Memory** page shows a per-repository journal the agent writes as it
+works via `log_work` — what it **accomplished** (`done`), what **failed**, a
+mistake to **avoid** repeating, a **decision** made, or a plain **note**. At the
+start of a session on an indexed repo the agent calls `recall_session(repo)` to
+replay this journal and re-establish context, so it does not repeat past mistakes.
+Pick a repository from the dropdown to focus on one codebase.
+
+### Editing domains, knowledge & sources
+
+Domains, knowledge items, and sources each have an **Edit** button that opens an
+inline form so you can refine stored information without deleting and re-creating
+it. Sources also expose an **Edit content** button to add, edit, or remove
+individual reference chunks (the full-text index is kept in sync automatically).
+
 ### Sources & Agent Memory
 
 **Sources** lists every ingested URL or file with its domain and fetch date.
@@ -185,7 +222,7 @@ severity badges and a Promote button.
 ### Codebase & Settings
 
 **Codebase** shows indexed repository stats and lets you search across all indexed code with full-text search.
-**Settings** lets you switch the UI language, view connection info, and see project details.
+**Settings** lets you switch the UI language, manage your marketplace **author name** (changeable once every 14 days), view connection info, and see project details.
 
 | Codebase | Settings |
 |----------|----------|
@@ -221,13 +258,34 @@ The default port is **7474** (`KLAYER_DASHBOARD_PORT` to override).
 | `GET /api/source/delete` | `id` | Remove one source and its chunks |
 | `GET /api/marketplace/templates` | — | List all available Marketplace domain templates |
 | `GET /api/marketplace/apply` | `template` | Apply a Marketplace domain template |
+| `GET /api/journal` | `repo` | Session-journal entries (all repos, or one) |
+| `GET /api/journal/clear` | `repo` | Clear a repo's session journal (or all) |
+| `GET /api/submissions` | `status` | Marketplace publish queue |
+| `GET /api/submissions/get` | `id` | One submission with its snapshotted items |
+| `POST /api/submissions/publish` | `{domain}` | Snapshot a domain's reviewed/user knowledge into a pending submission |
+| `POST /api/submissions/review` | `{id, action, note}` | Approve (append to marketplace) or deny a submission |
+| `GET /api/submissions/export` | `id` | Download a submission as JSON to share |
+| `POST /api/submissions/import` | `{json}` | Import an exported submission into the queue (admin build only) |
+| `GET /api/submissions/delete` | `id` | Withdraw one of your own submissions |
+| `GET /api/author` | — | Current author name + whether it can be changed yet |
+| `POST /api/author` | `{name}` | Register (once) or change the author name (14-day cooldown) |
+| `GET /api/admin` | — | Whether this is the admin build (review/approve enabled) |
+| `POST /api/domain/update` | `{name, description, query_hint}` | Edit a domain in place |
+| `POST /api/knowledge/update` | `{id, title, body, …}` | Edit a knowledge item in place |
+| `POST /api/source/update` | `{id, title, uri}` | Edit a source's title/URI |
+| `GET /api/source/chunks` | `source_id` | List a source's reference chunks |
+| `POST /api/chunk/add` | `{source_id, text}` | Append a chunk to a source (FTS-indexed) |
+| `POST /api/chunk/update` | `{id, text}` | Edit a chunk (FTS kept in sync) |
+| `GET /api/chunk/delete` | `id` | Delete a single chunk |
 
 ---
 
 ## Why it exists
 
 - **Skills bloat.** Large SKILL.md files degrade attention and invite hallucination.
-  klayer keeps the skill a _thin router_ and pulls data on demand via `recall`.
+  klayer ships its tool-routing rules through the MCP server's own instructions
+  (delivered to every client on connect) and pulls data on demand via `recall` —
+  no per-repo SKILL.md to maintain or copy around.
 - **MCP install friction.** One static binary, one command, one config block.
 - **Trust.** Ingested content is _untrusted data_, never instructions. Only
   `reviewed`/`user` knowledge is ever enforced. This is the safety spine.
@@ -240,7 +298,6 @@ kl-core    types + traits (Kind, Trust, SearchBackend, Embedder, RecallHit)
 kl-store   SQLite: schema, migrations, FTS5 retrieval, trust lifecycle
 kl-ingest  fetch (HTTP or local file) -> content-type dispatch -> chunk
 kl-search  SearchBackend trait + DuckDuckGo / Bing / Brave with auto-fallback
-kl-skill   renders the THIN SKILL.md router from registries only
 kl-code    SQLite codebase memory: FTS5 over code chunks (separate DB)
 kl-train   SQLite training-data layer: capture/gate/export fine-tuning sets (separate DB)
 kl-mcp     the `klayer` binary: rmcp MCP server + axum dashboard HTTP server
@@ -272,7 +329,8 @@ only reviewed + user are ENFORCED.
 | `register_domain` | Create or update a domain with description and query hint |
 | `clear_domain` | Fully delete a domain and all its data; `chunks_only=true` keeps promoted rules |
 | `log_episode` | Record one step of an agentic run for auditability |
-| `compile_skill` | Regenerate the SKILL.md router from the current registries |
+| `log_work` | Append a curated entry to a codebase's session journal (`done`/`failed`/`avoid`/`decision`/`note`) — durable, per-repo memory |
+| `recall_session` | Replay a codebase's session journal at the start of a session so you re-establish context and avoid repeating past mistakes |
 | `index_codebase` | Walk a directory and index supported source files into the codebase DB for semantic search |
 | `search_code` | Full-text + semantic search across all indexed codebases; returns matching snippets with file paths |
 | `list_repos` | List all indexed repositories with file/chunk counts and last-indexed timestamps |
@@ -303,7 +361,7 @@ Markdown, **COBOL** (`.cbl/.cob/.cpy`), **Natural** (`.nsp/.nse/.nsd`),
 | `KLAYER_DB` | `klayer.db` | Path to the knowledge SQLite database |
 | `KLAYER_CODE_DB` | `klayer_code.db` | Path to the codebase memory SQLite database |
 | `KLAYER_TRAIN_DB` | `klayer_train.db` | Path to the trust-gated training-data SQLite database |
-| `KLAYER_SKILL` | `skills/klayer/SKILL.md` | Path where `compile_skill` writes the router |
+| `KLAYER_MARKETPLACE` | `<klayer dir>/marketplace.json` | Marketplace file read to list templates and written when a submission is approved. A `marketplace.json` in the working directory takes precedence for dev checkouts |
 | `KLAYER_DASHBOARD_PORT` | `7474` | Port for the live dashboard HTTP server |
 | `KLAYER_SEARCH` | `auto` | Search engine: `auto` · `duckduckgo` · `bing` · `brave` |
 | `KLAYER_BRAVE_API_KEY` | — | Required when `KLAYER_SEARCH=brave` |
@@ -350,7 +408,6 @@ ingest("https://api.example.com/rules.json", "secure-coding")
 3. recall("my-domain", "your question")      # model grounds its answer
 4. propose("my-domain", "rule", title, body) # model extracts a candidate rule
 5. promote(id)                               # you validate it → now enforced
-6. compile_skill()                           # regenerate SKILL.md router
 ```
 
 ## Memory management
