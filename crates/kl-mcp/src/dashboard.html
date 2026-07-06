@@ -1956,6 +1956,11 @@ function renderOverview() {
     t('overviewSub')(domains.length, knowledge.length, new Date().toLocaleTimeString());
 }
 
+// Shared inline-edit field styling + a labelled-field helper.
+const EDIT_FIELD = "width:100%;box-sizing:border-box;font-size:13px;padding:8px 11px;border:1px solid var(--hairline);border-radius:8px;background:var(--canvas);color:var(--navy)";
+const editField = (label, control) =>
+  `<label style="display:block"><span style="display:block;font-size:.72rem;font-weight:600;color:var(--body);margin-bottom:4px">${escHtml(label)}</span>${control}</label>`;
+
 // A domain applied from the marketplace carries a 'marketplace-template' source;
 // it cannot be re-published (it is someone else's authored template).
 function domainFromMarketplace(name) {
@@ -1967,30 +1972,67 @@ function renderDomains() {
   const { domains } = G;
   const max = Math.max(...domains.map(d => d.rule_count), 1);
   document.getElementById('domain-grid').innerHTML = domains.length
-    ? domains.map(d => `
+    ? domains.map((d, i) => `
         <div class="dcard">
           <div class="dcard-head">
             <div class="dcard-name">${escHtml(d.name)}</div>
             <div class="sub-actions" style="margin-left:0">
               ${domainFromMarketplace(d.name) ? '' : `<button class="sub-btn sub-btn-primary" data-domain="${escHtml(d.name)}" onclick="publishDomain(this.dataset.domain,this)" title="${escHtml(t('publishHint'))}">${t('publishBtn')}</button>`}
-              <button class="sub-btn sub-btn-neutral" data-domain="${escHtml(d.name)}" onclick="editDomain(this.dataset.domain)">${t('editBtn')}</button>
+              <button class="sub-btn sub-btn-neutral" onclick="editDomainInline(${i})">${t('editBtn')}</button>
               <button class="sub-btn sub-btn-danger" data-domain="${escHtml(d.name)}" onclick="deleteDomain(this.dataset.domain,this)">${t('removeBtn')}</button>
             </div>
           </div>
-          <div class="dcard-desc">${escHtml(d.description||'—')}</div>
-          <div class="dcard-row">
-            <div class="clickable-stat" data-domain="${escHtml(d.name)}" onclick="showSourcesForDomain(this.dataset.domain)">
-              <div class="dcard-stat-val">${d.doc_count}</div>
-              <div class="dcard-stat-lbl">${t('dcDocuments')}</div>
+          <div id="dview-${i}">
+            <div class="dcard-desc">${escHtml(d.description||'—')}</div>
+            <div class="dcard-row">
+              <div class="clickable-stat" data-domain="${escHtml(d.name)}" onclick="showSourcesForDomain(this.dataset.domain)">
+                <div class="dcard-stat-val">${d.doc_count}</div>
+                <div class="dcard-stat-lbl">${t('dcDocuments')}</div>
+              </div>
+              <div class="clickable-stat" data-domain="${escHtml(d.name)}" onclick="showKnowledgeForDomain(this.dataset.domain)">
+                <div class="dcard-stat-val">${d.rule_count}</div>
+                <div class="dcard-stat-lbl">${t('dcRules')}</div>
+              </div>
             </div>
-            <div class="clickable-stat" data-domain="${escHtml(d.name)}" onclick="showKnowledgeForDomain(this.dataset.domain)">
-              <div class="dcard-stat-val">${d.rule_count}</div>
-              <div class="dcard-stat-lbl">${t('dcRules')}</div>
+            <div class="dbar"><div class="dbar-fill" style="width:${d.rule_count===0?3:Math.round(d.rule_count/max*100)}%"></div></div>
+          </div>
+          <div id="dedit-${i}" style="display:none;margin-top:8px;gap:12px">
+            ${editField(t('fldDescription'), `<textarea id="die-desc-${i}" rows="4" style="${EDIT_FIELD};resize:vertical;line-height:1.5;font-family:inherit">${escHtml(d.description||'')}</textarea>`)}
+            ${editField(t('fldQueryHint'), `<textarea id="die-hint-${i}" rows="4" style="${EDIT_FIELD};resize:vertical;line-height:1.5;font-family:inherit">${escHtml(d.query_hint||'')}</textarea>`)}
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="sub-btn sub-btn-neutral" onclick="closeDomainInline(${i})">${t('cancelBtn')}</button>
+              <button class="sub-btn sub-btn-primary" onclick="saveDomainInline(${i},'${encodeURIComponent(d.name)}')">${t('saveBtn')}</button>
             </div>
           </div>
-          <div class="dbar"><div class="dbar-fill" style="width:${d.rule_count===0?3:Math.round(d.rule_count/max*100)}%"></div></div>
         </div>`).join('')
     : `<div class="empty">${t('emptyDomains')}</div>`;
+}
+
+function editDomainInline(i) {
+  const v = document.getElementById('dview-' + i);
+  const e = document.getElementById('dedit-' + i);
+  const card = e ? e.closest('.dcard') : null;
+  if (v) v.style.display = 'none';
+  if (e) e.style.display = 'grid';
+  if (card) card.style.gridColumn = '1 / -1';  // span full width for a roomy editor
+  stopPolling();
+}
+function closeDomainInline(i) {
+  const v = document.getElementById('dview-' + i);
+  const e = document.getElementById('dedit-' + i);
+  const card = e ? e.closest('.dcard') : null;
+  if (v) v.style.display = '';
+  if (e) e.style.display = 'none';
+  if (card) card.style.gridColumn = '';
+  startPolling();
+}
+async function saveDomainInline(i, nameEnc) {
+  const ok = await postEdit('/api/domain/update', {
+    name: decodeURIComponent(nameEnc),
+    description: val('die-desc-' + i),
+    query_hint: val('die-hint-' + i),
+  });
+  if (ok) startPolling();
 }
 
 function renderKnowledge() {
@@ -2006,20 +2048,62 @@ function renderKnowledge() {
           <td>${domainTag(k.domain)}</td>
           <td>${trustBadge(k.trust)}</td>
           <td class="td-dim">${fmtDate(k.created_at)}</td>
-          <td><div style="display:flex;gap:4px">
-            <button class="code-search-btn" onclick="editKnowledge(${k.id});event.stopPropagation()">${t('editBtn')}</button>
-            <button class="danger-btn" data-title="${escHtml(k.title)}" onclick="deleteKnowledge(${k.id},this.dataset.title,this,event)">${t('removeBtn')}</button>
+          <td><div class="sub-actions" style="margin-left:0">
+            <button class="sub-btn sub-btn-neutral" onclick="editKnowledgeInline(${i});event.stopPropagation()">${t('editBtn')}</button>
+            <button class="sub-btn sub-btn-danger" data-title="${escHtml(k.title)}" onclick="deleteKnowledge(${k.id},this.dataset.title,this,event)">${t('removeBtn')}</button>
           </div></td>
         </tr>
         <tr id="kd-${i}" style="display:none">
           <td colspan="6" style="padding:.75rem 1.25rem 1rem;background:var(--bg);font-size:.79rem;color:var(--body);white-space:pre-wrap;word-break:break-word;border-bottom:1px solid var(--border);line-height:1.55">${escHtml(k.body||k.content||k.text||'(no body)')}</td>
+        </tr>
+        <tr id="ke-${i}" style="display:none">
+          <td colspan="6" style="padding:16px 22px 20px;background:var(--bg);border-bottom:1px solid var(--hairline)">
+            <div style="display:grid;gap:12px;max-width:960px">
+              ${editField(t('fldTitle'), `<input id="kie-title-${i}" value="${escHtml(k.title)}" style="${EDIT_FIELD}">`)}
+              ${editField(t('fldBody'), `<textarea id="kie-body-${i}" rows="12" style="${EDIT_FIELD};resize:vertical;line-height:1.55;font-family:inherit">${escHtml(k.body||k.content||k.text||'')}</textarea>`)}
+              <div style="display:flex;gap:12px">
+                <div style="flex:1">${editField(t('fldStage'), `<input id="kie-stage-${i}" value="${escHtml(k.stage||'')}" style="${EDIT_FIELD}">`)}</div>
+                <div style="flex:1">${editField(t('fldSeverity'), `<input id="kie-sev-${i}" value="${escHtml(k.severity||'')}" style="${EDIT_FIELD}">`)}</div>
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="sub-btn sub-btn-neutral" onclick="closeKnowledgeInline(${i})">${t('cancelBtn')}</button>
+                <button class="sub-btn sub-btn-primary" onclick="saveKnowledgeInline(${i},${k.id})">${t('saveBtn')}</button>
+              </div>
+            </div>
+          </td>
         </tr>`).join('')
     : `<tr><td colspan="6" class="empty">${t('emptyKnowledge')}</td></tr>`;
 }
 
 function toggleKnowledgeDetail(i) {
+  // Don't collapse the read view while its editor is open.
+  const ke = document.getElementById('ke-' + i);
+  if (ke && ke.style.display !== 'none') return;
   const el = document.getElementById('kd-' + i);
   if (el) el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+}
+
+function editKnowledgeInline(i) {
+  const kd = document.getElementById('kd-' + i);
+  if (kd) kd.style.display = 'none';
+  const ke = document.getElementById('ke-' + i);
+  if (ke) ke.style.display = 'table-row';
+  stopPolling();  // a background refresh would wipe the open editor
+}
+function closeKnowledgeInline(i) {
+  const ke = document.getElementById('ke-' + i);
+  if (ke) ke.style.display = 'none';
+  startPolling();
+}
+async function saveKnowledgeInline(i, id) {
+  const ok = await postEdit('/api/knowledge/update', {
+    id,
+    title: val('kie-title-' + i),
+    body: val('kie-body-' + i),
+    stage: val('kie-stage-' + i) || null,
+    severity: val('kie-sev-' + i) || null,
+  });
+  if (ok) startPolling();  // loadData already re-rendered (editor closed)
 }
 
 function renderSources() {
@@ -2455,62 +2539,20 @@ function openModal(title, bodyHtml) {
 }
 function closeModal() { document.getElementById('edit-modal').style.display = 'none'; }
 
-const fieldRow = (label, id, value, multiline) => `
-  <label style="display:block;margin-bottom:10px">
-    <span style="display:block;font-size:.74rem;font-weight:600;color:var(--body);margin-bottom:3px">${escHtml(label)}</span>
-    ${multiline
-      ? `<textarea id="${id}" rows="4" style="width:100%;box-sizing:border-box;font-size:13px;padding:7px;border:1px solid var(--hairline);border-radius:7px;background:var(--soft);color:var(--navy);resize:vertical">${escHtml(value||'')}</textarea>`
-      : `<input id="${id}" value="${escHtml(value||'')}" style="width:100%;box-sizing:border-box;font-size:13px;padding:7px;border:1px solid var(--hairline);border-radius:7px;background:var(--soft);color:var(--navy)">`}
-  </label>`;
-
-const modalFooter = onsave => `
-  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-    <button onclick="closeModal()" class="code-search-btn" data-i18n="cancelBtn">${t('cancelBtn')}</button>
-    <button onclick="${onsave}" class="promote-btn">${t('saveBtn')}</button>
-  </div>`;
-
 function val(id) { const el = document.getElementById(id); return el ? el.value : ''; }
 
-function editDomain(name) {
-  const d = G.domains.find(x => x.name === name);
-  if (!d) return;
-  openModal(t('editDomainTitle') + ' · ' + name,
-    fieldRow(t('fldDescription'), 'ed-desc', d.description, true) +
-    fieldRow(t('fldQueryHint'), 'ed-hint', d.query_hint, true) +
-    modalFooter(`saveDomain('${encodeURIComponent(name)}')`));
-}
-async function saveDomain(nameEnc) {
-  const name = decodeURIComponent(nameEnc);
-  await postEdit('/api/domain/update', { name, description: val('ed-desc'), query_hint: val('ed-hint') });
-}
-
-function editKnowledge(id) {
-  const k = G.knowledge.find(x => x.id === id);
-  if (!k) return;
-  openModal(t('editKnowledgeTitle'),
-    fieldRow(t('fldTitle'), 'ek-title', k.title, false) +
-    fieldRow(t('fldBody'), 'ek-body', k.body || k.content || k.text, true) +
-    fieldRow(t('fldStage'), 'ek-stage', k.stage, false) +
-    fieldRow(t('fldSeverity'), 'ek-sev', k.severity, false) +
-    modalFooter(`saveKnowledge(${id})`));
-}
-async function saveKnowledge(id) {
-  await postEdit('/api/knowledge/update', {
-    id, title: val('ek-title'), body: val('ek-body'),
-    stage: val('ek-stage') || null, severity: val('ek-sev') || null,
-  });
-}
-
+// Domain and knowledge editing is inline (expand in place); postEdit persists the
+// change and refreshes. Returns true on success so callers can resume polling.
 async function postEdit(url, payload) {
   try {
     const r = await fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }).then(res => res.json());
-    if (!r.ok) { alert(t('saveFailed') + (r.error || 'unknown error')); return; }
-    closeModal();
+    if (!r.ok) { alert(t('saveFailed') + (r.error || 'unknown error')); return false; }
     await loadData();
-  } catch(e) { alert(t('saveFailed') + e); }
+    return true;
+  } catch(e) { alert(t('saveFailed') + e); return false; }
 }
 
 // ── API ──────────────────────────────────────────────────────────────────────
