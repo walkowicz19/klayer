@@ -957,7 +957,7 @@
         </div>
         <div class="cb" id="submissions-list"></div>
       </div>
-      <div class="card" id="submission-import-card">
+      <div class="card" id="submission-import-card" style="margin-top:16px">
         <div class="ch"><span class="ch-title" data-i18n="submitImportTitle"></span></div>
         <div class="cb">
           <div style="font-size:.78rem;color:var(--body);margin-bottom:.5rem" data-i18n="submitImportHint"></div>
@@ -1974,15 +1974,15 @@ function renderDomains() {
   document.getElementById('domain-grid').innerHTML = domains.length
     ? domains.map((d, i) => `
         <div class="dcard">
-          <div class="dcard-head">
-            <div class="dcard-name">${escHtml(d.name)}</div>
-            <div class="sub-actions" style="margin-left:0">
-              ${domainFromMarketplace(d.name) ? '' : `<button class="sub-btn sub-btn-primary" data-domain="${escHtml(d.name)}" onclick="publishDomain(this.dataset.domain,this)" title="${escHtml(t('publishHint'))}">${t('publishBtn')}</button>`}
-              <button class="sub-btn sub-btn-neutral" onclick="editDomainInline(${i})">${t('editBtn')}</button>
-              <button class="sub-btn sub-btn-danger" data-domain="${escHtml(d.name)}" onclick="deleteDomain(this.dataset.domain,this)">${t('removeBtn')}</button>
-            </div>
-          </div>
           <div id="dview-${i}">
+            <div class="dcard-head">
+              <div class="dcard-name" style="cursor:pointer;flex:1;min-width:0;margin-bottom:6px" onclick="editDomainInline(${i})" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="${escHtml(t('editBtn'))}">${escHtml(d.name)}</div>
+              <div class="sub-actions" style="margin-left:0;display:flex;gap:6px;width:100%;flex-wrap:nowrap">
+                ${domainFromMarketplace(d.name) ? '' : `<button class="sub-btn sub-btn-primary" style="flex:1;justify-content:center" data-domain="${escHtml(d.name)}" onclick="publishDomain(this.dataset.domain,this)" title="${escHtml(t('publishHint'))}">${t('publishBtn')}</button>`}
+                <button class="sub-btn sub-btn-neutral" style="flex:1;justify-content:center" onclick="editDomainInline(${i})">${t('editBtn')}</button>
+                <button class="sub-btn sub-btn-danger" style="flex:1;justify-content:center" data-domain="${escHtml(d.name)}" onclick="deleteDomain(this.dataset.domain,this)">${t('removeBtn')}</button>
+              </div>
+            </div>
             <div class="dcard-desc">${escHtml(d.description||'—')}</div>
             <div class="dcard-row">
               <div class="clickable-stat" data-domain="${escHtml(d.name)}" onclick="showSourcesForDomain(this.dataset.domain)">
@@ -1996,7 +1996,8 @@ function renderDomains() {
             </div>
             <div class="dbar"><div class="dbar-fill" style="width:${d.rule_count===0?3:Math.round(d.rule_count/max*100)}%"></div></div>
           </div>
-          <div id="dedit-${i}" style="display:none;margin-top:8px;gap:12px">
+          <div id="dedit-${i}" style="display:none;margin-top:8px;gap:12px;flex-direction:column">
+            <div class="dcard-name" style="font-weight:700;margin-bottom:4px">${escHtml(d.name)}</div>
             ${editField(t('fldDescription'), `<textarea id="die-desc-${i}" rows="4" style="${EDIT_FIELD};resize:vertical;line-height:1.5;font-family:inherit">${escHtml(d.description||'')}</textarea>`)}
             ${editField(t('fldQueryHint'), `<textarea id="die-hint-${i}" rows="4" style="${EDIT_FIELD};resize:vertical;line-height:1.5;font-family:inherit">${escHtml(d.query_hint||'')}</textarea>`)}
             <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -2009,21 +2010,18 @@ function renderDomains() {
 }
 
 function editDomainInline(i) {
+  // Edit in place, inside the card's own space — no full-width expansion.
   const v = document.getElementById('dview-' + i);
   const e = document.getElementById('dedit-' + i);
-  const card = e ? e.closest('.dcard') : null;
   if (v) v.style.display = 'none';
-  if (e) e.style.display = 'grid';
-  if (card) card.style.gridColumn = '1 / -1';  // span full width for a roomy editor
+  if (e) e.style.display = 'flex';
   stopPolling();
 }
 function closeDomainInline(i) {
   const v = document.getElementById('dview-' + i);
   const e = document.getElementById('dedit-' + i);
-  const card = e ? e.closest('.dcard') : null;
   if (v) v.style.display = '';
   if (e) e.style.display = 'none';
-  if (card) card.style.gridColumn = '';
   startPolling();
 }
 async function saveDomainInline(i, nameEnc) {
