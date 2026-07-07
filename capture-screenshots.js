@@ -5,7 +5,7 @@
 const { chromium } = require('playwright');
 const path = require('path');
 
-const BASE = 'http://localhost:7475';  // user build — no admin features
+const BASE = 'http://localhost:7474';  // admin build — full real data
 const OUT  = path.join(__dirname, 'docs', 'screenshots');
 const W    = 1440;
 const H    = 900;

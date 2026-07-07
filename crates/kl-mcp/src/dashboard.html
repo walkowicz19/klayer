@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -205,20 +205,27 @@
     .tarrow-sym { font-size: 14px; color: var(--hairline-strong); }
 
     /* ── Domain cards ── */
-    .domain-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 12px; margin-bottom: 20px; }
-    .dcard { background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 18px 20px; transition: border-color .15s; }
+    .domain-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 12px; margin-bottom: 4px; }
+    .dcard { background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 18px 20px; transition: border-color .15s; display: flex; flex-direction: column; }
     .dcard:hover { border-color: var(--hairline-strong); }
-    .dcard-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
-    .dcard-name { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
-    .dcard-head .dcard-name { margin-bottom: 6px; flex: 1 1 100%; min-width: 0; }
-    .dcard-desc { font-size: 12px; color: var(--body); margin-bottom: 14px; line-height: 1.45; }
-    .dcard-row { display: flex; gap: 20px; }
+    .dcard-name { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+    .dcard-desc { font-size: 12px; color: var(--body); margin-bottom: 0; line-height: 1.45; flex: 1; }
+    .dcard-row { display: flex; gap: 20px; margin-top: 16px; }
     .dcard-stat-val { font-family: 'SF Pro Rounded','Nunito',system-ui,sans-serif; font-size: 20px; font-weight: 700; color: var(--blue); letter-spacing: -.5px; line-height: 1; }
     .dcard-stat-lbl { font-size: 10px; color: var(--mute); margin-top: 2px; }
     .clickable-stat { cursor: pointer; }
     .clickable-stat:hover .dcard-stat-val { text-decoration: underline; color: var(--blue); }
-    .dbar { margin-top: 14px; height: 2px; border-radius: 2px; background: var(--hairline); overflow: hidden; }
+    .dbar { margin-top: 10px; height: 2px; border-radius: 2px; background: var(--hairline); overflow: hidden; }
     .dbar-fill { height: 100%; background: var(--blue); border-radius: 2px; }
+    .dcard-btns { display: flex; gap: 6px; margin-top: 14px; }
+    .dcard-btns .sub-btn { flex: 1; justify-content: center; }
+    /* ── Pagination ── */
+    .pagination { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-top: 1px solid var(--hairline); font-size: 12px; color: var(--body); }
+    .pagination-info { flex: 1; text-align: center; color: var(--mute); }
+    .page-btn { font-size: 12px; font-weight: 600; height: 26px; padding: 0 10px; border-radius: var(--r-full); border: 1px solid var(--hairline); background: var(--soft); color: var(--body); cursor: pointer; transition: border-color .12s; white-space: nowrap; }
+    .page-btn:hover:not(:disabled) { border-color: var(--hairline-strong); color: var(--navy); }
+    .page-btn:disabled { opacity: .4; cursor: default; }
+    .domain-pager { padding: 10px 0 6px; }
 
     /* ── Badges ── */
     .badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: var(--r-full); font-size: 11px; font-weight: 600; white-space: nowrap; }
@@ -513,7 +520,7 @@
     <div class="nav-group">
       <div class="nav-group-label" data-i18n="navGroupAgent"></div>
       <button class="nav-btn" data-page="memory">
-        <svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v2H2zM2 7h12v2H2zM2 11h8v2H2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/></svg>
         <span data-i18n="navMemory"></span>
         <span class="nav-badge" id="nb-episodes">—</span>
       </button>
@@ -614,6 +621,7 @@
         <button onclick="clearDomains()" style="margin-top:.75rem;padding:.35rem .9rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="domainsClearBtn"></button>
       </div>
       <div class="domain-grid" id="domain-grid"></div>
+      <div class="domain-pager" id="domain-pager"></div>
     </div>
 
     <!-- Knowledge -->
@@ -640,6 +648,7 @@
           </tr></thead>
           <tbody id="tb-knowledge"></tbody>
         </table></div>
+        <div id="knowledge-pager"></div>
       </div>
     </div>
 
@@ -661,10 +670,11 @@
           </div>
         </div>
         <div class="cb" id="sources-list"></div>
+        <div id="sources-pager"></div>
       </div>
     </div>
 
-    <!-- Agent Memory -->
+    <!-- Episode Log -->
     <div id="page-memory" class="page">
       <div class="ph">
         <div class="ph-title" data-i18n="navMemory"></div>
@@ -749,6 +759,7 @@
           <span class="ch-count" id="repos-count"></span>
         </div>
         <div class="cb" id="repos-list"></div>
+        <div id="repos-pager"></div>
       </div>
     </div>
 
@@ -936,6 +947,7 @@
           </tr></thead>
           <tbody id="tb-journal"></tbody>
         </table></div>
+        <div id="sessions-pager"></div>
       </div>
     </div>
 
@@ -988,7 +1000,7 @@ const LANGS = {
     topbarSub: 'knowledge dashboard',
     navGroupOverview: 'Overview', navGroupKnowledge: 'Knowledge', navGroupAgent: 'Agent', navGroupCode: 'Codebase', navGroupTraining: 'Training', navGroupMarketplace: 'Marketplace', navGroupSystem: 'System',
     navDashboard: 'Dashboard', navDomains: 'Domains', navKnowledge: 'Knowledge',
-    navSources: 'Sources', navMemory: 'Agent Memory', navTrust: 'Trust Lifecycle', navCodebase: 'Codebase', navTraining: 'Training Data', navMarketplace: 'Marketplace', navSettings: 'Settings',
+    navSources: 'Sources', navMemory: 'Episode Log', navTrust: 'Trust Lifecycle', navCodebase: 'Codebase', navTraining: 'Training Data', navMarketplace: 'Marketplace', navSettings: 'Settings',
     btnRefresh: '↺ Refresh', btnLoading: '↺ Loading…',
     statusConnecting: 'connecting…', statusLive: 'klayer.db · live', statusError: 'API unreachable',
     statusDbsLive: n => `${n} databases · live`, statusDbDown: names => `${names} · unavailable`,
@@ -1134,7 +1146,7 @@ const LANGS = {
     topbarSub: 'painel de conhecimento',
     navGroupOverview: 'Visão Geral', navGroupKnowledge: 'Conhecimento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupTraining: 'Treinamento', navGroupMarketplace: 'Marketplace', navGroupSystem: 'Sistema',
     navDashboard: 'Painel', navDomains: 'Domínios', navKnowledge: 'Conhecimento',
-    navSources: 'Fontes', navMemory: 'Memória do Agente', navTrust: 'Ciclo de Confiança', navCodebase: 'Base de Código', navTraining: 'Dados de Treinamento', navMarketplace: 'Marketplace', navSettings: 'Configurações',
+    navSources: 'Fontes', navMemory: 'Registro de Execução', navTrust: 'Ciclo de Confiança', navCodebase: 'Base de Código', navTraining: 'Dados de Treinamento', navMarketplace: 'Marketplace', navSettings: 'Configurações',
     btnRefresh: '↺ Atualizar', btnLoading: '↺ Carregando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · ativo', statusError: 'API inacessível',
     statusDbsLive: n => `${n} bancos de dados · ativos`, statusDbDown: names => `${names} · indisponível`,
@@ -1280,7 +1292,7 @@ const LANGS = {
     topbarSub: 'panel de conocimiento',
     navGroupOverview: 'Resumen', navGroupKnowledge: 'Conocimiento', navGroupAgent: 'Agente', navGroupCode: 'Código', navGroupTraining: 'Entrenamiento', navGroupMarketplace: 'Marketplace', navGroupSystem: 'Sistema',
     navDashboard: 'Panel', navDomains: 'Dominios', navKnowledge: 'Conocimiento',
-    navSources: 'Fuentes', navMemory: 'Memoria del Agente', navTrust: 'Ciclo de Confianza', navCodebase: 'Base de Código', navTraining: 'Datos de Entrenamiento', navMarketplace: 'Marketplace', navSettings: 'Configuración',
+    navSources: 'Fuentes', navMemory: 'Registro de Ejecución', navTrust: 'Ciclo de Confianza', navCodebase: 'Base de Código', navTraining: 'Datos de Entrenamiento', navMarketplace: 'Marketplace', navSettings: 'Configuración',
     btnRefresh: '↺ Actualizar', btnLoading: '↺ Cargando…',
     statusConnecting: 'conectando…', statusLive: 'klayer.db · activo', statusError: 'API no disponible',
     statusDbsLive: n => `${n} bases de datos · activas`, statusDbDown: names => `${names} · no disponible`,
@@ -1426,7 +1438,7 @@ const LANGS = {
     topbarSub: '知识控制台',
     navGroupOverview: '概览', navGroupKnowledge: '知识', navGroupAgent: '智能体', navGroupCode: '代码库', navGroupTraining: '训练', navGroupMarketplace: '市场', navGroupSystem: '系统',
     navDashboard: '控制台', navDomains: '域', navKnowledge: '知识',
-    navSources: '来源', navMemory: '智能体记忆', navTrust: '信任生命周期', navCodebase: '代码库', navTraining: '训练数据', navMarketplace: '市场', navSettings: '设置',
+    navSources: '来源', navMemory: '运行日志', navTrust: '信任生命周期', navCodebase: '代码库', navTraining: '训练数据', navMarketplace: '市场', navSettings: '设置',
     btnRefresh: '↺ 刷新', btnLoading: '↺ 加载中…',
     statusConnecting: '连接中…', statusLive: 'klayer.db · 在线', statusError: 'API 不可达',
     statusDbsLive: n => `${n} 个数据库 · 在线`, statusDbDown: names => `${names} · 不可用`,
@@ -1782,6 +1794,37 @@ let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], pr
 let selectedDomainFilter = '';
 let selectedKnowledgeDomainFilter = '';
 
+// ── Pagination state ─────────────────────────────────────────────────────────
+const PAGE_SZ = 10;
+const PAGER = { domains: 0, knowledge: 0, sources: 0, repos: 0, sessions: 0 };
+
+function pagerHtml(key, total) {
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  if (pages <= 1) return '';
+  const cur = PAGER[key];
+  return `<div class="pagination">
+    <button class="page-btn" ${cur===0?'disabled':''} onclick="changePage('${key}',-1)">&#8592; Prev</button>
+    <span class="pagination-info">Page ${cur+1} of ${pages}</span>
+    <button class="page-btn" ${cur>=pages-1?'disabled':''} onclick="changePage('${key}',1)">Next &#8594;</button>
+  </div>`;
+}
+
+function changePage(key, delta) {
+  const total = key==='domains' ? G.domains.length
+    : key==='knowledge' ? (selectedKnowledgeDomainFilter ? G.knowledge.filter(k=>k.domain===selectedKnowledgeDomainFilter).length : G.knowledge.length)
+    : key==='sources'   ? (selectedDomainFilter ? G.sources.filter(s=>s.domain===selectedDomainFilter).length : G.sources.length)
+    : key==='repos'     ? G.codeRepos.length
+    : key==='sessions'  ? ((() => { const sel = document.getElementById('session-repo-filter'); const r = sel ? sel.value : ''; return r ? G.journal.filter(j=>j.repo===r).length : G.journal.length; })())
+    : 0;
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER[key] = Math.max(0, Math.min(pages - 1, PAGER[key] + delta));
+  if (key === 'domains')   renderDomains();
+  else if (key === 'knowledge') renderKnowledge();
+  else if (key === 'sources')   renderSources();
+  else if (key === 'repos')     renderCodebase();
+  else if (key === 'sessions')  renderSessions();
+}
+
 function populateSourcesFilter() {
   const filterSelect = document.getElementById('sources-domain-filter');
   if (!filterSelect) return;
@@ -1929,9 +1972,10 @@ function renderOverview() {
     ? recent.map(k => `<tr><td class="td-main">${escHtml(k.title)}</td><td>${domainTag(k.domain)}</td><td>${trustBadge(k.trust)}</td></tr>`).join('')
     : `<tr><td colspan="3" class="empty">${t('emptyKnowledge')}</td></tr>`;
 
-  const maxRules = Math.max(...domains.map(d => d.rule_count), 1);
-  document.getElementById('domain-glance').innerHTML = domains.length
-    ? domains.map(d => `
+  const cappedDomains = domains.slice(0, 7);
+  const maxRules = Math.max(...cappedDomains.map(d => d.rule_count), 1);
+  document.getElementById('domain-glance').innerHTML = cappedDomains.length
+    ? cappedDomains.map(d => `
         <div class="dglance-item">
           <div class="dglance-row"><span class="dglance-name">${escHtml(d.name)}</span><span class="dglance-hint">${t('rulesCoverage')(d.rule_count, d.doc_count)}</span></div>
           <div class="dbar"><div class="dbar-fill" style="width:${d.rule_count===0?3:Math.round(d.rule_count/maxRules*100)}%"></div></div>
@@ -1970,19 +2014,21 @@ function domainFromMarketplace(name) {
 
 function renderDomains() {
   const { domains } = G;
+  const total = domains.length;
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER.domains = Math.min(PAGER.domains, pages - 1);
+  const start = PAGER.domains * PAGE_SZ;
+  const slice = domains.slice(start, start + PAGE_SZ);
+  // Use global index so dview/dedit IDs are stable across pages
   const max = Math.max(...domains.map(d => d.rule_count), 1);
-  document.getElementById('domain-grid').innerHTML = domains.length
-    ? domains.map((d, i) => `
+  document.getElementById('domain-grid').innerHTML = slice.length
+    ? slice.map((d, pi) => {
+        const i = start + pi; // global index for inline-edit IDs
+        const isMarket = domainFromMarketplace(d.name);
+        return `
         <div class="dcard">
-          <div id="dview-${i}">
-            <div class="dcard-head">
-              <div class="dcard-name" style="cursor:pointer;flex:1;min-width:0;margin-bottom:6px" onclick="editDomainInline(${i})" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="${escHtml(t('editBtn'))}">${escHtml(d.name)}</div>
-              <div class="sub-actions" style="margin-left:0;display:flex;gap:6px;width:100%;flex-wrap:nowrap">
-                ${domainFromMarketplace(d.name) ? '' : `<button class="sub-btn sub-btn-primary" style="flex:1;justify-content:center" data-domain="${escHtml(d.name)}" onclick="publishDomain(this.dataset.domain,this)" title="${escHtml(t('publishHint'))}">${t('publishBtn')}</button>`}
-                <button class="sub-btn sub-btn-neutral" style="flex:1;justify-content:center" onclick="editDomainInline(${i})">${t('editBtn')}</button>
-                <button class="sub-btn sub-btn-danger" style="flex:1;justify-content:center" data-domain="${escHtml(d.name)}" onclick="deleteDomain(this.dataset.domain,this)">${t('removeBtn')}</button>
-              </div>
-            </div>
+          <div id="dview-${i}" style="display:flex;flex-direction:column;flex:1">
+            <div class="dcard-name" style="cursor:pointer" onclick="editDomainInline(${i})" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="${escHtml(t('editBtn'))}">${escHtml(d.name)}</div>
             <div class="dcard-desc">${escHtml(d.description||'—')}</div>
             <div class="dcard-row">
               <div class="clickable-stat" data-domain="${escHtml(d.name)}" onclick="showSourcesForDomain(this.dataset.domain)">
@@ -1995,8 +2041,13 @@ function renderDomains() {
               </div>
             </div>
             <div class="dbar"><div class="dbar-fill" style="width:${d.rule_count===0?3:Math.round(d.rule_count/max*100)}%"></div></div>
+            <div class="dcard-btns">
+              ${isMarket ? '' : `<button class="sub-btn sub-btn-primary" data-domain="${escHtml(d.name)}" onclick="publishDomain(this.dataset.domain,this)" title="${escHtml(t('publishHint'))}">${t('publishBtn')}</button>`}
+              <button class="sub-btn sub-btn-neutral" onclick="editDomainInline(${i})">${t('editBtn')}</button>
+              <button class="sub-btn sub-btn-danger" data-domain="${escHtml(d.name)}" onclick="deleteDomain(this.dataset.domain,this)">${t('removeBtn')}</button>
+            </div>
           </div>
-          <div id="dedit-${i}" style="display:none;margin-top:8px;gap:12px;flex-direction:column">
+          <div id="dedit-${i}" style="display:none;gap:12px;flex-direction:column">
             <div class="dcard-name" style="font-weight:700;margin-bottom:4px">${escHtml(d.name)}</div>
             ${editField(t('fldDescription'), `<textarea id="die-desc-${i}" rows="4" style="${EDIT_FIELD};resize:vertical;line-height:1.5;font-family:inherit">${escHtml(d.description||'')}</textarea>`)}
             ${editField(t('fldQueryHint'), `<textarea id="die-hint-${i}" rows="4" style="${EDIT_FIELD};resize:vertical;line-height:1.5;font-family:inherit">${escHtml(d.query_hint||'')}</textarea>`)}
@@ -2005,8 +2056,11 @@ function renderDomains() {
               <button class="sub-btn sub-btn-primary" onclick="saveDomainInline(${i},'${encodeURIComponent(d.name)}')">${t('saveBtn')}</button>
             </div>
           </div>
-        </div>`).join('')
+        </div>`;
+      }).join('')
     : `<div class="empty">${t('emptyDomains')}</div>`;
+  const pagerEl = document.getElementById('domain-pager');
+  if (pagerEl) pagerEl.innerHTML = pagerHtml('domains', total);
 }
 
 function editDomainInline(i) {
@@ -2038,8 +2092,15 @@ function renderKnowledge() {
   const filtered = selectedKnowledgeDomainFilter
     ? knowledge.filter(k => k.domain === selectedKnowledgeDomainFilter)
     : knowledge;
-  document.getElementById('tb-knowledge').innerHTML = filtered.length
-    ? filtered.map((k, i) => `
+  const total = filtered.length;
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER.knowledge = Math.min(PAGER.knowledge, pages - 1);
+  const start = PAGER.knowledge * PAGE_SZ;
+  const slice = filtered.slice(start, start + PAGE_SZ);
+  document.getElementById('tb-knowledge').innerHTML = slice.length
+    ? slice.map((k, pi) => {
+        const i = start + pi;
+        return `
         <tr class="k-row" onclick="toggleKnowledgeDetail(${i})" style="cursor:pointer" title="Click to expand">
           <td class="td-main">${escHtml(k.title)}</td>
           <td>${kindTag(k.kind)}</td>
@@ -2069,8 +2130,11 @@ function renderKnowledge() {
               </div>
             </div>
           </td>
-        </tr>`).join('')
+        </tr>`;
+      }).join('')
     : `<tr><td colspan="6" class="empty">${t('emptyKnowledge')}</td></tr>`;
+  const pagerEl = document.getElementById('knowledge-pager');
+  if (pagerEl) pagerEl.innerHTML = pagerHtml('knowledge', total);
 }
 
 function toggleKnowledgeDetail(i) {
@@ -2109,8 +2173,13 @@ function renderSources() {
   const filtered = selectedDomainFilter
     ? sources.filter(s => s.domain === selectedDomainFilter)
     : sources;
-  document.getElementById('sources-list').innerHTML = filtered.length
-    ? filtered.map(s => {
+  const total = filtered.length;
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER.sources = Math.min(PAGER.sources, pages - 1);
+  const start = PAGER.sources * PAGE_SZ;
+  const slice = filtered.slice(start, start + PAGE_SZ);
+  document.getElementById('sources-list').innerHTML = slice.length
+    ? slice.map(s => {
         const uri = s.uri || s.title || '';
         const isUrl = /^https?:\/\//i.test(uri);
         const label = escHtml(uri || '(local file)');
@@ -2126,8 +2195,11 @@ function renderSources() {
           </div>
           <div class="src-end">${domainTag(s.domain)}</div>
           <button class="danger-btn" data-title="${escHtml(uri || s.title || 'source')}" onclick="deleteSource(${s.id},this.dataset.title,this)">${t('removeBtn')}</button>
-        </div>`;}).join('')
+        </div>`;
+      }).join('')
     : `<div class="empty">${t('emptySources')}</div>`;
+  const pagerEl = document.getElementById('sources-pager');
+  if (pagerEl) pagerEl.innerHTML = pagerHtml('sources', total);
 }
 
 function renderEpisodes() {
@@ -2189,9 +2261,16 @@ function renderCodebase() {
   if (!list) return;
   if (!G.codeRepos.length) {
     list.innerHTML = `<div class="empty" style="padding:1.5rem;text-align:center;color:var(--muted)">—</div>`;
+    const rp = document.getElementById('repos-pager');
+    if (rp) rp.innerHTML = '';
     return;
   }
-  list.innerHTML = G.codeRepos.map(r => `
+  const total = G.codeRepos.length;
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER.repos = Math.min(PAGER.repos, pages - 1);
+  const start = PAGER.repos * PAGE_SZ;
+  const slice = G.codeRepos.slice(start, start + PAGE_SZ);
+  list.innerHTML = slice.map(r => `
     <div class="repo-row" style="display:flex;align-items:center;justify-content:space-between">
       <span class="repo-icon">⬡</span>
       <div style="flex:1;min-width:0;margin-right:1rem">
@@ -2207,6 +2286,8 @@ function renderCodebase() {
         <button onclick="removeRepo('${escHtml(r.path).replace(/'/g, "\\'")}')" style="padding:.2rem .45rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:4px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'">✕</button>
       </div>
     </div>`).join('');
+  const rp = document.getElementById('repos-pager');
+  if (rp) rp.innerHTML = pagerHtml('repos', total);
 }
 
 const provBadge = v => {
@@ -2358,10 +2439,15 @@ function renderSessions() {
   }
   const repo = sel ? sel.value : '';
   const rows = repo ? G.journal.filter(j => j.repo === repo) : G.journal;
+  const total = rows.length;
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER.sessions = Math.min(PAGER.sessions, pages - 1);
+  const start = PAGER.sessions * PAGE_SZ;
+  const slice = rows.slice(start, start + PAGE_SZ);
   const body = document.getElementById('tb-journal');
   if (!body) return;
-  body.innerHTML = rows.length
-    ? rows.map(j => `
+  body.innerHTML = slice.length
+    ? slice.map(j => `
         <tr>
           <td>${jkindBadge(j.kind)}</td>
           <td class="td-main" style="white-space:normal;max-width:none">
@@ -2372,6 +2458,8 @@ function renderSessions() {
           <td class="td-dim" style="white-space:nowrap">${fmtTs(j.ts)}</td>
         </tr>`).join('')
     : `<tr><td colspan="3" class="empty">${t('emptyJournal')}</td></tr>`;
+  const pagerEl = document.getElementById('sessions-pager');
+  if (pagerEl) pagerEl.innerHTML = pagerHtml('sessions', total);
 }
 
 async function clearSessionJournal() {
