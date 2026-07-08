@@ -57,6 +57,8 @@ jobs:
       - name: Upload binaries to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.artifact_name }}
+          files: |
+            ${{ matrix.artifact_name }}
+            klayer-skill/SKILL.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
