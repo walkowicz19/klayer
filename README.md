@@ -220,7 +220,7 @@ so you can refine stored information without deleting and re-creating it. Source
 are ingested files and URLs — they are not hand-edited; re-ingest or remove them
 instead.
 
-### Sources & Agent Memory
+### Sources & Episode Log
 
 **Sources** lists every ingested URL or file with its domain and fetch date.
 **Agent Memory** shows the full episode trail logged by agentic runs.
