@@ -1026,6 +1026,7 @@ const LANGS = {
     arrowLLM: 'LLM', arrowPromote: 'promote()',
     dcDocuments: 'documents', dcRules: 'enforced rules',
     promoteBtn: 'Promote →',
+    pagePrev: '← Prev', pageNext: 'Next →', pageInfo: (c, p) => `Page ${c} of ${p}`,
     total: n => `${n} total`,
     docsHint: n => `across ${n} domains`,
     rulesHint: n => `${n} proposed`,
@@ -1172,6 +1173,7 @@ const LANGS = {
     arrowLLM: 'LLM', arrowPromote: 'promover()',
     dcDocuments: 'documentos', dcRules: 'regras aplicadas',
     promoteBtn: 'Promover →',
+    pagePrev: '← Anterior', pageNext: 'Próxima →', pageInfo: (c, p) => `Página ${c} de ${p}`,
     total: n => `${n} total`,
     docsHint: n => `em ${n} domínios`,
     rulesHint: n => `${n} propostos`,
@@ -1318,6 +1320,7 @@ const LANGS = {
     arrowLLM: 'LLM', arrowPromote: 'promover()',
     dcDocuments: 'documentos', dcRules: 'reglas aplicadas',
     promoteBtn: 'Promover →',
+    pagePrev: '← Anterior', pageNext: 'Siguiente →', pageInfo: (c, p) => `Página ${c} de ${p}`,
     total: n => `${n} total`,
     docsHint: n => `en ${n} dominios`,
     rulesHint: n => `${n} propuestos`,
@@ -1464,6 +1467,7 @@ const LANGS = {
     arrowLLM: 'LLM', arrowPromote: '升级()',
     dcDocuments: '文档', dcRules: '已执行规则',
     promoteBtn: '升级 →',
+    pagePrev: '← 上一页', pageNext: '下一页 →', pageInfo: (c, p) => `第 ${c} 页，共 ${p} 页`,
     total: n => `共 ${n}`,
     docsHint: n => `共 ${n} 个域`,
     rulesHint: n => `${n} 个待议`,
@@ -1610,6 +1614,7 @@ const LANGS = {
     arrowLLM: 'LLM', arrowPromote: 'promuj()',
     dcDocuments: 'dokumenty', dcRules: 'wymuszone reguły',
     promoteBtn: 'Promuj →',
+    pagePrev: '← Poprzednia', pageNext: 'Następna →', pageInfo: (c, p) => `Strona ${c} z ${p}`,
     total: n => `${n} łącznie`,
     docsHint: n => `w ${n} domenach`,
     rulesHint: n => `${n} proponowanych`,
@@ -1804,9 +1809,9 @@ function pagerHtml(key, total) {
   if (pages <= 1) return '';
   const cur = PAGER[key];
   return `<div class="pagination">
-    <button class="page-btn" ${cur===0?'disabled':''} onclick="changePage('${key}',-1)">&#8592; Prev</button>
-    <span class="pagination-info">Page ${cur+1} of ${pages}</span>
-    <button class="page-btn" ${cur>=pages-1?'disabled':''} onclick="changePage('${key}',1)">Next &#8594;</button>
+    <button class="page-btn" ${cur===0?'disabled':''} onclick="changePage('${key}',-1)">${t('pagePrev')}</button>
+    <span class="pagination-info">${t('pageInfo')(cur+1, pages)}</span>
+    <button class="page-btn" ${cur>=pages-1?'disabled':''} onclick="changePage('${key}',1)">${t('pageNext')}</button>
   </div>`;
 }
 
