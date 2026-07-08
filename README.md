@@ -223,9 +223,9 @@ instead.
 ### Sources & Episode Log
 
 **Sources** lists every ingested URL or file with its domain and fetch date.
-**Agent Memory** shows the full episode trail logged by agentic runs.
+**Episode Log** shows the full episode trail logged by agentic runs.
 
-| Sources | Agent Memory |
+| Sources | Episode Log |
 |---------|--------------|
 | ![Sources](docs/screenshots/sources.png?v=1.5.0) | ![Agent Memory](docs/screenshots/agent-memory.png?v=1.5.0) |
 
