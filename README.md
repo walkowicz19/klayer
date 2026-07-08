@@ -176,6 +176,15 @@ user build.
 
 ![My Published Domains](docs/screenshots/submissions.png?v=1.5.0)
 
+#### 🤝 Contribution Workflow
+
+Because `klayer` runs locally on each user's machine, submissions are sent to the admin out-of-band:
+1. **Publish:** Go to the **Domains** tab and click **Publish** on your domain.
+2. **Export:** Go to the **Submissions** tab, find your pending domain under "My Published Domains", and click **Export** to download its JSON package.
+3. **Submit:** Send the exported JSON file to the project maintainer (e.g. by creating a Pull Request on GitHub or sending it directly).
+4. **Admin Review:** The admin imports your JSON submission file into their **Admin Submissions** view, reviews it, and clicks **Approve**.
+5. **Approve:** The approved domain is appended to `marketplace.json` and becomes available in the **Marketplace** tab for all users.
+
 ### Knowledge
 
 All items in the store — rules, facts, and procedures — sorted newest first.
