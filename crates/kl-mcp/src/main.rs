@@ -1376,7 +1376,7 @@ impl Klayer {
     }
 
     #[tool(
-        description = "Ingest a source into the untrusted reference tier under a domain. Accepts HTTP/HTTPS URLs, absolute local file paths (C:\\path\\file.pdf or /path/file.pdf), or file:// URIs. Supports HTML, PDF, JSON, plain text, and Markdown."
+        description = "Ingest a source into the untrusted reference tier under a domain. Accepts HTTP/HTTPS URLs, absolute local file paths (C:\\path\\file.pdf or /path/file.pdf), or file:// URIs. Supports HTML, PDF, JSON, DOCX, XLSX, PPTX, plain text, Markdown, and various code/configuration formats (YAML, JSONL, SQL, CSS, JS, TS, etc.)."
     )]
     #[allow(dead_code)]
     async fn ingest(

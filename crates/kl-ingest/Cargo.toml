@@ -10,3 +10,4 @@ reqwest.workspace = true
 scraper.workspace = true
 serde_json.workspace = true
 pdf-extract = "0.7"
+undoc = "0.5.3"

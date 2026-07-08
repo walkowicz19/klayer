@@ -64,6 +64,21 @@ fn content_type_from_ext(path: &Path) -> &'static str {
         "html" | "htm" => "text/html",
         "xml" => "text/xml",
         "csv" => "text/plain",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "yaml" | "yml" => "text/x-yaml",
+        "jsonl" => "text/x-jsonl",
+        "sql" => "text/x-sql",
+        "css" => "text/css",
+        "babel" | "babelrc" => "text/plain",
+        "js" | "jsx" | "ts" | "tsx" => "text/javascript",
+        "rs" => "text/x-rust",
+        "py" => "text/x-python",
+        "go" => "text/x-go",
+        "toml" => "text/x-toml",
+        "sh" | "bash" | "zsh" => "text/x-shellscript",
+        "ini" | "conf" | "config" => "text/plain",
         _ => "application/octet-stream",
     }
 }
@@ -103,16 +118,34 @@ pub fn extract(fetched: &Fetched) -> (String, String) {
         extract_pdf(&fetched.body)
     } else if ct.contains("json") {
         extract_json(&fetched.body)
-    } else if ct.starts_with("text/") || ct.contains("markdown") || ct.contains("xml") {
+    } else if ct == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        || ct == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        || ct == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    {
+        extract_office(&fetched.body)
+    } else if ct.starts_with("text/") || ct.contains("markdown") || ct.contains("xml") || ct.contains("javascript") {
         extract_plain(&fetched.body)
     } else {
         (
             String::new(),
             format!(
                 "[klayer] Unsupported content-type '{ct}'. \
-                 Supported: HTML, PDF, JSON, plain text / Markdown."
+                 Supported: HTML, PDF, JSON, DOCX/XLSX/PPTX, plain text / Markdown / Source Code."
             ),
         )
+    }
+}
+
+fn extract_office(body: &[u8]) -> (String, String) {
+    match undoc::parse_bytes(body) {
+        Ok(doc) => {
+            let options = undoc::render::RenderOptions::default();
+            match undoc::render::to_markdown(&doc, &options) {
+                Ok(md) => (String::new(), md),
+                Err(e) => (String::new(), format!("[klayer] Office document rendering failed: {e}")),
+            }
+        }
+        Err(e) => (String::new(), format!("[klayer] Office document parsing failed: {e}")),
     }
 }
 
