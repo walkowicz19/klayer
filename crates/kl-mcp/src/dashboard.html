@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -681,7 +681,7 @@
         <div class="ph-sub" data-i18n="phMemorySub"></div>
         <button onclick="clearEpisodes()" style="margin-top:.75rem;padding:.35rem .9rem;font-size:.75rem;border:1px solid #EF4444;color:#EF4444;background:transparent;border-radius:6px;cursor:pointer" onmouseover="this.style.background='#FEF2F2'" onmouseout="this.style.background='transparent'" data-i18n="episodesClearBtn"></button>
       </div>
-      <div class="card"><div class="cb"><div class="ep-list" id="ep-all"></div></div></div>
+      <div class="card"><div class="cb"><div class="ep-list" id="ep-all"></div></div><div id="episodes-pager"></div></div>
     </div>
 
     <!-- Trust Lifecycle -->
@@ -810,6 +810,7 @@
           </tr></thead>
           <tbody id="tb-training"></tbody>
         </table></div>
+        <div id="training-pager"></div>
       </div>
     </div>
 
@@ -876,7 +877,7 @@
           <div style="font-size:.78rem;color:var(--body);margin-bottom:.6rem" data-i18n="settingsAuthorHint"></div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <input id="author-name-input" maxlength="60" style="flex:1;min-width:180px;box-sizing:border-box;font-size:13px;padding:8px;border:1px solid var(--hairline);border-radius:8px;background:var(--soft);color:var(--navy)">
-            <button id="author-save-btn" onclick="saveAuthor(this)" class="promote-btn" data-i18n="saveBtn"></button>
+            <button id="author-save-btn" onclick="saveAuthor(this)" style="height:32px;padding:0 16px;font-size:13px;font-weight:600;color:var(--on-brand);background:var(--brand);border:none;border-radius:8px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--brand-hover)'" onmouseout="this.style.background='var(--brand)'" data-i18n="saveBtn"></button>
           </div>
           <div id="author-status" style="font-size:.72rem;color:var(--muted);margin-top:.5rem"></div>
         </div>
@@ -1796,7 +1797,7 @@ let selectedKnowledgeDomainFilter = '';
 
 // ── Pagination state ─────────────────────────────────────────────────────────
 const PAGE_SZ = 10;
-const PAGER = { domains: 0, knowledge: 0, sources: 0, repos: 0, sessions: 0 };
+const PAGER = { domains: 0, knowledge: 0, sources: 0, repos: 0, sessions: 0, training: 0, episodes: 0 };
 
 function pagerHtml(key, total) {
   const pages = Math.ceil(total / PAGE_SZ) || 1;
@@ -1815,6 +1816,8 @@ function changePage(key, delta) {
     : key==='sources'   ? (selectedDomainFilter ? G.sources.filter(s=>s.domain===selectedDomainFilter).length : G.sources.length)
     : key==='repos'     ? G.codeRepos.length
     : key==='sessions'  ? ((() => { const sel = document.getElementById('session-repo-filter'); const r = sel ? sel.value : ''; return r ? G.journal.filter(j=>j.repo===r).length : G.journal.length; })())
+    : key==='training'  ? G.training.length
+    : key==='episodes'  ? G.episodes.length
     : 0;
   const pages = Math.ceil(total / PAGE_SZ) || 1;
   PAGER[key] = Math.max(0, Math.min(pages - 1, PAGER[key] + delta));
@@ -1823,6 +1826,8 @@ function changePage(key, delta) {
   else if (key === 'sources')   renderSources();
   else if (key === 'repos')     renderCodebase();
   else if (key === 'sessions')  renderSessions();
+  else if (key === 'training')  renderTraining();
+  else if (key === 'episodes')  renderEpisodes();
 }
 
 function populateSourcesFilter() {
@@ -2204,8 +2209,13 @@ function renderSources() {
 
 function renderEpisodes() {
   const { episodes } = G;
-  document.getElementById('ep-all').innerHTML = episodes.length
-    ? episodes.map(e => `
+  const total = episodes.length;
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER.episodes = Math.min(PAGER.episodes, pages - 1);
+  const start = PAGER.episodes * PAGE_SZ;
+  const slice = episodes.slice(start, start + PAGE_SZ);
+  document.getElementById('ep-all').innerHTML = slice.length
+    ? slice.map(e => `
         <div class="ep-item">
           <div class="ep-dot" style="background:${dotColor(e.outcome)}"></div>
           <div class="ep-body">
@@ -2215,6 +2225,8 @@ function renderEpisodes() {
           ${outcomeEl(e.outcome)}
         </div>`).join('')
     : `<div class="empty">${t('emptyEpisodes')}</div>`;
+  const pagerEl = document.getElementById('episodes-pager');
+  if (pagerEl) pagerEl.innerHTML = pagerHtml('episodes', total);
 }
 
 function renderTrust() {
@@ -2310,8 +2322,13 @@ function renderTraining() {
 
   const body = document.getElementById('tb-training');
   if (!body) return;
-  body.innerHTML = G.training.length
-    ? G.training.map(r => {
+  const total = G.training.length;
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER.training = Math.min(PAGER.training, pages - 1);
+  const start = PAGER.training * PAGE_SZ;
+  const slice = G.training.slice(start, start + PAGE_SZ);
+  body.innerHTML = slice.length
+    ? slice.map(r => {
         const user = (r.assistant_content && r.assistant_content.length)
           ? escHtml(r.user_content)
           : `${escHtml(r.user_content)} <span class="td-dim">${t('trainStub')}</span>`;
@@ -2325,6 +2342,8 @@ function renderTraining() {
         </tr>`;
       }).join('')
     : `<tr><td colspan="5" class="empty">${t('emptyTraining')}</td></tr>`;
+  const pagerEl = document.getElementById('training-pager');
+  if (pagerEl) pagerEl.innerHTML = pagerHtml('training', total);
 }
 
 function renderSettings() {

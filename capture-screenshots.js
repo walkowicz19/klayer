@@ -15,7 +15,13 @@ const PAGES = [
   ['dashboard',       'overview',    null],
   ['domains',         'domains',     null],
   ['marketplace',     'marketplace', null],
-  ['submissions',     'submissions', null],  // user build: no Import card
+  ['submissions',     'submissions', async (p) => {
+    await p.evaluate(() => {
+      // Mock user build mode so no admin elements show up
+      G.isAdmin = false;
+      renderSubmissions();
+    });
+  }],
   ['knowledge',       'knowledge',   null],
   ['trust-lifecycle', 'trust',       null],
   ['sessions',        'sessions',    null],
@@ -51,7 +57,7 @@ const PAGES = [
     return el && el.textContent.trim() && !el.querySelector('.skeleton');
   }, { timeout: 10000 }).catch(() => console.warn('  stats not ready, continuing'));
 
-  for (const [filename, pageId] of PAGES) {
+  for (const [filename, pageId, setup] of PAGES) {
     console.log('  -> ' + filename + ' (' + pageId + ')');
     await page.evaluate((id) => {
       const btn = document.querySelector('[data-page="' + id + '"]');
@@ -59,9 +65,16 @@ const PAGES = [
     }, pageId);
     await page.waitForTimeout(500);
 
+    if (setup) await setup(page);
+
     const dest = path.join(OUT, filename + '.png');
     await page.screenshot({ path: dest, clip: { x: 0, y: 0, width: W, height: H } });
     console.log('     saved ' + dest);
+
+    // Restore G.isAdmin to default true for next pages
+    await page.evaluate(() => {
+      G.isAdmin = true;
+    });
   }
 
   await browser.close();
