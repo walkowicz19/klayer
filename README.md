@@ -2,8 +2,6 @@
   <img src="logo.svg" alt="klayer logo" width="160" />
 </p>
 
-<h1 align="center">klayer</h1>
-
 <p align="center">
   A domain-agnostic, <b>grounded knowledge layer</b> for LLMs — one Rust MCP server binary.
 </p>
