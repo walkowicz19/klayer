@@ -1297,7 +1297,7 @@ const LANGS = {
     storageLastSync: d => `last sync ${d}`, storageFailures: n => `${n} consecutive failures`,
     storageFallbacks: n => `${n} fallback events`,
     emptyStorageHealth: 'No storage health data yet',
-    registrySubAgent: name => `sub-agent: ${name}`, registryCostWeight: w => `cost ${w}`,
+    registrySubAgent: name => `sub-agent: ${name}`, registryCostWeight: w => `cost ${w}`, registryModelCount: n => `${n} model${n===1?'':'s'}`,
     emptyModelRegistry: 'No models registered yet — use configure_model_registry or the Model Registry page',
     thDomainType: 'Domain Type', thTaskType: 'Task Type', thComplexityTier: 'Complexity Tier', thModelId: 'Model',
     emptyRoutingRules: 'No routing rules configured yet',
@@ -1472,7 +1472,7 @@ const LANGS = {
     storageLastSync: d => `última sincronização ${d}`, storageFailures: n => `${n} falhas consecutivas`,
     storageFallbacks: n => `${n} eventos de fallback`,
     emptyStorageHealth: 'Ainda não há dados de saúde de armazenamento',
-    registrySubAgent: name => `sub-agente: ${name}`, registryCostWeight: w => `custo ${w}`,
+    registrySubAgent: name => `sub-agente: ${name}`, registryCostWeight: w => `custo ${w}`, registryModelCount: n => `${n} modelo${n===1?'':'s'}`,
     emptyModelRegistry: 'Nenhum modelo registrado ainda — use configure_model_registry ou a página Registro de Modelos',
     thDomainType: 'Tipo de Domínio', thTaskType: 'Tipo de Tarefa', thComplexityTier: 'Nível de Complexidade', thModelId: 'Modelo',
     emptyRoutingRules: 'Nenhuma regra de roteamento configurada ainda',
@@ -1647,7 +1647,7 @@ const LANGS = {
     storageLastSync: d => `última sincronización ${d}`, storageFailures: n => `${n} fallos consecutivos`,
     storageFallbacks: n => `${n} eventos de fallback`,
     emptyStorageHealth: 'Aún no hay datos de salud del almacenamiento',
-    registrySubAgent: name => `sub-agente: ${name}`, registryCostWeight: w => `costo ${w}`,
+    registrySubAgent: name => `sub-agente: ${name}`, registryCostWeight: w => `costo ${w}`, registryModelCount: n => `${n} modelo${n===1?'':'s'}`,
     emptyModelRegistry: 'Aún no hay modelos registrados — use configure_model_registry o la página Registro de Modelos',
     thDomainType: 'Tipo de Dominio', thTaskType: 'Tipo de Tarea', thComplexityTier: 'Nivel de Complejidad', thModelId: 'Modelo',
     emptyRoutingRules: 'Aún no hay reglas de enrutamiento configuradas',
@@ -1822,7 +1822,7 @@ const LANGS = {
     storageLastSync: d => `上次同步 ${d}`, storageFailures: n => `连续失败 ${n} 次`,
     storageFallbacks: n => `回退事件 ${n} 次`,
     emptyStorageHealth: '暂无存储健康数据',
-    registrySubAgent: name => `子智能体: ${name}`, registryCostWeight: w => `成本 ${w}`,
+    registrySubAgent: name => `子智能体: ${name}`, registryCostWeight: w => `成本 ${w}`, registryModelCount: n => `${n} 个模型`,
     emptyModelRegistry: '尚未注册任何模型 — 请使用 configure_model_registry 或模型注册表页面',
     thDomainType: '域类型', thTaskType: '任务类型', thComplexityTier: '复杂度级别', thModelId: '模型',
     emptyRoutingRules: '尚未配置路由规则',
@@ -1997,7 +1997,7 @@ const LANGS = {
     storageLastSync: d => `ostatnia synchronizacja ${d}`, storageFailures: n => `${n} kolejnych błędów`,
     storageFallbacks: n => `${n} zdarzeń fallback`,
     emptyStorageHealth: 'Brak jeszcze danych o kondycji magazynu',
-    registrySubAgent: name => `subagent: ${name}`, registryCostWeight: w => `koszt ${w}`,
+    registrySubAgent: name => `subagent: ${name}`, registryCostWeight: w => `koszt ${w}`, registryModelCount: n => `${n} model${n===1?'':'i'}`,
     emptyModelRegistry: 'Brak jeszcze zarejestrowanych modeli — użyj configure_model_registry lub strony Rejestr Modeli',
     thDomainType: 'Typ Domeny', thTaskType: 'Typ Zadania', thComplexityTier: 'Poziom Złożoności', thModelId: 'Model',
     emptyRoutingRules: 'Brak jeszcze skonfigurowanych reguł routingu',
@@ -2205,6 +2205,11 @@ const trustBadge = v => {
 const kindTag = k => {
   const c = {rule:'kt-rule',fact:'kt-fact',procedure:'kt-note'}[k]||'';
   return `<span class="ktag ${c}">${k}</span>`;
+};
+const TIER_ORDER = ['heavy-reasoning','balanced','fast-cheap'];
+const tierBadge = tier => {
+  const c = {'heavy-reasoning':'b-reviewed','balanced':'b-user','fast-cheap':'b-proposed'}[tier]||'b-untrusted';
+  return `<span class="badge ${c}">${escHtml(tier)}</span>`;
 };
 const domainTag = d => `<span class="dtag">${escHtml(d)}</span>`;
 const outcomeEl = o => {
@@ -2690,22 +2695,33 @@ function renderModelRegistry() {
   const start = PAGER.modelRegistry * PAGE_SZ;
   const harnesses = allHarnesses.slice(start, start + PAGE_SZ);
   list.innerHTML = harnesses.length
-    ? harnesses.map(h => `
-        <div class="card-fw" style="margin-bottom:14px">
-          <div style="font-weight:700;color:var(--navy);margin-bottom:6px">${escHtml(h.harness)}</div>
-          ${Object.entries(h.tiers || {}).map(([tier, models]) => `
-            <div style="margin-bottom:8px">
-              <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);margin-bottom:4px">${escHtml(tier)}</div>
-              ${models.map(m => `
-                <div class="src-item">
-                  <div style="min-width:0;flex:1;">
-                    <div style="font-weight:600;color:var(--navy)">${escHtml(m.model_id)}</div>
-                    ${m.sub_agent_name ? `<div class="src-meta">${t('registrySubAgent')(escHtml(m.sub_agent_name))}</div>` : ''}
-                  </div>
-                  <div class="src-end">${t('registryCostWeight')(m.cost_weight)}</div>
-                </div>`).join('')}
+    ? harnesses.map(h => {
+        const tiers = h.tiers || {};
+        const tierNames = [...TIER_ORDER.filter(k => tiers[k]), ...Object.keys(tiers).filter(k => !TIER_ORDER.includes(k)).sort()];
+        const modelCount = tierNames.reduce((n, tier) => n + (tiers[tier]||[]).length, 0);
+        return `
+        <div class="card-fw" style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--hairline)">
+            <div style="font-weight:700;color:var(--navy);font-size:15px">${escHtml(h.harness)}</div>
+            <div style="font-size:.72rem;color:var(--mute)">${t('registryModelCount')(modelCount)}</div>
+          </div>
+          ${tierNames.map(tier => `
+            <div style="margin-bottom:16px">
+              <div style="margin-bottom:8px">${tierBadge(tier)}</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                ${(tiers[tier]||[]).map(m => `
+                  <div class="src-item">
+                    <div class="src-icon">⚙</div>
+                    <div style="min-width:0;flex:1;">
+                      <div style="font-weight:600;color:var(--navy)">${escHtml(m.model_id)}</div>
+                      ${m.sub_agent_name ? `<div class="src-meta">${t('registrySubAgent')(escHtml(m.sub_agent_name))}</div>` : ''}
+                    </div>
+                    <div class="src-end"><span class="badge" style="background:var(--soft);color:var(--body)">${t('registryCostWeight')(m.cost_weight)}</span></div>
+                  </div>`).join('')}
+              </div>
             </div>`).join('')}
-        </div>`).join('')
+        </div>`;
+      }).join('')
     : `<div class="empty">${t('emptyModelRegistry')}</div>`;
   const pagerEl = document.getElementById('model-registry-pager');
   if (pagerEl) pagerEl.innerHTML = pagerHtml('modelRegistry', total);
@@ -2723,8 +2739,11 @@ function renderRoutingRules() {
   const harnesses = allHarnesses.slice(start, start + PAGE_SZ);
   list.innerHTML = harnesses.length
     ? harnesses.map(h => `
-        <div class="card-fw" style="margin-bottom:14px">
-          <div style="font-weight:700;color:var(--navy);margin-bottom:6px">${escHtml(h.harness)}</div>
+        <div class="card-fw" style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--hairline)">
+            <div style="font-weight:700;color:var(--navy);font-size:15px">${escHtml(h.harness)}</div>
+            <div style="font-size:.72rem;color:var(--mute)">${t('itemsCount')((h.rules||[]).length)}</div>
+          </div>
           <div class="tw"><table>
             <thead><tr>
               <th data-i18n="thDomainType"></th><th data-i18n="thTaskType"></th>
@@ -2735,7 +2754,7 @@ function renderRoutingRules() {
                 <tr>
                   <td>${escHtml(r.domain_type)}</td>
                   <td>${escHtml(r.task_type)}</td>
-                  <td>${escHtml(r.complexity_tier)}</td>
+                  <td>${tierBadge(r.complexity_tier)}</td>
                   <td class="td-main">${escHtml(r.model_id)}</td>
                 </tr>`).join('') || `<tr><td colspan="4" class="empty">${t('emptyRoutingRules')}</td></tr>`}
             </tbody>
