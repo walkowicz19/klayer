@@ -29,8 +29,7 @@
 - **Audit-ready.** Every run's knowledge usage, trust tier, and approval history exports as JSON or a formatted PDF compliance report.
 
 ```
-untrusted ──(LLM extracts)──> proposed ──(you promote)──> reviewed / user
-                                                            only these are ENFORCED
+untrusted ──(LLM extracts)──> proposed ──(you promote)──> reviewed / user - only these are ENFORCED
 ```
 
 ---
