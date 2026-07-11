@@ -1,35 +1,18 @@
 // capture-screenshots.js
 // Run: node capture-screenshots.js
-// Captures all klayer dashboard screenshots in light theme with real data.
+// Captures the klayer dashboard overview screenshot in light theme with real data.
 
 const { chromium } = require('playwright');
 const path = require('path');
 
 const BASE = 'http://localhost:7474';  // admin build — full real data
-const OUT  = path.join(__dirname, 'docs', 'screenshots');
+const OUT  = path.join(__dirname, 'docs', 'screenshot');
 const W    = 1440;
 const H    = 900;
 
 // Pages to capture: [filename, nav-page-id, pre-capture setup fn (optional)]
 const PAGES = [
-  ['dashboard',       'overview',    null],
-  ['domains',         'domains',     null],
-  ['marketplace',     'marketplace', null],
-  ['submissions',     'submissions', async (p) => {
-    await p.evaluate(() => {
-      // Mock user build mode so no admin elements show up
-      G.isAdmin = false;
-      renderSubmissions();
-    });
-  }],
-  ['knowledge',       'knowledge',   null],
-  ['trust-lifecycle', 'trust',       null],
-  ['sessions',        'sessions',    null],
-  ['sources',         'sources',     null],
-  ['agent-memory',    'memory',      null],
-  ['codebase',        'codebase',    null],
-  ['training',        'training',    null],
-  ['settings',        'settings',    null],
+  ['dashboard', 'overview', null],
 ];
 
 (async () => {

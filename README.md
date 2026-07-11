@@ -97,7 +97,7 @@ klayer starts a live web dashboard at **http://localhost:7474** every time it ru
 
 Switch language (EN / PT / ES / ZH / PL) and light/dark theme from **Settings** — saved in your browser.
 
-![Dashboard overview](docs/screenshots/dashboard.png?v=1.6.0-2)
+![Dashboard overview](docs/screenshot/dashboard.png?v=1.6.0-3)
 
 <details>
 <summary>Tour the dashboard sections</summary>
