@@ -45,7 +45,7 @@ jobs:
       - name: Build user binary (no admin review/approve capability)
         run: cargo build --release --no-default-features --target ${{ matrix.target }}
 
-      - name: Prepare user asset
+      - name: Prepare asset
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
@@ -54,26 +54,11 @@ jobs:
             cp target/${{ matrix.target }}/release/klayer ${{ matrix.artifact_name }}
           fi
 
-      - name: Build admin binary (marketplace review/approve enabled)
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Prepare admin asset
-        shell: bash
-        run: |
-          admin_name="$(echo '${{ matrix.artifact_name }}' | sed 's/^klayer-/klayer-admin-/')"
-          echo "admin_artifact_name=$admin_name" >> "$GITHUB_ENV"
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/${{ matrix.target }}/release/klayer.exe "$admin_name"
-          else
-            cp target/${{ matrix.target }}/release/klayer "$admin_name"
-          fi
-
       - name: Upload binaries to Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ matrix.artifact_name }}
-            ${{ env.admin_artifact_name }}
             klayer-skill/SKILL.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
