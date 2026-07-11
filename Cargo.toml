@@ -7,11 +7,12 @@ members = [
     "crates/kl-search",
     "crates/kl-code",
     "crates/kl-train",
+    "crates/kl-session",
     "crates/kl-mcp",
 ]
 
 [workspace.package]
-version = "1.5.0"
+version = "1.6.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.82"
@@ -29,11 +30,30 @@ open = "5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+# NOTE: aliased to the `libsql-rusqlite` package (a rusqlite fork maintained by
+# the libsql project that links against libsql-ffi's bundled SQLite instead of
+# libsqlite3-sys's own bundled copy). Using plain rusqlite here would statically
+# link two separate SQLite C builds (rusqlite's + libsql's) into the kl-mcp
+# binary, which fail to link with duplicate `sqlite3_*` symbol errors
+# (LNK2005 on MSVC) since both kl-store (rusqlite) and kl-code/kl-train/
+# kl-session (libsql) are linked into the same process. libsql-rusqlite's
+# public crate root is literally named `rusqlite`, so all `use rusqlite::...`
+# call sites are unaffected.
+rusqlite = { package = "libsql-rusqlite", version = "0.9.30", features = ["bundled"] }
+libsql = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 scraper = "0.21"
 # rmcp 0.16 — official MCP Rust SDK. schemars/serde are re-exported via rmcp.
 rmcp = { version = "0.16", features = ["server", "transport-io", "macros"] }
+# Pure-Rust PDF generation (compliance report export). NOTE: printpdf also
+# ships an HTML/flexbox layout engine (`PdfDocument::from_html`, feature
+# "html") that would have been a natural fit for a tabular report, but on
+# this toolchain it segfaults even on trivial input (see kl-mcp's
+# compliance.rs doc comment for the repro) — deliberately not enabled here.
+# We use the stable low-level `Op` API instead and lay pages out by hand.
+printpdf = { version = "0.10", default-features = false, features = ["text_layout"] }
+base64 = "0.22"
+sha2 = "0.10"
 
 # internal crates
 kl-core   = { path = "crates/kl-core" }
@@ -42,3 +62,4 @@ kl-ingest = { path = "crates/kl-ingest" }
 kl-search = { path = "crates/kl-search" }
 kl-code   = { path = "crates/kl-code" }
 kl-train  = { path = "crates/kl-train" }
+kl-session = { path = "crates/kl-session" }

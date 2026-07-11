@@ -7,3 +7,5 @@
 *.db-shm
 /skills/klayer/SKILL.md
 .mcp.json
+node_modules/
+/release-*/

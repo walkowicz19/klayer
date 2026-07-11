@@ -44,8 +44,25 @@ fn fetch_file(source: &str) -> Result<Fetched> {
         source.to_string()
     };
 
+    const MAX_INGEST_BYTES: u64 = 16 * 1024 * 1024;
+    let meta = std::fs::metadata(&path).with_context(|| format!("stat file {path}"))?;
+    anyhow::ensure!(
+        meta.len() <= MAX_INGEST_BYTES,
+        "skipped '{path}': file exceeds {MAX_INGEST_BYTES} byte ingestion limit"
+    );
     let body = std::fs::read(&path).with_context(|| format!("read file {path}"))?;
-    let content_type = content_type_from_ext(Path::new(&path)).to_string();
+    let mut content_type = content_type_from_ext(Path::new(&path)).to_string();
+    if content_type == "application/octet-stream" {
+        anyhow::ensure!(
+            !body.iter().take(8192).any(|b| *b == 0),
+            "skipped '{path}': binary content detected"
+        );
+        anyhow::ensure!(
+            std::str::from_utf8(&body).is_ok(),
+            "skipped '{path}': content is not valid UTF-8 text"
+        );
+        content_type = "text/plain".to_string();
+    }
     Ok(Fetched { content_type, body })
 }
 
@@ -123,7 +140,11 @@ pub fn extract(fetched: &Fetched) -> (String, String) {
         || ct == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     {
         extract_office(&fetched.body)
-    } else if ct.starts_with("text/") || ct.contains("markdown") || ct.contains("xml") || ct.contains("javascript") {
+    } else if ct.starts_with("text/")
+        || ct.contains("markdown")
+        || ct.contains("xml")
+        || ct.contains("javascript")
+    {
         extract_plain(&fetched.body)
     } else {
         (
@@ -142,10 +163,16 @@ fn extract_office(body: &[u8]) -> (String, String) {
             let options = undoc::render::RenderOptions::default();
             match undoc::render::to_markdown(&doc, &options) {
                 Ok(md) => (String::new(), md),
-                Err(e) => (String::new(), format!("[klayer] Office document rendering failed: {e}")),
+                Err(e) => (
+                    String::new(),
+                    format!("[klayer] Office document rendering failed: {e}"),
+                ),
             }
         }
-        Err(e) => (String::new(), format!("[klayer] Office document parsing failed: {e}")),
+        Err(e) => (
+            String::new(),
+            format!("[klayer] Office document parsing failed: {e}"),
+        ),
     }
 }
 

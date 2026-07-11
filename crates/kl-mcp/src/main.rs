@@ -1,17 +1,30 @@
 //! klayer — a domain-agnostic, grounded knowledge layer exposed as one MCP server.
 //!
 //! Tools: recall, search_web, ingest, remember, propose, promote, forget,
-//! set_preference, list_domains, register_domain, log_episode,
+//! set_preference, list_domains, register_domain, execute_change, log_episode,
 //! index_codebase, search_code, list_repos, forget_repo, capture_example,
 //! author_example, promote_example, list_training, export_dataset, queue_weak,
-//! seed_from_topics, log_work, recall_session.
+//! seed_from_topics, log_work, recall_session, ingest_media, attach_media,
+//! list_media.
+//!
+//! Media (Stage G): images only — base64 bytes in, written to KLAYER_MEDIA_DIR
+//! (default ~/.klayer/media) by kl-store::media, content-hash named. Standalone
+//! media has no trust tier until attached to a knowledge item (inherits that
+//! item's tier). Video and an object-store backend are deliberately deferred
+//! later increments, not implemented here.
 //!
 //! Transport: stdio (works with Claude Code, Claude Desktop, Cursor, etc.).
-//! Storage:   three SQLite files:
-//!   KLAYER_DB       (default ./klayer.db)       — knowledge, episodes, preferences
-//!   KLAYER_CODE_DB  (default ./klayer_code.db)  — indexed codebase memory
-//!   KLAYER_TRAIN_DB (default ./klayer_train.db) — trust-gated training examples
+//! Storage:   four DB files (SQLite via kl-store, libsql for the other three):
+//!   KLAYER_DB         (default ./klayer.db)         — knowledge, episodes, preferences
+//!   KLAYER_CODE_DB    (default ./klayer_code.db)    — indexed codebase memory
+//!   KLAYER_TRAIN_DB   (default ./klayer_train.db)   — trust-gated training examples
+//!   KLAYER_SESSION_DB (default ./klayer_session.db) — repo-scoped session journal
+//! The libsql-backed stores become embedded replicas (periodic background sync)
+//! when KLAYER_TURSO_URL / KLAYER_TURSO_TOKEN are set; otherwise pure local files.
 //! Dashboard: HTTP on KLAYER_DASHBOARD_PORT (default 7474). URL logged to stderr on start.
+
+mod compliance;
+mod notify;
 
 use std::sync::Arc;
 
@@ -29,12 +42,18 @@ use kl_core::{
     SearchBackend, SourceRow, SubmissionRow,
 };
 use kl_search::from_env as build_search;
+use kl_session::SessionStore;
 use kl_store::Store;
 use kl_train::{PromoteOutcome, TrainStore};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Content, Implementation, ServerCapabilities, ServerInfo},
-    schemars, tool, tool_handler, tool_router,
+    model::{
+        CallToolResult, Content, Implementation, InitializeRequestParams, InitializeResult,
+        ServerCapabilities, ServerInfo,
+    },
+    schemars,
+    service::{RequestContext, RoleServer},
+    tool, tool_handler, tool_router,
     transport::stdio,
     ErrorData as McpError, ServerHandler, ServiceExt,
 };
@@ -47,9 +66,19 @@ struct Klayer {
     store: Arc<Store>,
     code_store: Arc<CodeStore>,
     train_store: Arc<TrainStore>,
+    session_store: Arc<SessionStore>,
     search: Arc<dyn SearchBackend>,
     tool_router: ToolRouter<Self>,
     session_run_id: String,
+    /// Harness captured from the MCP `initialize` handshake's `clientInfo`
+    /// (`"<name>/<version>"`), if any. klayer runs as one long-lived stdio
+    /// process per client connection (see `main()`), so a single connection's
+    /// handshake is captured once and reused for every subsequent tool call
+    /// in the process — there is no per-request client identity in MCP to
+    /// capture instead. `Mutex` (not `OnceLock`) because a client could in
+    /// principle re-initialize; the last handshake wins.
+    captured_harness: Arc<std::sync::Mutex<Option<String>>>,
+    notify: Arc<notify::NotifyState>,
 }
 
 // ----- tool parameter types ------------------------------------------------
@@ -64,6 +93,19 @@ struct RecallParams {
     kind: Option<String>,
     #[schemars(description = "Max results (default 6).")]
     k: Option<u32>,
+    identity: Option<String>,
+    #[schemars(
+        description = "Optional, best-effort usage metadata self-reported by the calling harness for this call: the model that will consume the result. MCP has no standard field for this, so it is never inferred — only recorded if you pass it."
+    )]
+    model: Option<String>,
+    #[schemars(
+        description = "Optional, best-effort self-reported token count for this call. Not measured by klayer — purely what the caller chooses to report."
+    )]
+    tokens_used: Option<i64>,
+    #[schemars(
+        description = "Optional, best-effort self-reported cost (in the caller's currency of choice) for this call. Not measured by klayer — purely what the caller chooses to report."
+    )]
+    cost: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -82,6 +124,18 @@ struct IngestParams {
     url: String,
     #[schemars(description = "Domain to file the source under.")]
     domain: String,
+    #[schemars(
+        description = "Optional, best-effort usage metadata self-reported by the calling harness: the model driving this ingest. MCP has no standard field for this, so it is never inferred — only recorded if you pass it."
+    )]
+    model: Option<String>,
+    #[schemars(
+        description = "Optional, best-effort self-reported token count for this call. Not measured by klayer."
+    )]
+    tokens_used: Option<i64>,
+    #[schemars(
+        description = "Optional, best-effort self-reported cost for this call. Not measured by klayer."
+    )]
+    cost: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -89,6 +143,19 @@ struct RememberParams {
     domain: String,
     #[schemars(description = "A user-authored fact (trust='user', enforceable).")]
     statement: String,
+    identity: Option<String>,
+    #[schemars(
+        description = "Optional, best-effort usage metadata self-reported by the calling harness: the model driving this call. MCP has no standard field for this, so it is never inferred — only recorded if you pass it."
+    )]
+    model: Option<String>,
+    #[schemars(
+        description = "Optional, best-effort self-reported token count for this call. Not measured by klayer."
+    )]
+    tokens_used: Option<i64>,
+    #[schemars(
+        description = "Optional, best-effort self-reported cost for this call. Not measured by klayer."
+    )]
+    cost: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -103,11 +170,69 @@ struct ProposeParams {
     #[schemars(description = "For rules: 'info' | 'warn' | 'block'.")]
     severity: Option<String>,
     remediation: Option<String>,
+    identity: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct DomainPermissionParams {
+    identity: String,
+    domain: String,
+    allowed: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct IdParams {
     id: i64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct IngestMediaParams {
+    #[schemars(description = "Base64-encoded raw image bytes.")]
+    data_base64: String,
+    #[schemars(
+        description = "Image MIME type — only 'image/png', 'image/jpeg', 'image/webp', 'image/gif' are accepted in this stage. Video is not supported."
+    )]
+    mime_type: String,
+    #[schemars(description = "Optional caption/description for the image.")]
+    caption: Option<String>,
+    #[schemars(
+        description = "Optional knowledge item id to attach this media to immediately. If given, the media inherits that item's current trust tier."
+    )]
+    knowledge_id: Option<i64>,
+    #[schemars(
+        description = "Optional domain to file standalone media under when not attaching to a knowledge item yet. Standalone media has no trust tier until attach_media links it. Ignored if knowledge_id is given."
+    )]
+    domain: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct AttachMediaParams {
+    #[schemars(description = "The media_id returned by ingest_media.")]
+    media_id: i64,
+    #[schemars(
+        description = "The knowledge item to attach this media to; the media inherits this item's current trust tier."
+    )]
+    knowledge_id: i64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ListMediaParams {
+    #[schemars(description = "Filter to media filed under this domain (standalone media only).")]
+    domain: Option<String>,
+    #[schemars(description = "Filter to media attached to this knowledge item.")]
+    knowledge_id: Option<i64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ConflictListParams {
+    domain: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ConflictResolveParams {
+    id: i64,
+    #[schemars(description = "keep | accept | merge")]
+    action: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -123,6 +248,27 @@ struct RegisterDomainParams {
     description: Option<String>,
     #[schemars(description = "Authored, validated guidance on how to query this domain.")]
     query_hint: Option<String>,
+    #[schemars(
+        description = "If true, this domain's enforceable knowledge is presented with mandatory-compliance framing by recall(), and execute_change() refuses actions against it without a prior recall() in the same run (unless override:true). Omit to leave the current value unchanged (default false on first registration)."
+    )]
+    enforced: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ExecuteChangeParams {
+    #[schemars(description = "Domain the change is being executed against.")]
+    domain: String,
+    #[schemars(
+        description = "The run's id (same run_id used across recall/remember/propose calls in this agentic run)."
+    )]
+    run_id: String,
+    #[schemars(description = "Free-text description of the change being executed.")]
+    action: String,
+    #[schemars(
+        description = "Self-documenting escape hatch: bypass the enforced-domain precondition gate. Still logged (and surfaced in compliance reports) as an override."
+    )]
+    #[serde(rename = "override")]
+    override_: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -158,6 +304,59 @@ struct ListSourcesParams {
 struct ListEpisodesParams {
     #[schemars(description = "Filter by run_id. Omit to list all recent episodes.")]
     run_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ExplainabilityParams {
+    #[schemars(description = "Optional run ID; omit to export all recent runs.")]
+    run_id: Option<String>,
+    #[schemars(
+        description = "Output format: \"json\" (default, reverse-explainability-v1 episode/knowledge_ids join) or \"pdf\" (compliance-report PDF, base64-encoded in a blob resource)."
+    )]
+    format: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ModelRegistryParams {
+    #[schemars(
+        description = "\"add_model\" | \"add_sub_agent\" | \"add_routing_rule\" | \"update\" | \"remove\"."
+    )]
+    action: String,
+    harness: String,
+    model_id: String,
+    capability_tier: String,
+    cost_weight: f64,
+    sub_agent_name: Option<String>,
+    #[schemars(
+        description = "Only for add_routing_rule (required), or remove targeting a routing rule (required together with task_type/complexity_tier — their presence is what tells remove to delete a routing_rules row instead of a model_registry row)."
+    )]
+    domain_type: Option<String>,
+    #[schemars(description = "Only for add_routing_rule / a routing-rule remove.")]
+    task_type: Option<String>,
+    #[schemars(description = "Only for add_routing_rule / a routing-rule remove.")]
+    complexity_tier: Option<String>,
+    #[schemars(
+        description = "First call must omit this (or pass false) to get a preview; only confirm=true persists the change."
+    )]
+    confirm: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ComplexityParams {
+    #[schemars(
+        description = "Calling harness (e.g. 'claude-code', 'cursor'). Optional — defaults to the harness captured from this connection's MCP clientInfo handshake, if any. Pass explicitly when a harness proxies for multiple sub-tools that should be routed differently."
+    )]
+    harness: Option<String>,
+    domain_type: String,
+    task_type: String,
+    #[schemars(
+        description = "Domain to use as the greenfield/domain-derived complexity signal when no codebase-derived signal is available. Ignored once files>0 for the resolved codebase-derived source."
+    )]
+    domain: Option<String>,
+    #[schemars(
+        description = "Canonical path or friendly name of a specific indexed repo (as shown by list_repos) to scope the codebase-derived complexity signal to. Omit to use global stats across every indexed repo (today's default behavior)."
+    )]
+    repo: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -320,6 +519,10 @@ struct LogWorkParams {
         description = "Optional detail: what, why, and any lesson to carry forward into future sessions."
     )]
     body: Option<String>,
+    #[schemars(
+        description = "Mark this entry as a durable decision checkpoint included in full_session_summary recall."
+    )]
+    is_checkpoint: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -334,6 +537,10 @@ struct RecallSessionParams {
     kind: Option<String>,
     #[schemars(description = "Max entries to return (default 30).")]
     k: Option<u32>,
+    #[schemars(
+        description = "Recall mode: 'recent_context' (default) or 'full_session_summary' (decision checkpoints across the session)."
+    )]
+    mode: Option<String>,
 }
 
 // ----- MCP helpers ---------------------------------------------------------
@@ -351,11 +558,177 @@ fn text_ok(s: impl Into<String>) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::success(vec![Content::text(s.into())]))
 }
 
+/// Resolve the harness `estimate_task_complexity` should use: an explicit
+/// caller-supplied value always wins (e.g. a harness proxying multiple
+/// sub-tools), otherwise fall back to the harness captured from this
+/// connection's MCP `initialize` handshake, if any.
+fn resolve_harness(explicit: Option<String>, captured: Option<String>) -> Option<String> {
+    explicit.or(captured)
+}
+
+/// The store-level operation `configure_model_registry` should perform for a
+/// given (already-parsed) request, decided without touching a `Store` so the
+/// action/param validation and the model-vs-routing-rule disambiguation for
+/// `remove` are unit-testable on their own.
+#[derive(Debug, PartialEq)]
+enum ModelRegistryAction {
+    UpsertModel,
+    AddRoutingRule {
+        domain_type: String,
+        task_type: String,
+        complexity_tier: String,
+    },
+    RemoveRoutingRule {
+        domain_type: String,
+        task_type: String,
+        complexity_tier: String,
+    },
+    RemoveModel,
+}
+
+/// `remove` has no dedicated target field: whether `domain_type`/`task_type`/
+/// `complexity_tier` were supplied is what disambiguates a `routing_rules`
+/// deletion from a `model_registry` deletion, so the caller doesn't have to
+/// keep a separate discriminator in sync with the params they already
+/// supplied. Partial routing-rule params are rejected rather than silently
+/// falling back to a model delete.
+fn plan_model_registry_action(p: &ModelRegistryParams) -> Result<ModelRegistryAction, String> {
+    if !matches!(
+        p.action.as_str(),
+        "add_model" | "add_sub_agent" | "add_routing_rule" | "update" | "remove"
+    ) {
+        return Err(
+            "action must be add_model, add_sub_agent, add_routing_rule, update, or remove".into(),
+        );
+    }
+    if p.action == "add_sub_agent" && p.sub_agent_name.as_deref().unwrap_or("").is_empty() {
+        return Err("add_sub_agent requires a non-empty sub_agent_name".into());
+    }
+
+    let routing_rule_shaped =
+        p.domain_type.is_some() || p.task_type.is_some() || p.complexity_tier.is_some();
+
+    if p.action == "add_routing_rule" {
+        return match (&p.domain_type, &p.task_type, &p.complexity_tier) {
+            (Some(d), Some(t), Some(c)) => Ok(ModelRegistryAction::AddRoutingRule {
+                domain_type: d.clone(),
+                task_type: t.clone(),
+                complexity_tier: c.clone(),
+            }),
+            _ => {
+                Err("add_routing_rule requires domain_type, task_type, and complexity_tier".into())
+            }
+        };
+    }
+
+    if p.action == "remove" {
+        if routing_rule_shaped {
+            return match (&p.domain_type, &p.task_type, &p.complexity_tier) {
+                (Some(d), Some(t), Some(c)) => Ok(ModelRegistryAction::RemoveRoutingRule {
+                    domain_type: d.clone(),
+                    task_type: t.clone(),
+                    complexity_tier: c.clone(),
+                }),
+                _ => Err(
+                    "remove of a routing rule requires domain_type, task_type, and complexity_tier together"
+                        .into(),
+                ),
+            };
+        }
+        return Ok(ModelRegistryAction::RemoveModel);
+    }
+
+    Ok(ModelRegistryAction::UpsertModel)
+}
+
 fn validate_label_type(label_type: &str) -> Result<(), McpError> {
     if matches!(label_type, "grounded" | "refusal") {
         Ok(())
     } else {
         Err(err("label_type must be 'grounded' or 'refusal'"))
+    }
+}
+
+/// Core of `recall`: plain retrieval plus enforced-domain imperative framing,
+/// factored out so it's testable against a bare `kl_store::Store` — no
+/// CodeStore/TrainStore/SessionStore needed. Those are libsql-backed, and
+/// libsql's process-wide one-time `sqlite3_config` call must run before any
+/// rusqlite connection is opened anywhere in the process or it fails; keeping
+/// this logic decoupled from the full `Klayer` struct sidesteps that entirely.
+fn recall_with_framing(
+    store: &Store,
+    domain: &str,
+    query: &str,
+    kind: Option<Kind>,
+    k: usize,
+) -> anyhow::Result<Vec<kl_core::RecallHit>> {
+    let mut hits = store.recall(domain, query, kind, k)?;
+    if store.domain_enforced(domain)? {
+        for h in hits.iter_mut() {
+            if h.source_kind == "knowledge" && h.enforceable {
+                h.body = format!(
+                    "MANDATORY RULE — violating this is a compliance failure: {}",
+                    h.body
+                );
+            }
+        }
+    }
+    Ok(hits)
+}
+
+/// Result of evaluating `execute_change`'s precondition gate.
+struct ExecuteChangeDecision {
+    /// Whether the change may proceed (false only for a non-overridden block).
+    allowed: bool,
+    /// Whether an override was actually needed to reach `allowed`.
+    override_used: bool,
+    /// The episode outcome this decision should be logged with.
+    outcome: &'static str,
+    observation: String,
+}
+
+/// Core of `execute_change`'s precondition gating, factored out for the same
+/// libsql-isolation reason as `recall_with_framing` above.
+fn execute_change_gate(
+    store: &Store,
+    domain: &str,
+    run_id: &str,
+    override_flag: bool,
+) -> anyhow::Result<ExecuteChangeDecision> {
+    let enforced = store.domain_enforced(domain)?;
+    let has_prior_recall = store.has_prior_recall(run_id, domain)?;
+    let gated = enforced && !has_prior_recall;
+
+    if gated && !override_flag {
+        return Ok(ExecuteChangeDecision {
+            allowed: false,
+            override_used: false,
+            outcome: "blocked",
+            observation: format!(
+                "blocked: enforced domain '{domain}' has no prior recall() in run '{run_id}'"
+            ),
+        });
+    }
+
+    // A gated override still executes but is logged with outcome="override"
+    // (rather than "success") so compliance reporting can surface every
+    // bypass of the recall precondition, even when it was intentional.
+    if gated {
+        Ok(ExecuteChangeDecision {
+            allowed: true,
+            override_used: true,
+            outcome: "override",
+            observation: format!(
+                "override=true bypassed missing-recall precondition for enforced domain '{domain}'"
+            ),
+        })
+    } else {
+        Ok(ExecuteChangeDecision {
+            allowed: true,
+            override_used: false,
+            outcome: "success",
+            observation: format!("executed change in domain '{domain}'"),
+        })
     }
 }
 
@@ -434,6 +807,7 @@ struct DashState {
     store: Arc<Store>,
     code_store: Arc<CodeStore>,
     train_store: Arc<TrainStore>,
+    session_store: Arc<SessionStore>,
     html: &'static str,
 }
 
@@ -452,6 +826,12 @@ impl axum::extract::FromRef<DashState> for Arc<CodeStore> {
 impl axum::extract::FromRef<DashState> for Arc<TrainStore> {
     fn from_ref(s: &DashState) -> Self {
         s.train_store.clone()
+    }
+}
+
+impl axum::extract::FromRef<DashState> for Arc<SessionStore> {
+    fn from_ref(s: &DashState) -> Self {
+        s.session_store.clone()
     }
 }
 
@@ -553,13 +933,15 @@ async fn dash_marketplace_apply(
 async fn dash_marketplace_templates() -> Json<serde_json::Value> {
     let list = load_marketplace_templates()
         .iter()
-        .map(|t| serde_json::json!({
-            "slug": t.slug,
-            "description": t.description,
-            "query_hint": t.query_hint,
-            "author": t.author,
-            "item_count": t.items.len(),
-        }))
+        .map(|t| {
+            serde_json::json!({
+                "slug": t.slug,
+                "description": t.description,
+                "query_hint": t.query_hint,
+                "author": t.author,
+                "item_count": t.items.len(),
+            })
+        })
         .collect::<Vec<_>>();
     Json(serde_json::json!(list))
 }
@@ -578,6 +960,7 @@ fn apply_marketplace_template(
         &template.slug,
         Some(&template.description),
         Some(&template.query_hint),
+        None,
     )?;
 
     let marketplace_uri = format!("marketplace://{}", template.slug);
@@ -712,15 +1095,238 @@ async fn dash_admin() -> Json<serde_json::Value> {
 async fn dash_health(State(s): State<DashState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "knowledge": s.store.list_domains().is_ok(),
-        "code":      s.code_store.stats().is_ok(),
-        "train":     s.train_store.stats().is_ok(),
+        "code":      s.code_store.stats().await.is_ok(),
+        "train":     s.train_store.stats().await.is_ok(),
+        "session":   s.session_store.list_journal(None).await.is_ok(),
     }))
+}
+
+/// Build one `/api/storage-health` entry. Factored out (pure, no store access)
+/// so it's directly unit-testable — `SyncHealthSnapshot`'s fields are all
+/// public, so tests can construct one without spinning up a real libsql store.
+fn storage_health_entry(
+    engine: &str,
+    healthy: bool,
+    sync: Option<&kl_core::SyncHealthSnapshot>,
+) -> serde_json::Value {
+    match sync {
+        Some(s) => serde_json::json!({ "engine": engine, "healthy": healthy, "sync": s }),
+        None => serde_json::json!({ "engine": engine, "healthy": healthy }),
+    }
+}
+
+/// Per-database storage health: `kl-store` (rusqlite, no replica — reachability
+/// is the whole story) plus the three libsql-backed stores, each surfacing its
+/// Stage A `SyncHealth` snapshot (last successful sync, consecutive failures,
+/// cumulative fallback-to-local-only events).
+async fn dash_storage_health(State(s): State<DashState>) -> Json<serde_json::Value> {
+    let code_health = s.code_store.health();
+    let train_health = s.train_store.health();
+    let session_health = s.session_store.health();
+    Json(serde_json::json!({
+        "kl_store": storage_health_entry("sqlite", s.store.list_domains().is_ok(), None),
+        "kl_code": storage_health_entry(
+            "libsql",
+            s.code_store.stats().await.is_ok(),
+            Some(&code_health),
+        ),
+        "kl_train": storage_health_entry(
+            "libsql",
+            s.train_store.stats().await.is_ok(),
+            Some(&train_health),
+        ),
+        "kl_session": storage_health_entry(
+            "libsql",
+            s.session_store.list_journal(None).await.is_ok(),
+            Some(&session_health),
+        ),
+    }))
+}
+
+async fn dash_conflicts(
+    State(store): State<Arc<Store>>,
+    Query(q): Query<ApiDomainFilter>,
+) -> Json<serde_json::Value> {
+    match store.list_conflicts(q.domain.as_deref()) {
+        Ok(rows) => Json(serde_json::json!(rows)),
+        Err(e) => Json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+async fn dash_explainability(
+    State(store): State<Arc<Store>>,
+    Query(q): Query<ExplainabilityParams>,
+) -> Response {
+    if q.format.as_deref() == Some("pdf") {
+        let report = match compliance::build_compliance_report(&store, q.run_id.as_deref()) {
+            Ok(r) => r,
+            Err(e) => {
+                return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                    .into_response()
+            }
+        };
+        return match compliance::render_compliance_pdf(&report) {
+            Ok(bytes) => (
+                [
+                    (header::CONTENT_TYPE, "application/pdf".to_string()),
+                    (
+                        header::CONTENT_DISPOSITION,
+                        format!(
+                            "attachment; filename=\"compliance-report{}.pdf\"",
+                            q.run_id
+                                .as_deref()
+                                .map(|r| format!("-{r}"))
+                                .unwrap_or_default()
+                        ),
+                    ),
+                ],
+                bytes,
+            )
+                .into_response(),
+            Err(e) => {
+                (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            }
+        };
+    }
+    match store.list_episodes(q.run_id.as_deref()) {
+        Ok(episodes) => Json(
+            serde_json::json!({"run_id": q.run_id, "episodes": episodes, "format": "reverse-explainability-v1"}),
+        )
+        .into_response(),
+        Err(e) => Json(serde_json::json!({"error": e.to_string()})).into_response(),
+    }
+}
+
+/// Per-day cost/token rollup entry for `/api/usage`'s `daily_usage` trend.
+/// `episodes_with_cost`/`episodes_with_tokens` count only episodes that
+/// self-reported that field (most won't — see `log_episode_auto` doc comment
+/// on why this is best-effort, not measured).
+#[derive(Debug, Default, serde::Serialize)]
+struct DailyUsage {
+    tokens_used: i64,
+    cost: f64,
+    episodes_with_tokens: i64,
+    episodes_with_cost: i64,
+}
+
+/// Build `/api/usage`'s JSON body from a set of episodes. Factored out (pure)
+/// so the by_action/by_outcome/daily cost-token rollup is unit-testable
+/// without a `Store`.
+fn usage_rollup(rows: &[EpisodeRow]) -> serde_json::Value {
+    let mut by_action = std::collections::BTreeMap::<String, i64>::new();
+    let mut by_outcome = std::collections::BTreeMap::<String, i64>::new();
+    let mut daily = std::collections::BTreeMap::<String, DailyUsage>::new();
+    let mut total_tokens: i64 = 0;
+    let mut total_cost: f64 = 0.0;
+    for row in rows {
+        *by_action
+            .entry(row.action.clone().unwrap_or_else(|| "unknown".into()))
+            .or_default() += 1;
+        *by_outcome
+            .entry(row.outcome.clone().unwrap_or_else(|| "unknown".into()))
+            .or_default() += 1;
+
+        let day = chrono::DateTime::from_timestamp(row.ts, 0)
+            .map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "unknown".into());
+        let entry = daily.entry(day).or_default();
+        if let Some(t) = row.tokens_used {
+            entry.tokens_used += t;
+            entry.episodes_with_tokens += 1;
+            total_tokens += t;
+        }
+        if let Some(c) = row.cost {
+            entry.cost += c;
+            entry.episodes_with_cost += 1;
+            total_cost += c;
+        }
+    }
+    serde_json::json!({
+        "sample_size": rows.len(),
+        "by_action": by_action,
+        "by_outcome": by_outcome,
+        "total_tokens_used": total_tokens,
+        "total_cost": total_cost,
+        "daily_usage": daily,
+        "note": "Rollup covers the recent episode window returned by the audit API. tokens_used/cost are best-effort, self-reported by the calling harness (MCP has no standard field for this) — most episodes will not carry them."
+    })
+}
+
+/// Build `/api/model-registry`'s JSON body: entries grouped by harness, then
+/// by capability tier within it, matching how the Model Registry dashboard
+/// page (Stage H) presents the data — one long undifferentiated table isn't
+/// useful once a user has more than one harness configured.
+fn model_registry_grouped(rows: &[kl_core::ModelRegistryRow]) -> serde_json::Value {
+    let mut by_harness =
+        std::collections::BTreeMap::<String, std::collections::BTreeMap<String, Vec<_>>>::new();
+    for r in rows {
+        by_harness
+            .entry(r.harness.clone())
+            .or_default()
+            .entry(r.capability_tier.clone())
+            .or_default()
+            .push(serde_json::json!({
+                "model_id": r.model_id,
+                "cost_weight": r.cost_weight,
+                "sub_agent_name": r.sub_agent_name,
+            }));
+    }
+    let harnesses: Vec<serde_json::Value> = by_harness
+        .into_iter()
+        .map(|(harness, tiers)| serde_json::json!({"harness": harness, "tiers": tiers}))
+        .collect();
+    serde_json::json!({ "harnesses": harnesses })
+}
+
+async fn dash_model_registry(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
+    match store.list_model_registry() {
+        Ok(rows) => Json(model_registry_grouped(&rows)),
+        Err(e) => Json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+/// Build `/api/routing-rules`'s JSON body: the `domain_type` x `task_type` x
+/// `complexity_tier` matrix, grouped by harness (mirroring the Model
+/// Registry grouping above) since the matrix is only meaningful within one
+/// harness's own registry at a time.
+fn routing_rules_grouped(rows: &[kl_core::RoutingRuleRow]) -> serde_json::Value {
+    let mut by_harness = std::collections::BTreeMap::<String, Vec<_>>::new();
+    for r in rows {
+        by_harness
+            .entry(r.harness.clone())
+            .or_default()
+            .push(serde_json::json!({
+                "domain_type": r.domain_type,
+                "task_type": r.task_type,
+                "complexity_tier": r.complexity_tier,
+                "model_id": r.model_id,
+            }));
+    }
+    let harnesses: Vec<serde_json::Value> = by_harness
+        .into_iter()
+        .map(|(harness, rules)| serde_json::json!({"harness": harness, "rules": rules}))
+        .collect();
+    serde_json::json!({ "harnesses": harnesses })
+}
+
+async fn dash_routing_rules(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
+    match store.list_routing_rules() {
+        Ok(rows) => Json(routing_rules_grouped(&rows)),
+        Err(e) => Json(serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+async fn dash_usage(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
+    match store.list_episodes(None) {
+        Ok(rows) => Json(usage_rollup(&rows)),
+        Err(e) => Json(serde_json::json!({"error": e.to_string()})),
+    }
 }
 
 // ----- code store dashboard handlers ----------------------------------------
 
 async fn dash_code_stats(State(cs): State<Arc<CodeStore>>) -> Json<serde_json::Value> {
-    let s = cs.stats().unwrap_or(kl_code::CodeStats {
+    let s = cs.stats().await.unwrap_or(kl_code::CodeStats {
         repos: 0,
         files: 0,
         chunks: 0,
@@ -729,11 +1335,11 @@ async fn dash_code_stats(State(cs): State<Arc<CodeStore>>) -> Json<serde_json::V
 }
 
 async fn dash_code_repos(State(cs): State<Arc<CodeStore>>) -> Json<Vec<kl_code::RepoInfo>> {
-    Json(cs.list_repos().unwrap_or_default())
+    Json(cs.list_repos().await.unwrap_or_default())
 }
 
 async fn dash_code_clear(State(cs): State<Arc<CodeStore>>) -> Json<serde_json::Value> {
-    match cs.clear_all() {
+    match cs.clear_all().await {
         Ok(_) => Json(serde_json::json!({ "ok": true })),
         Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
     }
@@ -743,7 +1349,7 @@ async fn dash_code_repo_delete(
     State(cs): State<Arc<CodeStore>>,
     Query(q): Query<ApiCodeRepoDelete>,
 ) -> Json<serde_json::Value> {
-    match cs.forget_repo(&q.path) {
+    match cs.forget_repo(&q.path).await {
         Ok(ok) => Json(serde_json::json!({ "ok": true, "deleted": ok })),
         Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
     }
@@ -819,6 +1425,7 @@ async fn dash_code_search(
     let limit = q.limit.unwrap_or(10);
     Json(
         cs.search(&query, q.repo.as_deref(), limit)
+            .await
             .unwrap_or_default(),
     )
 }
@@ -837,12 +1444,13 @@ async fn dash_training(
 ) -> Json<Vec<kl_train::TrainingRow>> {
     Json(
         ts.list_training(q.domain.as_deref(), q.trust.as_deref())
+            .await
             .unwrap_or_default(),
     )
 }
 
 async fn dash_training_stats(State(ts): State<Arc<TrainStore>>) -> Json<serde_json::Value> {
-    let s = ts.stats().unwrap_or(kl_train::TrainStats {
+    let s = ts.stats().await.unwrap_or(kl_train::TrainStats {
         total: 0,
         proposed: 0,
         reviewed: 0,
@@ -859,7 +1467,7 @@ async fn dash_training_stats(State(ts): State<Arc<TrainStore>>) -> Json<serde_js
 }
 
 async fn dash_training_clear(State(ts): State<Arc<TrainStore>>) -> Json<serde_json::Value> {
-    match ts.clear_all() {
+    match ts.clear_all().await {
         Ok(n) => Json(serde_json::json!({ "ok": true, "deleted": n })),
         Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
     }
@@ -873,17 +1481,22 @@ struct ApiRepoFilter {
 }
 
 async fn dash_journal(
-    State(store): State<Arc<Store>>,
+    State(store): State<Arc<SessionStore>>,
     Query(q): Query<ApiRepoFilter>,
 ) -> Json<Vec<JournalRow>> {
-    Json(store.list_journal(q.repo.as_deref()).unwrap_or_default())
+    Json(
+        store
+            .list_journal(q.repo.as_deref())
+            .await
+            .unwrap_or_default(),
+    )
 }
 
 async fn dash_journal_clear(
-    State(store): State<Arc<Store>>,
+    State(store): State<Arc<SessionStore>>,
     Query(q): Query<ApiRepoFilter>,
 ) -> Json<serde_json::Value> {
-    match store.clear_journal(q.repo.as_deref()) {
+    match store.clear_journal(q.repo.as_deref()).await {
         Ok(n) => Json(serde_json::json!({ "ok": true, "deleted": n })),
         Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
     }
@@ -974,7 +1587,10 @@ async fn dash_submission_publish(
         .iter()
         .any(|s| {
             s.kind == "marketplace-template"
-                || s.uri.as_deref().map(|u| u.starts_with("marketplace://")).unwrap_or(false)
+                || s.uri
+                    .as_deref()
+                    .map(|u| u.starts_with("marketplace://"))
+                    .unwrap_or(false)
         })
     {
         return Json(serde_json::json!({
@@ -1014,9 +1630,9 @@ async fn dash_submission_publish(
         &items_json,
         Some(&author),
     ) {
-        Ok(id) => {
-            Json(serde_json::json!({ "ok": true, "id": id, "items": items.len(), "author": author }))
-        }
+        Ok(id) => Json(
+            serde_json::json!({ "ok": true, "id": id, "items": items.len(), "author": author }),
+        ),
         Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
     }
 }
@@ -1067,7 +1683,9 @@ async fn dash_author_set(
         return Json(serde_json::json!({ "ok": false, "error": "name cannot be empty" }));
     }
     if name.chars().count() > 60 {
-        return Json(serde_json::json!({ "ok": false, "error": "name too long (max 60 characters)" }));
+        return Json(
+            serde_json::json!({ "ok": false, "error": "name too long (max 60 characters)" }),
+        );
     }
     match store.set_author(name, kl_store::AUTHOR_COOLDOWN_SECS) {
         Ok(kl_store::AuthorSetOutcome::Registered) => {
@@ -1103,9 +1721,7 @@ async fn dash_submission_review(
             };
             let items: Vec<MarketplaceItem> = match serde_json::from_str(&items_json) {
                 Ok(i) => i,
-                Err(e) => {
-                    return Json(serde_json::json!({ "ok": false, "error": e.to_string() }))
-                }
+                Err(e) => return Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
             };
             let template = MarketplaceTemplate {
                 slug: row.slug.clone(),
@@ -1206,6 +1822,7 @@ struct ApiDomainUpdate {
     name: String,
     description: Option<String>,
     query_hint: Option<String>,
+    enforced: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -1230,7 +1847,12 @@ async fn dash_domain_update(
     State(store): State<Arc<Store>>,
     Json(p): Json<ApiDomainUpdate>,
 ) -> Json<serde_json::Value> {
-    ok_or_err(store.update_domain(&p.name, p.description.as_deref(), p.query_hint.as_deref()))
+    ok_or_err(store.update_domain(
+        &p.name,
+        p.description.as_deref(),
+        p.query_hint.as_deref(),
+        p.enforced,
+    ))
 }
 
 async fn dash_knowledge_update(
@@ -1252,6 +1874,7 @@ async fn start_dashboard(
     store: Arc<Store>,
     code_store: Arc<CodeStore>,
     train_store: Arc<TrainStore>,
+    session_store: Arc<SessionStore>,
     port: u16,
     html: &'static str,
 ) {
@@ -1259,32 +1882,57 @@ async fn start_dashboard(
         store,
         code_store,
         train_store,
+        session_store,
         html,
     };
     let app = Router::new()
         .route("/", get(dash_index))
         .route("/api/stats", get(dash_stats))
         .route("/api/health", get(dash_health))
+        .route("/api/storage-health", get(dash_storage_health))
         .route("/api/domains", get(dash_domains))
         .route("/api/knowledge", get(dash_knowledge))
+        .route("/api/conflicts", get(dash_conflicts))
+        .route("/api/explainability", get(dash_explainability))
+        .route("/api/usage", get(dash_usage))
+        .route("/api/model-registry", get(dash_model_registry))
+        .route("/api/routing-rules", get(dash_routing_rules))
         .route("/api/sources", get(dash_sources))
         .route("/api/episodes", get(dash_episodes))
         .route("/api/preferences", get(dash_preferences))
         .route("/api/marketplace/apply", get(dash_marketplace_apply))
-        .route("/api/marketplace/templates", get(dash_marketplace_templates))
+        .route(
+            "/api/marketplace/templates",
+            get(dash_marketplace_templates),
+        )
         .route("/api/journal", get(dash_journal))
         .route("/api/journal/clear", get(dash_journal_clear))
         .route("/api/admin", get(dash_admin))
         .route("/api/submissions", get(dash_submissions))
         .route("/api/submissions/get", get(dash_submission_get))
-        .route("/api/submissions/publish", axum::routing::post(dash_submission_publish))
-        .route("/api/submissions/review", axum::routing::post(dash_submission_review))
+        .route(
+            "/api/submissions/publish",
+            axum::routing::post(dash_submission_publish),
+        )
+        .route(
+            "/api/submissions/review",
+            axum::routing::post(dash_submission_review),
+        )
         .route("/api/submissions/export", get(dash_submission_export))
-        .route("/api/submissions/import", axum::routing::post(dash_submission_import))
+        .route(
+            "/api/submissions/import",
+            axum::routing::post(dash_submission_import),
+        )
         .route("/api/submissions/delete", get(dash_submission_delete))
         .route("/api/author", get(dash_author_get).post(dash_author_set))
-        .route("/api/domain/update", axum::routing::post(dash_domain_update))
-        .route("/api/knowledge/update", axum::routing::post(dash_knowledge_update))
+        .route(
+            "/api/domain/update",
+            axum::routing::post(dash_domain_update),
+        )
+        .route(
+            "/api/knowledge/update",
+            axum::routing::post(dash_knowledge_update),
+        )
         .route("/api/code/stats", get(dash_code_stats))
         .route("/api/code/repos", get(dash_code_repos))
         .route("/api/code/search", get(dash_code_search))
@@ -1314,7 +1962,13 @@ async fn start_dashboard(
 
 #[tool_router]
 impl Klayer {
-    fn new(store: Arc<Store>, code_store: Arc<CodeStore>, train_store: Arc<TrainStore>) -> Self {
+    fn new(
+        store: Arc<Store>,
+        code_store: Arc<CodeStore>,
+        train_store: Arc<TrainStore>,
+        session_store: Arc<SessionStore>,
+        notify: Arc<notify::NotifyState>,
+    ) -> Self {
         let session_run_id = std::env::var("KLAYER_RUN_ID").unwrap_or_else(|_| {
             let now = chrono::Utc::now();
             format!("run-{}", now.format("%Y%m%d-%H%M%S"))
@@ -1323,9 +1977,43 @@ impl Klayer {
             store,
             code_store,
             train_store,
+            session_store,
             search: Arc::from(build_search()),
             tool_router: Self::tool_router(),
             session_run_id,
+            captured_harness: Arc::new(std::sync::Mutex::new(None)),
+            notify,
+        }
+    }
+
+    /// The harness to use for `estimate_task_complexity` when the caller omits
+    /// an explicit one: the `clientInfo` captured at `initialize()` time, if any.
+    fn default_harness(&self) -> Option<String> {
+        self.captured_harness.lock().ok().and_then(|g| g.clone())
+    }
+
+    /// Fires the "knowledge conflict detected" relay trigger if inserting
+    /// knowledge row `id` flagged a conflict (see `insert_knowledge` in
+    /// kl-store, which sets `conflict_status='open'` on both sides).
+    fn notify_if_conflict(&self, id: i64) {
+        if !self.notify.handle.is_enabled() {
+            return;
+        }
+        if let Ok(Some(item)) = self.store.get_knowledge_by_id(id) {
+            if item.row.conflict_status.as_deref() == Some("open") {
+                self.notify.handle.emit(notify::RelayEvent {
+                    trigger: "knowledge_conflict".to_string(),
+                    summary: format!(
+                        "Conflict in domain '{}': #{} vs #{}",
+                        item.row.domain,
+                        id,
+                        item.row.conflict_with_id.unwrap_or(0)
+                    ),
+                    detail: item.row.title,
+                    count: 1,
+                    ts: chrono::Utc::now().timestamp(),
+                });
+            }
         }
     }
 
@@ -1333,22 +2021,45 @@ impl Klayer {
         description = "Retrieve grounded knowledge for a domain. Returns reference chunks and curated knowledge with provenance and trust. Call this BEFORE answering in a known domain."
     )]
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<CallToolResult, McpError> {
+        if !self
+            .store
+            .domain_allowed(p.identity.as_deref(), &p.domain)
+            .map_err(err)?
+        {
+            self.notify.record_denial(&p.domain);
+            return Err(err(format!(
+                "access denied for identity '{}' to domain '{}'",
+                p.identity.as_deref().unwrap_or("default"),
+                p.domain
+            )));
+        }
         let kind = p.kind.as_deref().and_then(Kind::parse);
         let k = p.k.unwrap_or(6) as usize;
-        let hits = self
-            .store
-            .recall(&p.domain, &p.query, kind, k)
-            .map_err(err)?;
+        let hits = recall_with_framing(&self.store, &p.domain, &p.query, kind, k).map_err(err)?;
         let observation = format!("returned {} hits", hits.len());
-        self.store
+        let episode_id = self
+            .store
             .log_episode_auto(
                 &self.session_run_id,
                 Some("recall"),
                 Some(&format!("recall domain={} query={}", p.domain, p.query)),
                 Some(&observation),
                 Some("success"),
+                Some(&p.domain),
+                p.model.as_deref(),
+                p.tokens_used,
+                p.cost,
             )
-            .ok();
+            .map_err(err)?;
+        let ids: Vec<i64> = hits
+            .iter()
+            .filter_map(|h| h.provenance.as_deref())
+            .filter_map(|p| p.strip_prefix("knowledge:#"))
+            .filter_map(|v| v.parse().ok())
+            .collect();
+        self.store
+            .set_episode_knowledge_ids(episode_id, &ids)
+            .map_err(err)?;
         json_ok(&hits)
     }
 
@@ -1370,6 +2081,10 @@ impl Klayer {
                 Some(&format!("search_web query={}", p.query)),
                 Some(&observation),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         json_ok(&results)
@@ -1383,6 +2098,10 @@ impl Klayer {
         &self,
         Parameters(p): Parameters<IngestParams>,
     ) -> Result<CallToolResult, McpError> {
+        if !self.store.domain_allowed(None, &p.domain).map_err(err)? {
+            self.notify.record_denial(&p.domain);
+            return Err(err(format!("domain '{}' is restricted", p.domain)));
+        }
         let fetched = kl_ingest::fetch(&p.url).await.map_err(err)?;
         let content_type = fetched.content_type.clone();
         let (title, text) = kl_ingest::extract(&fetched);
@@ -1395,6 +2114,10 @@ impl Klayer {
                     Some(&format!("ingest url={} domain={}", p.url, p.domain)),
                     Some("no extractable text"),
                     Some("error"),
+                    Some(&p.domain),
+                    p.model.as_deref(),
+                    p.tokens_used,
+                    p.cost,
                 )
                 .ok();
             return text_ok(format!("No extractable text at {}", p.url));
@@ -1415,6 +2138,10 @@ impl Klayer {
                 Some(&format!("ingest url={} domain={}", p.url, p.domain)),
                 Some(&observation),
                 Some("success"),
+                Some(&p.domain),
+                p.model.as_deref(),
+                p.tokens_used,
+                p.cost,
             )
             .ok();
         text_ok(format!(
@@ -1430,7 +2157,16 @@ impl Klayer {
         &self,
         Parameters(p): Parameters<RememberParams>,
     ) -> Result<CallToolResult, McpError> {
+        if !self
+            .store
+            .domain_allowed(p.identity.as_deref(), &p.domain)
+            .map_err(err)?
+        {
+            self.notify.record_denial(&p.domain);
+            return Err(err(format!("access denied to domain '{}'", p.domain)));
+        }
         let id = self.store.remember(&p.domain, &p.statement).map_err(err)?;
+        self.notify_if_conflict(id);
         let observation = format!("remembered fact #{} (trust=user)", id);
         self.store
             .log_episode_auto(
@@ -1442,6 +2178,10 @@ impl Klayer {
                 )),
                 Some(&observation),
                 Some("success"),
+                Some(&p.domain),
+                p.model.as_deref(),
+                p.tokens_used,
+                p.cost,
             )
             .ok();
         text_ok(format!(
@@ -1457,6 +2197,14 @@ impl Klayer {
         &self,
         Parameters(p): Parameters<ProposeParams>,
     ) -> Result<CallToolResult, McpError> {
+        if !self
+            .store
+            .domain_allowed(p.identity.as_deref(), &p.domain)
+            .map_err(err)?
+        {
+            self.notify.record_denial(&p.domain);
+            return Err(err(format!("access denied to domain '{}'", p.domain)));
+        }
         let kind = Kind::parse(&p.kind)
             .ok_or_else(|| err("kind must be 'fact', 'rule', or 'procedure'"))?;
         let id = self
@@ -1473,6 +2221,7 @@ impl Klayer {
                 None,
             )
             .map_err(err)?;
+        self.notify_if_conflict(id);
         let observation = format!("proposed candidate {} #{}", p.kind, id);
         self.store
             .log_episode_auto(
@@ -1484,6 +2233,10 @@ impl Klayer {
                 )),
                 Some(&observation),
                 Some("success"),
+                Some(&p.domain),
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(format!(
@@ -1509,6 +2262,10 @@ impl Klayer {
                 Some(&format!("promote id={}", p.id)),
                 Some(&observation),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         if ok {
@@ -1533,6 +2290,10 @@ impl Klayer {
                 Some(&format!("forget id={}", p.id)),
                 Some(&observation),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(if ok {
@@ -1563,6 +2324,10 @@ impl Klayer {
                 )),
                 Some(&observation),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(format!("Stored preference #{id} (scope={scope})."))
@@ -1582,7 +2347,12 @@ impl Klayer {
         Parameters(p): Parameters<RegisterDomainParams>,
     ) -> Result<CallToolResult, McpError> {
         self.store
-            .register_domain(&p.name, p.description.as_deref(), p.query_hint.as_deref())
+            .register_domain(
+                &p.name,
+                p.description.as_deref(),
+                p.query_hint.as_deref(),
+                p.enforced,
+            )
             .map_err(err)?;
         let observation = format!("registered/updated domain '{}'", p.name);
         self.store
@@ -1592,9 +2362,243 @@ impl Klayer {
                 Some(&format!("register_domain name={}", p.name)),
                 Some(&observation),
                 Some("success"),
+                Some(&p.name),
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(format!("Registered domain '{}'.", p.name))
+    }
+
+    #[tool(
+        description = "Precondition-gated execution: execute a change against a domain. If the domain is enforced (see register_domain) and no recall() has been logged against it earlier in this run_id, the call is refused unless override:true is passed (which is itself logged and surfaced in compliance reports). Non-enforced domains, or enforced domains with a prior recall() in this run, proceed immediately — no confirmation step."
+    )]
+    fn execute_change(
+        &self,
+        Parameters(p): Parameters<ExecuteChangeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let decision = execute_change_gate(
+            &self.store,
+            &p.domain,
+            &p.run_id,
+            p.override_.unwrap_or(false),
+        )
+        .map_err(err)?;
+
+        let action_desc = format!("execute_change domain={} action={}", p.domain, p.action);
+        self.store
+            .log_episode_auto(
+                &p.run_id,
+                Some("execute_change"),
+                Some(&action_desc),
+                Some(&decision.observation),
+                Some(decision.outcome),
+                Some(&p.domain),
+                None,
+                None,
+                None,
+            )
+            .ok();
+
+        if !decision.allowed {
+            return Err(err(format!(
+                "Refused: domain '{}' is enforced and no recall() against it has been logged in run '{}'. Call recall(domain=\"{}\", ...) first, or pass override:true (this bypass will be logged and surfaced in compliance reports).",
+                p.domain, p.run_id, p.domain
+            )));
+        }
+        text_ok(format!(
+            "Executed change in domain '{}': {}{}",
+            p.domain,
+            p.action,
+            if decision.override_used {
+                " (override used — no prior recall() in this run)"
+            } else {
+                ""
+            }
+        ))
+    }
+
+    #[tool(
+        description = "Configure opt-in domain access control for an identity. Once any permission exists for a domain, identities without an allowed row are denied."
+    )]
+    fn set_domain_permission(
+        &self,
+        Parameters(p): Parameters<DomainPermissionParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.store
+            .set_domain_permission(&p.identity, &p.domain, p.allowed)
+            .map_err(err)?;
+        self.store
+            .log_episode_auto(
+                &self.session_run_id,
+                Some("domain_acl"),
+                Some(&format!(
+                    "set_domain_permission identity={} domain={} allowed={}",
+                    p.identity, p.domain, p.allowed
+                )),
+                Some("permission updated"),
+                Some("success"),
+                Some(&p.domain),
+                None,
+                None,
+                None,
+            )
+            .ok();
+        text_ok(format!(
+            "Domain permission updated for '{}' on '{}': {}.",
+            p.identity, p.domain, p.allowed
+        ))
+    }
+
+    #[tool(
+        description = "Preview or confirm a model registry entry. The first call must omit confirmation; only confirm=true persists the change."
+    )]
+    fn configure_model_registry(
+        &self,
+        Parameters(p): Parameters<ModelRegistryParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let plan = plan_model_registry_action(&p).map_err(err)?;
+
+        let preview = serde_json::json!({
+            "action": p.action,
+            "harness": p.harness,
+            "model_id": p.model_id,
+            "capability_tier": p.capability_tier,
+            "cost_weight": p.cost_weight,
+            "sub_agent_name": p.sub_agent_name,
+            "domain_type": p.domain_type,
+            "task_type": p.task_type,
+            "complexity_tier": p.complexity_tier,
+            "confirmed": p.confirm.unwrap_or(false),
+        });
+        if !p.confirm.unwrap_or(false) {
+            return json_ok(&serde_json::json!({"preview":preview,"requires_confirmation":true}));
+        }
+
+        let result_note = match plan {
+            ModelRegistryAction::UpsertModel => {
+                self.store
+                    .configure_model(
+                        &p.harness,
+                        &p.model_id,
+                        &p.capability_tier,
+                        p.cost_weight,
+                        p.sub_agent_name.as_deref(),
+                    )
+                    .map_err(err)?;
+                "model registry updated"
+            }
+            ModelRegistryAction::AddRoutingRule {
+                domain_type,
+                task_type,
+                complexity_tier,
+            } => {
+                self.store
+                    .add_routing_rule(
+                        &p.harness,
+                        &domain_type,
+                        &task_type,
+                        &complexity_tier,
+                        &p.model_id,
+                    )
+                    .map_err(err)?;
+                "routing rule added"
+            }
+            ModelRegistryAction::RemoveRoutingRule {
+                domain_type,
+                task_type,
+                complexity_tier,
+            } => {
+                let removed = self
+                    .store
+                    .remove_routing_rule(&p.harness, &domain_type, &task_type, &complexity_tier)
+                    .map_err(err)?;
+                if removed {
+                    "routing rule removed"
+                } else {
+                    "no matching routing rule found"
+                }
+            }
+            ModelRegistryAction::RemoveModel => {
+                let removed = self
+                    .store
+                    .remove_model(&p.harness, &p.model_id, p.sub_agent_name.as_deref())
+                    .map_err(err)?;
+                if removed {
+                    "model registry entry removed"
+                } else {
+                    "no matching model registry entry found"
+                }
+            }
+        };
+
+        self.store
+            .log_episode_auto(
+                &self.session_run_id,
+                Some("model_registry"),
+                Some(&format!(
+                    "configure_model_registry action={} harness={} model={}",
+                    p.action, p.harness, p.model_id
+                )),
+                Some(result_note),
+                Some("success"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .ok();
+        json_ok(&serde_json::json!({"ok":true,"change":preview,"result":result_note}))
+    }
+
+    #[tool(
+        description = "Estimate deterministic task complexity from indexed codebase size or ingested knowledge density and return a transparent advisory model recommendation."
+    )]
+    async fn estimate_task_complexity(
+        &self,
+        Parameters(p): Parameters<ComplexityParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let harness =
+            resolve_harness(p.harness.clone(), self.default_harness()).ok_or_else(|| {
+                err(
+                    "harness was not supplied and no clientInfo harness was captured for this \
+                     connection — pass harness explicitly",
+                )
+            })?;
+        let code = match p.repo.as_deref() {
+            Some(repo) => self.code_store.stats_for_repo(repo).await.map_err(err)?,
+            None => self.code_store.stats().await.map_err(err)?,
+        };
+        let (source, signal) = if code.files > 0 {
+            ("codebase", (code.files + code.chunks / 4) as i64)
+        } else {
+            let n = p
+                .domain
+                .as_deref()
+                .map(|d| {
+                    self.store
+                        .list_knowledge(d, None, None)
+                        .map(|v| v.len())
+                        .unwrap_or(0)
+                })
+                .unwrap_or(0);
+            ("domain", n as i64)
+        };
+        let complexity = if signal >= 50 {
+            "high"
+        } else if signal >= 10 {
+            "medium"
+        } else {
+            "low"
+        };
+        let recommendation = self
+            .store
+            .recommend_model(&harness, &p.domain_type, &p.task_type, complexity)
+            .map_err(err)?;
+        json_ok(
+            &serde_json::json!({"complexity_tier":complexity,"harness":harness,"signal_source":source,"signal":signal,"repo":p.repo,"recommendation":recommendation.map(|(model,cost,reason)|serde_json::json!({"model_id":model,"cost_weight":cost,"reason":reason})),"advisory":true}),
+        )
     }
 
     #[tool(
@@ -1637,6 +2641,50 @@ impl Klayer {
     }
 
     #[tool(
+        description = "List open knowledge conflicts detected between enforceable items for explicit human review."
+    )]
+    fn list_conflicts(
+        &self,
+        Parameters(p): Parameters<ConflictListParams>,
+    ) -> Result<CallToolResult, McpError> {
+        json_ok(
+            &self
+                .store
+                .list_conflicts(p.domain.as_deref())
+                .map_err(err)?,
+        )
+    }
+
+    #[tool(description = "Resolve a knowledge conflict explicitly: keep, accept, or merge.")]
+    fn resolve_conflict(
+        &self,
+        Parameters(p): Parameters<ConflictResolveParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if !matches!(p.action.as_str(), "keep" | "accept" | "merge") {
+            return Err(err("action must be keep, accept, or merge"));
+        }
+        let ok = self.store.resolve_conflict(p.id, &p.action).map_err(err)?;
+        self.store
+            .log_episode_auto(
+                &self.session_run_id,
+                Some("conflict_resolution"),
+                Some(&format!("resolve_conflict id={} action={}", p.id, p.action)),
+                Some(if ok { "resolved" } else { "conflict not found" }),
+                Some(if ok { "success" } else { "error" }),
+                None,
+                None,
+                None,
+                None,
+            )
+            .ok();
+        text_ok(if ok {
+            format!("Conflict #{} resolved with action '{}'.", p.id, p.action)
+        } else {
+            format!("No open conflict found for #{}.", p.id)
+        })
+    }
+
+    #[tool(
         description = "List ingested sources (files/URLs) for a domain or all domains. Shows id, URI, title, fetch time, and trust."
     )]
     fn list_sources(
@@ -1656,6 +2704,41 @@ impl Klayer {
     ) -> Result<CallToolResult, McpError> {
         let rows = self.store.list_episodes(p.run_id.as_deref()).map_err(err)?;
         json_ok(&rows)
+    }
+
+    #[tool(
+        description = "Export a reverse-explainability audit artifact showing each episode step and the knowledge IDs used by recall, grouped per run with each knowledge item's trust tier, source, and approver. format=\"json\" (default) returns reverse-explainability-v1 JSON; format=\"pdf\" returns a compliance-report PDF as a base64 blob resource."
+    )]
+    fn export_explainability(
+        &self,
+        Parameters(p): Parameters<ExplainabilityParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if p.format.as_deref() == Some("pdf") {
+            let report = compliance::build_compliance_report(&self.store, p.run_id.as_deref())
+                .map_err(err)?;
+            let pdf_bytes = compliance::render_compliance_pdf(&report).map_err(err)?;
+            // MCP's Content protocol has no raw-binary content type; the closest
+            // fit is an embedded resource with `BlobResourceContents`, whose
+            // `blob` field is defined (by the MCP spec) as base64 text. rmcp
+            // exposes this via ResourceContents rather than a text-field hack.
+            let blob =
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &pdf_bytes);
+            let uri = match &p.run_id {
+                Some(rid) => format!("compliance-report-{rid}.pdf"),
+                None => "compliance-report.pdf".to_string(),
+            };
+            let resource = rmcp::model::ResourceContents::BlobResourceContents {
+                uri,
+                mime_type: Some("application/pdf".to_string()),
+                blob,
+                meta: None,
+            };
+            return Ok(CallToolResult::success(vec![Content::resource(resource)]));
+        }
+        let episodes = self.store.list_episodes(p.run_id.as_deref()).map_err(err)?;
+        json_ok(
+            &serde_json::json!({"run_id": p.run_id, "format": "reverse-explainability-v1", "episodes": episodes}),
+        )
     }
 
     #[tool(
@@ -1689,6 +2772,10 @@ impl Klayer {
                 )),
                 Some(&observation),
                 Some("success"),
+                Some(&p.domain),
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(format!(
@@ -1707,12 +2794,10 @@ impl Klayer {
         &self,
         Parameters(p): Parameters<IndexCodebaseParams>,
     ) -> Result<CallToolResult, McpError> {
-        let cs = Arc::clone(&self.code_store);
-        let path = p.path.clone();
-        let name = p.name.clone();
-        let stats = tokio::task::spawn_blocking(move || cs.index_repo(&path, name.as_deref()))
+        let stats = self
+            .code_store
+            .index_repo(&p.path, p.name.as_deref())
             .await
-            .map_err(err)?
             .map_err(err)?;
         let observation = format!(
             "indexed repo '{}': {} files, {} chunks",
@@ -1725,20 +2810,33 @@ impl Klayer {
                 Some(&format!("index_codebase path={}", p.path)),
                 Some(&observation),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
-        text_ok(format!(
-            "Indexed '{}': {} files, {} chunks ({} skipped). \
-             Use search_code() to recall any symbol or pattern.",
+        let mut message = format!(
+            "Indexed '{}': {} files, {} chunks ({} skipped).",
             p.path, stats.files, stats.chunks, stats.skipped
-        ))
+        );
+        if !stats.skip_reasons.is_empty() {
+            message.push_str("\nSkipped files:\n- ");
+            message.push_str(&stats.skip_reasons.join("\n- "));
+        }
+        if !stats.warnings.is_empty() {
+            message.push_str("\nWarnings:\n- ");
+            message.push_str(&stats.warnings.join("\n- "));
+        }
+        message.push_str("\nUse search_code() to recall any symbol or pattern.");
+        text_ok(message)
     }
 
     #[tool(
         description = "Search indexed codebases using full-text search over function names, symbols, file paths, and code content. Returns grounded snippets with exact file paths and line numbers. Always call this before answering questions about an indexed codebase — it never forgets across sessions."
     )]
     #[allow(dead_code)]
-    fn search_code(
+    async fn search_code(
         &self,
         Parameters(p): Parameters<SearchCodeParams>,
     ) -> Result<CallToolResult, McpError> {
@@ -1746,6 +2844,7 @@ impl Klayer {
         let hits = self
             .code_store
             .search(&p.query, p.repo.as_deref(), limit)
+            .await
             .map_err(err)?;
         let observation = format!("returned {} code hits", hits.len());
         self.store
@@ -1755,6 +2854,10 @@ impl Klayer {
                 Some(&format!("search_code query={}", p.query)),
                 Some(&observation),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         json_ok(&hits)
@@ -1763,19 +2866,19 @@ impl Klayer {
     #[tool(
         description = "List all indexed code repositories with their file/chunk counts and last-indexed timestamp."
     )]
-    fn list_repos(&self) -> Result<CallToolResult, McpError> {
-        let repos = self.code_store.list_repos().map_err(err)?;
+    async fn list_repos(&self) -> Result<CallToolResult, McpError> {
+        let repos = self.code_store.list_repos().await.map_err(err)?;
         json_ok(&repos)
     }
 
     #[tool(
         description = "Remove a repository from the code memory index. The path must match exactly as shown by list_repos()."
     )]
-    fn forget_repo(
+    async fn forget_repo(
         &self,
         Parameters(p): Parameters<ForgetRepoParams>,
     ) -> Result<CallToolResult, McpError> {
-        let ok = self.code_store.forget_repo(&p.path).map_err(err)?;
+        let ok = self.code_store.forget_repo(&p.path).await.map_err(err)?;
         let observation = if ok {
             format!("removed repo '{}' from codebase memory", p.path)
         } else {
@@ -1788,6 +2891,10 @@ impl Klayer {
                 Some(&format!("forget_repo path={}", p.path)),
                 Some(&observation),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         if ok {
@@ -1804,8 +2911,8 @@ impl Klayer {
         description = "Clear ALL indexed codebase memory — removes every repository, file, and chunk from the code store. Use forget_repo() to remove a single repository instead."
     )]
     #[allow(dead_code)]
-    fn clear_codebase(&self) -> Result<CallToolResult, McpError> {
-        self.code_store.clear_all().map_err(err)?;
+    async fn clear_codebase(&self) -> Result<CallToolResult, McpError> {
+        self.code_store.clear_all().await.map_err(err)?;
         self.store
             .log_episode_auto(
                 &self.session_run_id,
@@ -1813,6 +2920,10 @@ impl Klayer {
                 Some("clear_codebase"),
                 Some("codebase memory cleared"),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok("Codebase memory cleared. All indexed repositories, files, and chunks have been removed.")
@@ -1831,6 +2942,10 @@ impl Klayer {
                 Some("clear_domains"),
                 Some("all domains cleared"),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok("All domains cleared. Knowledge, sources, chunks, and domain registrations have been removed. Codebase memory and training data are unaffected.")
@@ -1849,6 +2964,10 @@ impl Klayer {
                 Some("clear_knowledge"),
                 Some("all knowledge items cleared"),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok("All knowledge items cleared. Domain registrations and sources are unaffected.")
@@ -1867,6 +2986,10 @@ impl Klayer {
                 Some("clear_sources"),
                 Some("all sources and chunks cleared"),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok("All sources and reference chunks cleared. Knowledge items and domain registrations are unaffected.")
@@ -1885,6 +3008,10 @@ impl Klayer {
                 Some("clear_episodes"),
                 Some("all episodes cleared"),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok("All episodes cleared from the audit trail. Knowledge and sources are unaffected.")
@@ -1895,7 +3022,7 @@ impl Klayer {
     #[tool(
         description = "Capture a candidate training example into the training store at trust='proposed'. Provenance must be 'teacher' (a stronger model) or 'student' (the model being trained). STUDENT rows can NEVER be promoted (model-collapse guard). Omit assistant_content to file a question-stub awaiting a teacher answer. klayer only stores rows — labeling/verification happen in a separate project."
     )]
-    fn capture_example(
+    async fn capture_example(
         &self,
         Parameters(p): Parameters<CaptureExampleParams>,
     ) -> Result<CallToolResult, McpError> {
@@ -1917,6 +3044,7 @@ impl Klayer {
                 p.retrieval_ref.as_deref(),
                 p.verify_log.as_deref(),
             )
+            .await
             .map_err(err)?;
         let observation =
             format!("captured training example #{id} (provenance={provenance}, trust=proposed)");
@@ -1930,6 +3058,10 @@ impl Klayer {
                 )),
                 Some(&observation),
                 Some("success"),
+                Some(&p.domain),
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(format!(
@@ -1941,7 +3073,7 @@ impl Klayer {
     #[tool(
         description = "Author a human-written training example. Stored at trust='user', provenance='human' — exportable immediately (no promotion needed). assistant_content is required."
     )]
-    fn author_example(
+    async fn author_example(
         &self,
         Parameters(p): Parameters<AuthorExampleParams>,
     ) -> Result<CallToolResult, McpError> {
@@ -1958,6 +3090,7 @@ impl Klayer {
                 p.retrieval_ref.as_deref(),
                 p.verify_log.as_deref(),
             )
+            .await
             .map_err(err)?;
         let observation = format!("authored training example #{id} (trust=user)");
         self.store
@@ -1967,6 +3100,10 @@ impl Klayer {
                 Some(&format!("author_example domain={}", p.domain)),
                 Some(&observation),
                 Some("success"),
+                Some(&p.domain),
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(format!(
@@ -1978,11 +3115,11 @@ impl Klayer {
     #[tool(
         description = "Validation gate for training data: promote a proposed example to 'reviewed' (exportable). REFUSES any row with provenance='student' — this is the model-collapse guard. Only teacher- and human-origin rows can become training data."
     )]
-    fn promote_example(
+    async fn promote_example(
         &self,
         Parameters(p): Parameters<IdParams>,
     ) -> Result<CallToolResult, McpError> {
-        let outcome = self.train_store.promote_example(p.id).map_err(err)?;
+        let outcome = self.train_store.promote_example(p.id).await.map_err(err)?;
         let (observation, message) = match outcome {
             PromoteOutcome::Promoted => (
                 format!("promoted training example #{} to trust=reviewed", p.id),
@@ -2004,6 +3141,10 @@ impl Klayer {
                 Some(&format!("promote_example id={}", p.id)),
                 Some(&observation),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(message)
@@ -2012,13 +3153,14 @@ impl Klayer {
     #[tool(
         description = "List training examples, newest first, optionally filtered by domain and trust ('proposed' | 'reviewed' | 'user'). Use trust='proposed' to review the worklist (including student question-stubs awaiting teacher answers)."
     )]
-    fn list_training(
+    async fn list_training(
         &self,
         Parameters(p): Parameters<ListTrainingParams>,
     ) -> Result<CallToolResult, McpError> {
         let rows = self
             .train_store
             .list_training(p.domain.as_deref(), p.trust.as_deref())
+            .await
             .map_err(err)?;
         json_ok(&rows)
     }
@@ -2026,13 +3168,14 @@ impl Klayer {
     #[tool(
         description = "Export the training dataset as chat JSONL — one '<domain>.jsonl' file per domain in out_dir. ONLY reviewed + user rows are exported (the enforcement gate); proposed rows and empty stubs are skipped. Each line is {\"messages\":[system?,user,assistant]}."
     )]
-    fn export_dataset(
+    async fn export_dataset(
         &self,
         Parameters(p): Parameters<ExportDatasetParams>,
     ) -> Result<CallToolResult, McpError> {
         let files = self
             .train_store
             .export_dataset(p.domain.as_deref(), &p.out_dir)
+            .await
             .map_err(err)?;
         let total: usize = files.iter().map(|f| f.rows).sum();
         let observation = format!(
@@ -2048,6 +3191,10 @@ impl Klayer {
                 Some(&format!("export_dataset out_dir={}", p.out_dir)),
                 Some(&observation),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         json_ok(&files)
@@ -2056,7 +3203,7 @@ impl Klayer {
     #[tool(
         description = "Capture faucet: scan the agentic audit trail for recall queries the knowledge base could not answer (<= threshold hits) and file them as proposed 'student' question-stubs for a teacher to answer later. Deduplicated against existing rows. Default threshold 0 (only zero-hit recalls)."
     )]
-    fn queue_weak(
+    async fn queue_weak(
         &self,
         Parameters(p): Parameters<QueueWeakParams>,
     ) -> Result<CallToolResult, McpError> {
@@ -2065,6 +3212,7 @@ impl Klayer {
         let n = self
             .train_store
             .queue_weak(&episodes, threshold)
+            .await
             .map_err(err)?;
         let observation = format!("queued {n} weak-query stubs (threshold={threshold})");
         self.store
@@ -2074,6 +3222,10 @@ impl Klayer {
                 Some(&format!("queue_weak threshold={threshold}")),
                 Some(&observation),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(format!("Queued {n} weak-query question-stubs (threshold={threshold}, trust=proposed, provenance=student)."))
@@ -2082,7 +3234,7 @@ impl Klayer {
     #[tool(
         description = "Coverage faucet: enumerate an EXISTING domain's curated knowledge and stages into diverse proposed 'student' question-stubs (recall / application / debugging / what's-wrong). Does NOT create or register domains — the domain must already exist. Deduplicated against existing rows."
     )]
-    fn seed_from_topics(
+    async fn seed_from_topics(
         &self,
         Parameters(p): Parameters<SeedFromTopicsParams>,
     ) -> Result<CallToolResult, McpError> {
@@ -2097,6 +3249,7 @@ impl Klayer {
         let n = self
             .train_store
             .seed_from_topics(&p.domain, p.stage.as_deref(), &knowledge, &stages)
+            .await
             .map_err(err)?;
         let observation = format!("seeded {n} topic stubs for domain '{}'", p.domain);
         self.store
@@ -2109,6 +3262,10 @@ impl Klayer {
                 )),
                 Some(&observation),
                 Some("success"),
+                Some(&p.domain),
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(format!(
@@ -2122,7 +3279,10 @@ impl Klayer {
     #[tool(
         description = "Record one curated entry into a codebase's session journal — what you accomplished ('done'), what failed ('failed'), a mistake to NEVER repeat ('avoid'), a decision made ('decision'), or a 'note'. This is durable across sessions and per-repo. Log as you work so a future session can recall_session() and not repeat your mistakes."
     )]
-    fn log_work(&self, Parameters(p): Parameters<LogWorkParams>) -> Result<CallToolResult, McpError> {
+    async fn log_work(
+        &self,
+        Parameters(p): Parameters<LogWorkParams>,
+    ) -> Result<CallToolResult, McpError> {
         const KINDS: [&str; 5] = ["done", "failed", "avoid", "decision", "note"];
         if !KINDS.contains(&p.kind.as_str()) {
             return Err(err(
@@ -2130,8 +3290,15 @@ impl Klayer {
             ));
         }
         let id = self
-            .store
-            .log_work(&p.repo, &p.kind, &p.title, p.body.as_deref())
+            .session_store
+            .log_work(
+                &p.repo,
+                &p.kind,
+                &p.title,
+                p.body.as_deref(),
+                p.is_checkpoint.unwrap_or(false),
+            )
+            .await
             .map_err(err)?;
         self.store
             .log_episode_auto(
@@ -2140,6 +3307,10 @@ impl Klayer {
                 Some(&format!("log_work repo={} kind={}", p.repo, p.kind)),
                 Some(&format!("journaled entry #{id} ({})", p.kind)),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
         text_ok(format!(
@@ -2151,14 +3322,26 @@ impl Klayer {
     #[tool(
         description = "Replay a codebase's session journal (newest first) to re-establish context at the START of a session working on an indexed repo: what was accomplished, what failed, and mistakes to avoid. ALWAYS call this before starting substantial work on a repo you have journaled before, so you do not repeat past mistakes."
     )]
-    fn recall_session(
+    async fn recall_session(
         &self,
         Parameters(p): Parameters<RecallSessionParams>,
     ) -> Result<CallToolResult, McpError> {
         let k = p.k.unwrap_or(30) as usize;
+        let mode = p.mode.as_deref().unwrap_or("recent_context");
+        if !matches!(mode, "recent_context" | "full_session_summary") {
+            return Err(err(
+                "mode must be 'recent_context' or 'full_session_summary'",
+            ));
+        }
         let rows = self
-            .store
-            .recall_session(&p.repo, p.kind.as_deref(), k)
+            .session_store
+            .recall_session(
+                &p.repo,
+                p.kind.as_deref(),
+                k,
+                mode == "full_session_summary",
+            )
+            .await
             .map_err(err)?;
         self.store
             .log_episode_auto(
@@ -2167,14 +3350,149 @@ impl Klayer {
                 Some(&format!("recall_session repo={}", p.repo)),
                 Some(&format!("returned {} journal entries", rows.len())),
                 Some("success"),
+                None,
+                None,
+                None,
+                None,
             )
             .ok();
+        json_ok(&rows)
+    }
+
+    #[tool(
+        description = "Ingest an image as a media attachment (Stage G: images only, video is out of scope). Accepts base64-encoded bytes + mime_type (image/png, image/jpeg, image/webp, image/gif). Pass knowledge_id to attach immediately (inherits that item's trust tier), or domain to store standalone (no trust tier until attach_media links it later)."
+    )]
+    fn ingest_media(
+        &self,
+        Parameters(p): Parameters<IngestMediaParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if !kl_store::media::is_allowed_mime(&p.mime_type) {
+            return Err(err(format!(
+                "unsupported mime_type '{}': only image types are accepted in this stage ({})",
+                p.mime_type,
+                kl_store::media::ALLOWED_IMAGE_MIME_TYPES.join(", ")
+            )));
+        }
+        if let Some(kid) = p.knowledge_id {
+            if self.store.get_knowledge_by_id(kid).map_err(err)?.is_none() {
+                return Err(err(format!("knowledge item #{kid} not found")));
+            }
+        }
+        let bytes = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            p.data_base64.as_bytes(),
+        )
+        .map_err(|e| err(format!("invalid base64 data: {e}")))?;
+        let path =
+            kl_store::media::write_media(&get_media_dir(), &p.mime_type, &bytes).map_err(err)?;
+        let storage_ref = path.to_string_lossy().to_string();
+        let media_id = self
+            .store
+            .insert_media(
+                &storage_ref,
+                &p.mime_type,
+                bytes.len() as i64,
+                p.caption.as_deref(),
+                p.knowledge_id,
+                p.domain.as_deref(),
+            )
+            .map_err(err)?;
+        let status = if p.knowledge_id.is_some() {
+            "attached, trust inherited from knowledge item"
+        } else {
+            "standalone, unpromoted"
+        };
+        self.store
+            .log_episode_auto(
+                &self.session_run_id,
+                Some("ingest_media"),
+                Some(&format!(
+                    "ingest_media mime_type={} bytes={}",
+                    p.mime_type,
+                    bytes.len()
+                )),
+                Some(&format!("stored media #{media_id} ({status})")),
+                Some("success"),
+                p.domain.as_deref(),
+                None,
+                None,
+                None,
+            )
+            .ok();
+        text_ok(format!(
+            "Stored media #{media_id} ({} bytes, {}) at {storage_ref} — {status}.",
+            bytes.len(),
+            p.mime_type
+        ))
+    }
+
+    #[tool(
+        description = "Attach previously-standalone media to a knowledge item; the media's trust tier is updated to inherit that item's current tier."
+    )]
+    fn attach_media(
+        &self,
+        Parameters(p): Parameters<AttachMediaParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if self
+            .store
+            .get_knowledge_by_id(p.knowledge_id)
+            .map_err(err)?
+            .is_none()
+        {
+            return Err(err(format!("knowledge item #{} not found", p.knowledge_id)));
+        }
+        let ok = self
+            .store
+            .attach_media(p.media_id, p.knowledge_id)
+            .map_err(err)?;
+        if !ok {
+            return Err(err(format!("media #{} not found", p.media_id)));
+        }
+        text_ok(format!(
+            "Attached media #{} to knowledge #{} (trust inherited).",
+            p.media_id, p.knowledge_id
+        ))
+    }
+
+    #[tool(description = "List media attachments, optionally filtered by domain or knowledge_id.")]
+    fn list_media(
+        &self,
+        Parameters(p): Parameters<ListMediaParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let rows = self
+            .store
+            .list_media(p.domain.as_deref(), p.knowledge_id)
+            .map_err(err)?;
         json_ok(&rows)
     }
 }
 
 #[tool_handler]
 impl ServerHandler for Klayer {
+    /// Overrides the SDK's default `initialize()` (which only records
+    /// `peer_info()`) so we also capture `clientInfo.name`/`version` as this
+    /// connection's harness. rmcp 0.16 gives no other hook for this: there is
+    /// no separate "on client connected" callback and no per-tool-call client
+    /// identity, so `initialize()` — called exactly once per stdio connection
+    /// — is the only place this information ever reaches the server.
+    fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<InitializeResult, McpError>> + Send + '_ {
+        let harness = format!(
+            "{}/{}",
+            request.client_info.name, request.client_info.version
+        );
+        if let Ok(mut guard) = self.captured_harness.lock() {
+            *guard = Some(harness);
+        }
+        if context.peer.peer_info().is_none() {
+            context.peer.set_peer_info(request);
+        }
+        std::future::ready(Ok(self.get_info()))
+    }
+
     #[allow(dead_code)]
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
@@ -2251,6 +3569,14 @@ fn get_klayer_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(home).join(".klayer")
 }
 
+/// Root directory media bytes are written under. `KLAYER_MEDIA_DIR` overrides;
+/// otherwise defaults alongside the other klayer state under `get_klayer_dir()`.
+fn get_media_dir() -> std::path::PathBuf {
+    std::env::var("KLAYER_MEDIA_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| get_klayer_dir().join("media"))
+}
+
 fn ensure_parent_dir(path: &str) -> Result<()> {
     if let Some(parent) = std::path::Path::new(path).parent() {
         if parent.as_os_str().len() > 0 {
@@ -2268,39 +3594,48 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
     let exe_path = std::env::current_exe()?;
     let klayer_dir = get_klayer_dir();
 
-    let (exe_str, db_str, code_db_str, train_db_str) = if cfg!(target_os = "windows") {
-        (
-            exe_path.to_string_lossy().replace("/", "\\"),
-            klayer_dir
-                .join("klayer.db")
-                .to_string_lossy()
-                .replace("/", "\\"),
-            klayer_dir
-                .join("klayer_code.db")
-                .to_string_lossy()
-                .replace("/", "\\"),
-            klayer_dir
-                .join("klayer_train.db")
-                .to_string_lossy()
-                .replace("/", "\\"),
-        )
-    } else {
-        (
-            exe_path.to_string_lossy().replace("\\", "/"),
-            klayer_dir
-                .join("klayer.db")
-                .to_string_lossy()
-                .replace("\\", "/"),
-            klayer_dir
-                .join("klayer_code.db")
-                .to_string_lossy()
-                .replace("\\", "/"),
-            klayer_dir
-                .join("klayer_train.db")
-                .to_string_lossy()
-                .replace("\\", "/"),
-        )
-    };
+    let (exe_str, db_str, code_db_str, train_db_str, session_db_str) =
+        if cfg!(target_os = "windows") {
+            (
+                exe_path.to_string_lossy().replace("/", "\\"),
+                klayer_dir
+                    .join("klayer.db")
+                    .to_string_lossy()
+                    .replace("/", "\\"),
+                klayer_dir
+                    .join("klayer_code.db")
+                    .to_string_lossy()
+                    .replace("/", "\\"),
+                klayer_dir
+                    .join("klayer_train.db")
+                    .to_string_lossy()
+                    .replace("/", "\\"),
+                klayer_dir
+                    .join("klayer_session.db")
+                    .to_string_lossy()
+                    .replace("/", "\\"),
+            )
+        } else {
+            (
+                exe_path.to_string_lossy().replace("\\", "/"),
+                klayer_dir
+                    .join("klayer.db")
+                    .to_string_lossy()
+                    .replace("\\", "/"),
+                klayer_dir
+                    .join("klayer_code.db")
+                    .to_string_lossy()
+                    .replace("\\", "/"),
+                klayer_dir
+                    .join("klayer_train.db")
+                    .to_string_lossy()
+                    .replace("\\", "/"),
+                klayer_dir
+                    .join("klayer_session.db")
+                    .to_string_lossy()
+                    .replace("\\", "/"),
+            )
+        };
 
     if print_config {
         let config = serde_json::json!({
@@ -2310,7 +3645,8 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
                     "env": {
                         "KLAYER_DB": db_str,
                         "KLAYER_CODE_DB": code_db_str,
-                        "KLAYER_TRAIN_DB": train_db_str
+                        "KLAYER_TRAIN_DB": train_db_str,
+                        "KLAYER_SESSION_DB": session_db_str
                     }
                 }
             }
@@ -2341,7 +3677,8 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
                 "env": {
                     "KLAYER_DB": db_str,
                     "KLAYER_CODE_DB": code_db_str,
-                    "KLAYER_TRAIN_DB": train_db_str
+                    "KLAYER_TRAIN_DB": train_db_str,
+                    "KLAYER_SESSION_DB": session_db_str
                 }
             });
 
@@ -2364,6 +3701,79 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
     Ok(None)
 }
 
+/// Periodic watch loop covering the two triggers with no natural call-site
+/// hook: Proposed items aging past a threshold, and Turso→SQLite fallback
+/// counter increases. Same cadence as Stage A's embedded-replica sync so the
+/// two periodic loops are easy to reason about together.
+fn spawn_notify_watch_task(
+    store: Arc<Store>,
+    code_store: Arc<CodeStore>,
+    train_store: Arc<TrainStore>,
+    session_store: Arc<SessionStore>,
+    notify: Arc<notify::NotifyState>,
+) {
+    tokio::spawn(async move {
+        let mut aging = notify::AgingTracker::default();
+        let mut fallback = notify::FallbackTracker::default();
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            let now = chrono::Utc::now().timestamp();
+
+            if let Ok(domains) = store.list_domains() {
+                for d in domains {
+                    let Ok(rows) = store.list_knowledge(&d.name, Some("proposed"), None) else {
+                        continue;
+                    };
+                    for row in rows {
+                        if aging.should_notify(
+                            row.id,
+                            row.created_at,
+                            now,
+                            notify.proposed_age_threshold_secs,
+                        ) {
+                            notify.handle.emit(notify::RelayEvent {
+                                trigger: "proposed_item_aging".to_string(),
+                                summary: format!(
+                                    "Proposed item #{} in '{}' aging past threshold",
+                                    row.id, row.domain
+                                ),
+                                detail: row.title.clone(),
+                                count: 1,
+                                ts: now,
+                            });
+                        }
+                    }
+                }
+            }
+
+            for (name, delta) in [
+                (
+                    "kl-code",
+                    fallback.delta("kl-code", code_store.health().fallback_events),
+                ),
+                (
+                    "kl-train",
+                    fallback.delta("kl-train", train_store.health().fallback_events),
+                ),
+                (
+                    "kl-session",
+                    fallback.delta("kl-session", session_store.health().fallback_events),
+                ),
+            ] {
+                if let Some(delta) = delta {
+                    notify.handle.emit(notify::RelayEvent {
+                        trigger: "sync_fallback".to_string(),
+                        summary: format!("{name} fell back to local-only storage {delta} time(s)"),
+                        detail: format!("Turso→SQLite fallback detected for {name}"),
+                        count: delta as u32,
+                        ts: now,
+                    });
+                }
+            }
+        }
+    });
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -2382,34 +3792,72 @@ async fn main() -> Result<()> {
     }
 
     let klayer_dir = get_klayer_dir();
-    let db = std::env::var("KLAYER_DB").unwrap_or_else(|_| {
-        klayer_dir.join("klayer.db").to_string_lossy().to_string()
-    });
+    let db = std::env::var("KLAYER_DB")
+        .unwrap_or_else(|_| klayer_dir.join("klayer.db").to_string_lossy().to_string());
     let code_db = std::env::var("KLAYER_CODE_DB").unwrap_or_else(|_| {
-        klayer_dir.join("klayer_code.db").to_string_lossy().to_string()
+        klayer_dir
+            .join("klayer_code.db")
+            .to_string_lossy()
+            .to_string()
     });
     let train_db = std::env::var("KLAYER_TRAIN_DB").unwrap_or_else(|_| {
-        klayer_dir.join("klayer_train.db").to_string_lossy().to_string()
+        klayer_dir
+            .join("klayer_train.db")
+            .to_string_lossy()
+            .to_string()
+    });
+    let session_db = std::env::var("KLAYER_SESSION_DB").unwrap_or_else(|_| {
+        klayer_dir
+            .join("klayer_session.db")
+            .to_string_lossy()
+            .to_string()
     });
     let port: u16 = std::env::var("KLAYER_DASHBOARD_PORT")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(7474);
 
+    // libsql performs a process-wide, one-time SQLite threading-mode config on its first
+    // connection open; rusqlite (aliased to libsql-rusqlite, see workspace Cargo.toml) shares
+    // the same underlying SQLite build, so opening a rusqlite connection first locks in a
+    // config libsql's own assertion then rejects. The libsql-backed stores must open first.
+    ensure_parent_dir(&code_db)?;
+    let code_store = Arc::new(CodeStore::open(&code_db).await?);
+    code_store.migrate().await?;
+    tracing::info!("klayer code store ready at {code_db}");
+
+    ensure_parent_dir(&train_db)?;
+    let train_store = Arc::new(TrainStore::open(&train_db).await?);
+    train_store.migrate().await?;
+    tracing::info!("klayer train store ready at {train_db}");
+
+    ensure_parent_dir(&session_db)?;
+    let session_store = Arc::new(SessionStore::open(&session_db).await?);
+    session_store.migrate().await?;
+    tracing::info!("klayer session store ready at {session_db}");
+
     ensure_parent_dir(&db)?;
     let store = Arc::new(Store::open(&db)?);
     store.migrate()?;
     tracing::info!("klayer store ready at {db}");
 
-    ensure_parent_dir(&code_db)?;
-    let code_store = Arc::new(CodeStore::open(&code_db)?);
-    code_store.migrate()?;
-    tracing::info!("klayer code store ready at {code_db}");
-
-    ensure_parent_dir(&train_db)?;
-    let train_store = Arc::new(TrainStore::open(&train_db)?);
-    train_store.migrate()?;
-    tracing::info!("klayer train store ready at {train_db}");
+    let notify_config = notify::NotifyConfig::from_env();
+    let notify_state = Arc::new(match &notify_config {
+        Some(cfg) => {
+            tracing::info!("notification relay enabled");
+            notify::NotifyState::from_config(cfg)
+        }
+        None => notify::NotifyState::disabled(),
+    });
+    if notify_config.is_some() {
+        spawn_notify_watch_task(
+            Arc::clone(&store),
+            Arc::clone(&code_store),
+            Arc::clone(&train_store),
+            Arc::clone(&session_store),
+            Arc::clone(&notify_state),
+        );
+    }
 
     let html = load_dashboard_html();
 
@@ -2418,7 +3866,7 @@ async fn main() -> Result<()> {
         tracing::info!("running in dashboard-only mode (no MCP server)");
         tracing::info!("klayer dashboard  →  http://localhost:{port}");
         eprintln!("\n  klayer dashboard  →  http://localhost:{port}\n  Press Ctrl+C to stop.\n");
-        start_dashboard(store, code_store, train_store, port, html).await;
+        start_dashboard(store, code_store, train_store, session_store, port, html).await;
         return Ok(());
     }
 
@@ -2426,14 +3874,531 @@ async fn main() -> Result<()> {
         Arc::clone(&store),
         Arc::clone(&code_store),
         Arc::clone(&train_store),
+        Arc::clone(&session_store),
         port,
         html,
     ));
     tracing::info!("klayer dashboard  →  http://localhost:{port}");
 
-    let service = Klayer::new(store, code_store, train_store)
+    let service = Klayer::new(store, code_store, train_store, session_store, notify_state)
         .serve(stdio())
         .await?;
     service.waiting().await?;
     Ok(())
+}
+
+// Stage C tests below exercise `recall_with_framing` / `execute_change_gate`
+// directly against a bare `kl_store::Store` rather than a full `Klayer` (with
+// its CodeStore/TrainStore/SessionStore). Those are libsql-backed, and
+// libsql's one-time process-wide `sqlite3_config` call must run before any
+// rusqlite connection exists anywhere in the process or it errors out — since
+// this test binary also runs kl_store-only tests (via `Store::open`) in
+// parallel threads, mixing in libsql stores here would race that global init.
+#[cfg(test)]
+mod stage_c_tests {
+    use super::*;
+
+    fn fixture() -> Store {
+        let store = Store::open(":memory:").expect("open in-memory store");
+        store.migrate().expect("migrate");
+        store
+    }
+
+    #[test]
+    fn execute_change_blocks_enforced_domain_without_prior_recall() {
+        let store = fixture();
+        store
+            .register_domain("secure-coding", None, None, Some(true))
+            .unwrap();
+
+        let decision = execute_change_gate(&store, "secure-coding", "run-blocks", false).unwrap();
+        assert!(!decision.allowed, "expected refusal without a prior recall");
+        assert_eq!(decision.outcome, "blocked");
+    }
+
+    #[test]
+    fn execute_change_allows_after_prior_recall_in_same_run() {
+        let store = fixture();
+        store
+            .register_domain("secure-coding", None, None, Some(true))
+            .unwrap();
+        store
+            .remember("secure-coding", "Always validate input.")
+            .unwrap();
+
+        let run_id = "run-allows";
+        store
+            .log_episode_auto(
+                run_id,
+                Some("recall"),
+                Some("recall domain=secure-coding query=input"),
+                Some("returned 1 hits"),
+                Some("success"),
+                Some("secure-coding"),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+        let decision = execute_change_gate(&store, "secure-coding", run_id, false).unwrap();
+        assert!(
+            decision.allowed,
+            "expected success after a prior recall in the same run"
+        );
+        assert!(!decision.override_used);
+        assert_eq!(decision.outcome, "success");
+    }
+
+    #[test]
+    fn execute_change_override_bypasses_block_and_is_logged() {
+        let store = fixture();
+        store
+            .register_domain("secure-coding", None, None, Some(true))
+            .unwrap();
+
+        let run_id = "run-override";
+        let decision = execute_change_gate(&store, "secure-coding", run_id, true).unwrap();
+        assert!(decision.allowed, "override:true must bypass the block");
+        assert!(decision.override_used);
+        assert_eq!(decision.outcome, "override");
+
+        store
+            .log_episode_auto(
+                run_id,
+                Some("execute_change"),
+                Some("execute_change domain=secure-coding action=emergency hotfix"),
+                Some(&decision.observation),
+                Some(decision.outcome),
+                Some("secure-coding"),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+        let episodes = store.list_episodes(Some(run_id)).unwrap();
+        let logged = episodes
+            .iter()
+            .find(|e| e.stage.as_deref() == Some("execute_change"))
+            .expect("execute_change episode must be logged");
+        assert_eq!(logged.outcome.as_deref(), Some("override"));
+        assert_eq!(logged.domain.as_deref(), Some("secure-coding"));
+    }
+
+    #[test]
+    fn recall_marks_enforced_domain_items_with_imperative_framing() {
+        let store = fixture();
+        store
+            .register_domain("secure-coding", None, None, Some(true))
+            .unwrap();
+        store
+            .register_domain("open-notes", None, None, Some(false))
+            .unwrap();
+        store
+            .remember("secure-coding", "Never log plaintext passwords.")
+            .unwrap();
+        store
+            .remember("open-notes", "Never log plaintext passwords.")
+            .unwrap();
+
+        let enforced_hits =
+            recall_with_framing(&store, "secure-coding", "passwords", None, 6).unwrap();
+        assert!(
+            enforced_hits.iter().any(|h| h
+                .body
+                .starts_with("MANDATORY RULE — violating this is a compliance failure:")),
+            "enforced-domain recall hits must carry imperative framing"
+        );
+
+        let open_hits = recall_with_framing(&store, "open-notes", "passwords", None, 6).unwrap();
+        assert!(
+            open_hits.iter().all(|h| !h.body.contains("MANDATORY RULE")),
+            "non-enforced domain recall hits must not carry imperative framing"
+        );
+    }
+
+    #[test]
+    fn compliance_report_surfaces_override_and_bypass_gaps() {
+        let store = fixture();
+        store
+            .register_domain("secure-coding", None, None, Some(true))
+            .unwrap();
+
+        let run_id = "run-compliance-gap";
+        let decision = execute_change_gate(&store, "secure-coding", run_id, true).unwrap();
+        assert!(decision.allowed);
+        store
+            .log_episode_auto(
+                run_id,
+                Some("execute_change"),
+                Some("execute_change domain=secure-coding action=risky change without recall"),
+                Some(&decision.observation),
+                Some(decision.outcome),
+                Some("secure-coding"),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+        let report = compliance::build_compliance_report(&store, Some(run_id)).unwrap();
+        assert!(
+            report
+                .gaps
+                .iter()
+                .any(|g| g.run_id == run_id && g.reason == "override"),
+            "compliance report must surface the override as a gap"
+        );
+    }
+}
+
+// Stage D tests. `resolve_harness` and `usage_rollup`/`storage_health_entry`
+// are pure functions with no store dependency, so they're tested directly.
+// The clientInfo capture path itself (`Klayer::initialize`) has no testable
+// hook in rmcp 0.16 short of driving a real stdio handshake through a full
+// Klayer (CodeStore/TrainStore/SessionStore, libsql) — out of reach of this
+// rusqlite-only test binary per the stage_c_tests note above — so we test the
+// fallback/default-harness resolution logic it feeds into instead.
+#[cfg(test)]
+mod stage_d_tests {
+    use super::*;
+
+    fn fixture() -> Store {
+        let store = Store::open(":memory:").expect("open in-memory store");
+        store.migrate().expect("migrate");
+        store
+    }
+
+    #[test]
+    fn resolve_harness_prefers_explicit_over_captured() {
+        assert_eq!(
+            resolve_harness(
+                Some("explicit-harness".into()),
+                Some("captured-harness".into())
+            ),
+            Some("explicit-harness".into())
+        );
+    }
+
+    #[test]
+    fn resolve_harness_falls_back_to_captured_clientinfo() {
+        assert_eq!(
+            resolve_harness(None, Some("captured-harness".into())),
+            Some("captured-harness".into())
+        );
+    }
+
+    #[test]
+    fn resolve_harness_none_when_neither_supplied() {
+        assert_eq!(resolve_harness(None, None), None);
+    }
+
+    #[test]
+    fn episodes_table_round_trips_model_tokens_cost() {
+        let store = fixture();
+        store
+            .log_episode_auto(
+                "run-tokens",
+                Some("recall"),
+                Some("recall domain=x query=y"),
+                Some("returned 2 hits"),
+                Some("success"),
+                Some("x"),
+                Some("claude-sonnet-5"),
+                Some(1234),
+                Some(0.05),
+            )
+            .unwrap();
+        let episodes = store.list_episodes(Some("run-tokens")).unwrap();
+        assert_eq!(episodes.len(), 1);
+        assert_eq!(episodes[0].model.as_deref(), Some("claude-sonnet-5"));
+        assert_eq!(episodes[0].tokens_used, Some(1234));
+        assert_eq!(episodes[0].cost, Some(0.05));
+    }
+
+    #[test]
+    fn episode_defaults_to_no_usage_metadata() {
+        let store = fixture();
+        store
+            .log_episode_auto(
+                "run-no-tokens",
+                Some("promote"),
+                Some("promote id=1"),
+                Some("promoted"),
+                Some("success"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        let episodes = store.list_episodes(Some("run-no-tokens")).unwrap();
+        assert_eq!(episodes[0].model, None);
+        assert_eq!(episodes[0].tokens_used, None);
+        assert_eq!(episodes[0].cost, None);
+    }
+
+    #[test]
+    fn usage_rollup_sums_tokens_and_cost_and_ignores_unreported_episodes() {
+        let store = fixture();
+        store
+            .log_episode_auto(
+                "run-usage",
+                Some("recall"),
+                Some("recall"),
+                Some("returned 1 hits"),
+                Some("success"),
+                Some("x"),
+                Some("model-a"),
+                Some(100),
+                Some(0.01),
+            )
+            .unwrap();
+        store
+            .log_episode_auto(
+                "run-usage",
+                Some("remember"),
+                Some("remember"),
+                Some("remembered fact #1"),
+                Some("success"),
+                Some("x"),
+                Some("model-a"),
+                Some(50),
+                Some(0.02),
+            )
+            .unwrap();
+        // No usage metadata reported — must not appear in the token/cost totals.
+        store
+            .log_episode_auto(
+                "run-usage",
+                Some("promote"),
+                Some("promote id=1"),
+                Some("promoted"),
+                Some("success"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+        let episodes = store.list_episodes(Some("run-usage")).unwrap();
+        assert_eq!(episodes.len(), 3);
+        let rollup = usage_rollup(&episodes);
+        assert_eq!(rollup["sample_size"], 3);
+        assert_eq!(rollup["total_tokens_used"], 150);
+        assert!((rollup["total_cost"].as_f64().unwrap() - 0.03).abs() < 1e-9);
+        assert_eq!(rollup["by_action"]["recall"], 1);
+        assert_eq!(rollup["by_action"]["remember"], 1);
+        assert_eq!(rollup["by_action"]["promote id=1"], 1);
+
+        let daily = rollup["daily_usage"].as_object().unwrap();
+        assert_eq!(daily.len(), 1, "all three episodes logged the same day");
+        let (_, day_entry) = daily.iter().next().unwrap();
+        assert_eq!(day_entry["tokens_used"], 150);
+        assert_eq!(day_entry["episodes_with_tokens"], 2);
+        assert_eq!(day_entry["episodes_with_cost"], 2);
+    }
+
+    #[test]
+    fn storage_health_entry_kl_store_has_no_sync_field() {
+        let v = storage_health_entry("sqlite", true, None);
+        assert_eq!(v["engine"], "sqlite");
+        assert_eq!(v["healthy"], true);
+        assert!(v.get("sync").is_none());
+    }
+
+    #[test]
+    fn storage_health_entry_libsql_surfaces_sync_snapshot() {
+        let snap = kl_core::SyncHealthSnapshot {
+            remote_configured: true,
+            last_success_at: Some(1_700_000_000),
+            consecutive_failures: 2,
+            fallback_events: 5,
+        };
+        let v = storage_health_entry("libsql", false, Some(&snap));
+        assert_eq!(v["engine"], "libsql");
+        assert_eq!(v["healthy"], false);
+        assert_eq!(v["sync"]["remote_configured"], true);
+        assert_eq!(v["sync"]["last_success_at"], 1_700_000_000i64);
+        assert_eq!(v["sync"]["consecutive_failures"], 2);
+        assert_eq!(v["sync"]["fallback_events"], 5);
+    }
+}
+
+// Stage E tests. `plan_model_registry_action` and the `/api/model-registry`
+// `/api/routing-rules` shape builders are pure functions with no store
+// dependency (same rationale as `resolve_harness` in stage_d_tests above),
+// so they're tested directly without a full `Klayer`/libsql instance.
+#[cfg(test)]
+mod stage_e_tests {
+    use super::*;
+
+    fn base_params(action: &str) -> ModelRegistryParams {
+        ModelRegistryParams {
+            action: action.into(),
+            harness: "claude-code".into(),
+            model_id: "opus".into(),
+            capability_tier: "heavy-reasoning".into(),
+            cost_weight: 10.0,
+            sub_agent_name: None,
+            domain_type: None,
+            task_type: None,
+            complexity_tier: None,
+            confirm: Some(true),
+        }
+    }
+
+    #[test]
+    fn add_model_plans_an_upsert() {
+        let plan = plan_model_registry_action(&base_params("add_model")).unwrap();
+        assert_eq!(plan, ModelRegistryAction::UpsertModel);
+    }
+
+    #[test]
+    fn add_sub_agent_requires_sub_agent_name() {
+        let p = base_params("add_sub_agent");
+        let e = plan_model_registry_action(&p).unwrap_err();
+        assert!(e.contains("sub_agent_name"));
+    }
+
+    #[test]
+    fn add_sub_agent_with_name_plans_an_upsert() {
+        let mut p = base_params("add_sub_agent");
+        p.sub_agent_name = Some("frontend-agent".into());
+        let plan = plan_model_registry_action(&p).unwrap();
+        assert_eq!(plan, ModelRegistryAction::UpsertModel);
+    }
+
+    #[test]
+    fn add_routing_rule_requires_all_three_routing_fields() {
+        let mut p = base_params("add_routing_rule");
+        p.domain_type = Some("frontend".into());
+        // task_type / complexity_tier left unset.
+        let e = plan_model_registry_action(&p).unwrap_err();
+        assert!(e.contains("add_routing_rule requires"));
+    }
+
+    #[test]
+    fn add_routing_rule_plans_correctly_with_all_fields() {
+        let mut p = base_params("add_routing_rule");
+        p.domain_type = Some("frontend".into());
+        p.task_type = Some("feature".into());
+        p.complexity_tier = Some("high".into());
+        let plan = plan_model_registry_action(&p).unwrap();
+        assert_eq!(
+            plan,
+            ModelRegistryAction::AddRoutingRule {
+                domain_type: "frontend".into(),
+                task_type: "feature".into(),
+                complexity_tier: "high".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn remove_without_routing_fields_targets_the_model_registry() {
+        let plan = plan_model_registry_action(&base_params("remove")).unwrap();
+        assert_eq!(plan, ModelRegistryAction::RemoveModel);
+    }
+
+    #[test]
+    fn remove_with_all_routing_fields_targets_a_routing_rule() {
+        let mut p = base_params("remove");
+        p.domain_type = Some("backend".into());
+        p.task_type = Some("crud".into());
+        p.complexity_tier = Some("low".into());
+        let plan = plan_model_registry_action(&p).unwrap();
+        assert_eq!(
+            plan,
+            ModelRegistryAction::RemoveRoutingRule {
+                domain_type: "backend".into(),
+                task_type: "crud".into(),
+                complexity_tier: "low".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn remove_with_partial_routing_fields_is_rejected_not_silently_a_model_delete() {
+        let mut p = base_params("remove");
+        p.domain_type = Some("backend".into());
+        // task_type / complexity_tier left unset.
+        let e = plan_model_registry_action(&p).unwrap_err();
+        assert!(e.contains("together"));
+    }
+
+    #[test]
+    fn unknown_action_is_rejected() {
+        let e = plan_model_registry_action(&base_params("delete")).unwrap_err();
+        assert!(e.contains("action must be"));
+    }
+
+    #[test]
+    fn model_registry_grouped_groups_by_harness_then_tier() {
+        let rows = vec![
+            kl_core::ModelRegistryRow {
+                harness: "claude-code".into(),
+                model_id: "opus".into(),
+                capability_tier: "heavy-reasoning".into(),
+                cost_weight: 10.0,
+                sub_agent_name: None,
+            },
+            kl_core::ModelRegistryRow {
+                harness: "claude-code".into(),
+                model_id: "haiku".into(),
+                capability_tier: "fast-cheap".into(),
+                cost_weight: 1.0,
+                sub_agent_name: None,
+            },
+            kl_core::ModelRegistryRow {
+                harness: "cursor".into(),
+                model_id: "gpt".into(),
+                capability_tier: "balanced".into(),
+                cost_weight: 5.0,
+                sub_agent_name: Some("frontend-agent".into()),
+            },
+        ];
+        let shaped = model_registry_grouped(&rows);
+        let harnesses = shaped["harnesses"].as_array().unwrap();
+        assert_eq!(harnesses.len(), 2);
+        let claude = harnesses
+            .iter()
+            .find(|h| h["harness"] == "claude-code")
+            .unwrap();
+        assert!(claude["tiers"]["heavy-reasoning"].as_array().unwrap().len() == 1);
+        assert!(claude["tiers"]["fast-cheap"].as_array().unwrap().len() == 1);
+        let cursor = harnesses.iter().find(|h| h["harness"] == "cursor").unwrap();
+        assert_eq!(
+            cursor["tiers"]["balanced"][0]["sub_agent_name"],
+            "frontend-agent"
+        );
+    }
+
+    #[test]
+    fn routing_rules_grouped_groups_by_harness_as_a_matrix() {
+        let rows = vec![
+            kl_core::RoutingRuleRow {
+                harness: "claude-code".into(),
+                domain_type: "frontend".into(),
+                task_type: "feature".into(),
+                complexity_tier: "high".into(),
+                model_id: "opus".into(),
+            },
+            kl_core::RoutingRuleRow {
+                harness: "claude-code".into(),
+                domain_type: "backend".into(),
+                task_type: "crud".into(),
+                complexity_tier: "low".into(),
+                model_id: "haiku".into(),
+            },
+        ];
+        let shaped = routing_rules_grouped(&rows);
+        let harnesses = shaped["harnesses"].as_array().unwrap();
+        assert_eq!(harnesses.len(), 1);
+        let rules = harnesses[0]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0]["model_id"], "opus");
+    }
 }

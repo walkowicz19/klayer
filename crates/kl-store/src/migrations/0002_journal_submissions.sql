@@ -1,19 +1,9 @@
--- klayer migration 0002 — repo-scoped session memory and the marketplace
--- publish queue. Both tables are additive and guarded by IF NOT EXISTS so this
--- migration is safe to run on top of an existing 0001 database.
-
--- Repo-scoped session memory: a curated journal the model writes to (log_work)
--- and replays at session start (recall_session) so it re-establishes context and
--- stops repeating mistakes. Distinct from the noisy auto-logged `episodes` trace.
-CREATE TABLE IF NOT EXISTS journal (
-  id    INTEGER PRIMARY KEY,
-  repo  TEXT    NOT NULL,          -- canonical repo path or friendly name
-  kind  TEXT    NOT NULL,          -- 'done'|'failed'|'avoid'|'decision'|'note'
-  title TEXT    NOT NULL,
-  body  TEXT,
-  ts    INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS journal_repo ON journal(repo, ts);
+-- klayer migration 0002 — the marketplace publish queue. Additive and guarded
+-- by IF NOT EXISTS so this migration is safe to run on top of an existing
+-- 0001 database.
+--
+-- Repo-scoped session memory (formerly the `journal` table here) now lives in
+-- its own kl-session crate/DB — see crates/kl-session/src/migrations.
 
 -- Marketplace publish queue: a user publishes a local domain, it becomes a
 -- pending submission, the admin reviews it in the dashboard and approves (append

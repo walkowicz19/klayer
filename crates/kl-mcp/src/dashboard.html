@@ -158,6 +158,11 @@
       background: var(--soft); color: var(--mute); border: 1px solid var(--hairline);
     }
     .nav-btn.active .nav-badge { background: rgba(255,255,255,.15); color: rgba(255,255,255,.75); border-color: rgba(255,255,255,.18); }
+    .nav-sub-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .04em;
+      color: var(--mute); padding: 6px 8px 2px 20px;
+    }
+    .nav-btn-sub { padding-left: 28px; }
 
     /* ── Main ── */
     .main { overflow-y: auto; padding: 28px 32px; }
@@ -479,6 +484,18 @@
       </button>
     </div>
     <div class="nav-group">
+      <div class="nav-group-label" data-i18n="navGroupTrust"></div>
+      <button class="nav-btn" data-page="trust">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L2 4v4c0 3.2 2.5 5.8 6 6.5 3.5-.7 6-3.3 6-6.5V4L8 1.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.5 8l2 2 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="navTrust"></span>
+      </button>
+      <button class="nav-btn" data-page="conflicts">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l6.5 11.5H1.5L8 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6.5v3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.6" r=".9" fill="currentColor"/></svg>
+        <span data-i18n="navConflicts"></span>
+        <span class="nav-badge" id="nb-conflicts">—</span>
+      </button>
+    </div>
+    <div class="nav-group">
       <div class="nav-group-label" data-i18n="navGroupKnowledge"></div>
       <button class="nav-btn" data-page="domains">
         <svg class="ico" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2C8 2 5.5 5 5.5 8s2.5 6 2.5 6M8 2c0 0 2.5 3 2.5 6S8 14 8 14M2 8h12" stroke="currentColor" stroke-width="1.3"/></svg>
@@ -510,11 +527,14 @@
       </button>
     </div>
     <div class="nav-group">
-      <div class="nav-group-label" data-i18n="navGroupTraining"></div>
-      <button class="nav-btn" data-page="training">
-        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 12V4M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="4" y="7" width="2.2" height="3.5" stroke="currentColor" stroke-width="1.3"/><rect x="7.5" y="5" width="2.2" height="5.5" stroke="currentColor" stroke-width="1.3"/><rect x="11" y="8" width="2.2" height="2.5" stroke="currentColor" stroke-width="1.3"/></svg>
-        <span data-i18n="navTraining"></span>
-        <span class="nav-badge" id="nb-training">—</span>
+      <div class="nav-group-label" data-i18n="navGroupObservability"></div>
+      <button class="nav-btn" data-page="usage">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 12V4M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 10l2.5-3 2 1.8L13 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span data-i18n="navUsage"></span>
+      </button>
+      <button class="nav-btn" data-page="storage-health">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="10" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.4"/><circle cx="4.5" cy="4" r=".8" fill="currentColor"/><circle cx="4.5" cy="12" r=".8" fill="currentColor"/></svg>
+        <span data-i18n="navStorageHealth"></span>
       </button>
     </div>
     <div class="nav-group">
@@ -524,9 +544,22 @@
         <span data-i18n="navMemory"></span>
         <span class="nav-badge" id="nb-episodes">—</span>
       </button>
-      <button class="nav-btn" data-page="trust">
-        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M8 1.5L2 4v4c0 3.2 2.5 5.8 6 6.5 3.5-.7 6-3.3 6-6.5V4L8 1.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5.5 8l2 2 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span data-i18n="navTrust"></span>
+      <div class="nav-sub-label" data-i18n="navModelRouting"></div>
+      <button class="nav-btn nav-btn-sub" data-page="model-registry">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
+        <span data-i18n="navModelRegistry"></span>
+      </button>
+      <button class="nav-btn nav-btn-sub" data-page="routing-rules">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="4" cy="4" r="1.1" fill="currentColor"/><circle cx="8" cy="8" r="1.1" fill="currentColor"/><circle cx="12" cy="12" r="1.1" fill="currentColor"/></svg>
+        <span data-i18n="navRoutingRules"></span>
+      </button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label" data-i18n="navGroupTraining"></div>
+      <button class="nav-btn" data-page="training">
+        <svg class="ico" viewBox="0 0 16 16" fill="none"><path d="M2 12V4M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="4" y="7" width="2.2" height="3.5" stroke="currentColor" stroke-width="1.3"/><rect x="7.5" y="5" width="2.2" height="5.5" stroke="currentColor" stroke-width="1.3"/><rect x="11" y="8" width="2.2" height="2.5" stroke="currentColor" stroke-width="1.3"/></svg>
+        <span data-i18n="navTraining"></span>
+        <span class="nav-badge" id="nb-training">—</span>
       </button>
     </div>
     <div class="nav-group">
@@ -706,6 +739,22 @@
           </tr></thead>
           <tbody id="tb-proposed"></tbody>
         </table></div>
+      </div>
+    </div>
+
+    <!-- Knowledge Conflicts -->
+    <div id="page-conflicts" class="page">
+      <div class="ph">
+        <div class="ph-title" data-i18n="navConflicts"></div>
+        <div class="ph-sub" data-i18n="phConflictsSub"></div>
+      </div>
+      <div class="card">
+        <div class="ch">
+          <span class="ch-title" data-i18n="navConflicts"></span>
+          <span class="ch-count" id="conflicts-count"></span>
+        </div>
+        <div class="cb" id="conflicts-list"></div>
+        <div id="conflicts-pager"></div>
       </div>
     </div>
 
@@ -952,6 +1001,89 @@
       </div>
     </div>
 
+    <!-- Usage & Cost -->
+    <div id="page-usage" class="page">
+      <div class="ph">
+        <div class="ph-title" data-i18n="navUsage"></div>
+        <div class="ph-sub" data-i18n="phUsageSub"></div>
+      </div>
+      <div class="code-stats-row">
+        <div class="stat accent">
+          <div class="stat-lbl" data-i18n="usageStatTokens"></div>
+          <div class="stat-val" id="us-tokens">—</div>
+          <div class="stat-hint" data-i18n="usageStatTokensHint"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl" data-i18n="usageStatCost"></div>
+          <div class="stat-val" id="us-cost">—</div>
+          <div class="stat-hint" data-i18n="usageStatCostHint"></div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl" data-i18n="usageStatSample"></div>
+          <div class="stat-val" id="us-sample">—</div>
+          <div class="stat-hint" data-i18n="usageStatSampleHint"></div>
+        </div>
+      </div>
+      <div class="card card-fw">
+        <div class="ch"><span class="ch-title" data-i18n="usageByActionTitle"></span></div>
+        <div class="cb" id="usage-by-action"></div>
+        <div id="usage-by-action-pager"></div>
+      </div>
+      <div class="card card-fw">
+        <div class="ch"><span class="ch-title" data-i18n="usageByOutcomeTitle"></span></div>
+        <div class="cb" id="usage-by-outcome"></div>
+        <div id="usage-by-outcome-pager"></div>
+      </div>
+      <div class="card">
+        <div class="ch"><span class="ch-title" data-i18n="usageDailyTitle"></span></div>
+        <div class="tw"><table>
+          <thead><tr>
+            <th data-i18n="thDate"></th><th data-i18n="usageColTokens"></th><th data-i18n="usageColCost"></th>
+          </tr></thead>
+          <tbody id="tb-usage-daily"></tbody>
+        </table></div>
+        <div id="usage-daily-pager"></div>
+      </div>
+    </div>
+
+    <!-- Storage Health -->
+    <div id="page-storage-health" class="page">
+      <div class="ph">
+        <div class="ph-title" data-i18n="navStorageHealth"></div>
+        <div class="ph-sub" data-i18n="phStorageHealthSub"></div>
+      </div>
+      <div class="card">
+        <div class="ch"><span class="ch-title" data-i18n="navStorageHealth"></span></div>
+        <div class="cb" id="storage-health-list"></div>
+      </div>
+    </div>
+
+    <!-- Model Registry -->
+    <div id="page-model-registry" class="page">
+      <div class="ph">
+        <div class="ph-title" data-i18n="navModelRegistry"></div>
+        <div class="ph-sub" data-i18n="phModelRegistrySub"></div>
+      </div>
+      <div class="card">
+        <div class="ch"><span class="ch-title" data-i18n="navModelRegistry"></span></div>
+        <div class="cb" id="model-registry-list"></div>
+        <div id="model-registry-pager"></div>
+      </div>
+    </div>
+
+    <!-- Routing Rules -->
+    <div id="page-routing-rules" class="page">
+      <div class="ph">
+        <div class="ph-title" data-i18n="navRoutingRules"></div>
+        <div class="ph-sub" data-i18n="phRoutingRulesSub"></div>
+      </div>
+      <div class="card">
+        <div class="ch"><span class="ch-title" data-i18n="navRoutingRules"></span></div>
+        <div class="cb" id="routing-rules-list"></div>
+        <div id="routing-rules-pager"></div>
+      </div>
+    </div>
+
     <!-- Submissions -->
     <div id="page-submissions" class="page">
       <div class="ph">
@@ -1143,6 +1275,34 @@ const LANGS = {
     authorEmpty: 'Author name cannot be empty.',
     authorRegistered: 'Author name registered.',
     authorUpdated: 'Author name updated.',
+    navGroupTrust: 'Trust & Governance', navGroupObservability: 'Observability',
+    navConflicts: 'Knowledge Conflicts', navUsage: 'Usage & Cost', navStorageHealth: 'Storage Health',
+    navModelRouting: 'Model Routing', navModelRegistry: 'Model Registry', navRoutingRules: 'Routing Rules',
+    phConflictsSub: 'New information that contradicts already-validated knowledge — resolve before an agent acts on stale data',
+    phUsageSub: 'Token consumption, cost, and run trends — rollups over the episode log',
+    phStorageHealthSub: 'Per-database status, sync health, and Turso fallback counters',
+    phModelRegistrySub: 'Models and sub-agents registered per harness, grouped by capability tier',
+    phRoutingRulesSub: 'The domain type x task type x complexity tier matrix used for model recommendations',
+    conflictsWithId: id => `conflicts with #${id}`,
+    conflictKeepBtn: 'Keep existing', conflictAcceptBtn: 'Accept new', conflictMergeBtn: 'Merge',
+    emptyConflicts: 'No open conflicts — all validated knowledge is consistent',
+    usageStatTokens: 'Total Tokens', usageStatTokensHint: 'self-reported, best-effort',
+    usageStatCost: 'Total Cost', usageStatCostHint: 'self-reported, best-effort',
+    usageStatSample: 'Sample Size', usageStatSampleHint: 'episodes in window',
+    usageByActionTitle: 'By Action', usageByOutcomeTitle: 'By Outcome', usageDailyTitle: 'Daily Trend',
+    usageColTokens: 'Tokens', usageColCost: 'Cost',
+    emptyUsage: 'No usage data yet',
+    thDate: 'Date',
+    storageHealthy: 'Healthy', storageUnhealthy: 'Unhealthy',
+    storageLastSync: d => `last sync ${d}`, storageFailures: n => `${n} consecutive failures`,
+    storageFallbacks: n => `${n} fallback events`,
+    emptyStorageHealth: 'No storage health data yet',
+    registrySubAgent: name => `sub-agent: ${name}`, registryCostWeight: w => `cost ${w}`,
+    emptyModelRegistry: 'No models registered yet — use configure_model_registry or the Model Registry page',
+    thDomainType: 'Domain Type', thTaskType: 'Task Type', thComplexityTier: 'Complexity Tier', thModelId: 'Model',
+    emptyRoutingRules: 'No routing rules configured yet',
+    fldEnforced: 'Enforced (mandatory rule — flagged in compliance exports)',
+    dcEnforcedBadge: 'enforced',
   },
   pt: {
     topbarSub: 'painel de conhecimento',
@@ -1290,6 +1450,34 @@ const LANGS = {
     authorEmpty: 'O nome de autor não pode ficar vazio.',
     authorRegistered: 'Nome de autor registrado.',
     authorUpdated: 'Nome de autor atualizado.',
+    navGroupTrust: 'Confiança & Governança', navGroupObservability: 'Observabilidade',
+    navConflicts: 'Conflitos de Conhecimento', navUsage: 'Uso & Custo', navStorageHealth: 'Saúde do Armazenamento',
+    navModelRouting: 'Roteamento de Modelos', navModelRegistry: 'Registro de Modelos', navRoutingRules: 'Regras de Roteamento',
+    phConflictsSub: 'Novas informações que contradizem conhecimento já validado — resolva antes que um agente aja sobre dados desatualizados',
+    phUsageSub: 'Consumo de tokens, custo e tendências de execução — agregados a partir do log de episódios',
+    phStorageHealthSub: 'Status por banco de dados, saúde de sincronização e contadores de fallback do Turso',
+    phModelRegistrySub: 'Modelos e sub-agentes registrados por harness, agrupados por nível de capacidade',
+    phRoutingRulesSub: 'A matriz tipo de domínio x tipo de tarefa x nível de complexidade usada nas recomendações de modelo',
+    conflictsWithId: id => `conflita com #${id}`,
+    conflictKeepBtn: 'Manter existente', conflictAcceptBtn: 'Aceitar novo', conflictMergeBtn: 'Mesclar',
+    emptyConflicts: 'Nenhum conflito em aberto — todo o conhecimento validado está consistente',
+    usageStatTokens: 'Total de Tokens', usageStatTokensHint: 'autorreportado, melhor esforço',
+    usageStatCost: 'Custo Total', usageStatCostHint: 'autorreportado, melhor esforço',
+    usageStatSample: 'Tamanho da Amostra', usageStatSampleHint: 'episódios na janela',
+    usageByActionTitle: 'Por Ação', usageByOutcomeTitle: 'Por Resultado', usageDailyTitle: 'Tendência Diária',
+    usageColTokens: 'Tokens', usageColCost: 'Custo',
+    emptyUsage: 'Ainda não há dados de uso',
+    thDate: 'Data',
+    storageHealthy: 'Saudável', storageUnhealthy: 'Não saudável',
+    storageLastSync: d => `última sincronização ${d}`, storageFailures: n => `${n} falhas consecutivas`,
+    storageFallbacks: n => `${n} eventos de fallback`,
+    emptyStorageHealth: 'Ainda não há dados de saúde de armazenamento',
+    registrySubAgent: name => `sub-agente: ${name}`, registryCostWeight: w => `custo ${w}`,
+    emptyModelRegistry: 'Nenhum modelo registrado ainda — use configure_model_registry ou a página Registro de Modelos',
+    thDomainType: 'Tipo de Domínio', thTaskType: 'Tipo de Tarefa', thComplexityTier: 'Nível de Complexidade', thModelId: 'Modelo',
+    emptyRoutingRules: 'Nenhuma regra de roteamento configurada ainda',
+    fldEnforced: 'Aplicado (regra obrigatória — sinalizado nas exportações de conformidade)',
+    dcEnforcedBadge: 'aplicado',
   },
   es: {
     topbarSub: 'panel de conocimiento',
@@ -1437,6 +1625,34 @@ const LANGS = {
     authorEmpty: 'El nombre de autor no puede estar vacío.',
     authorRegistered: 'Nombre de autor registrado.',
     authorUpdated: 'Nombre de autor actualizado.',
+    navGroupTrust: 'Confianza y Gobernanza', navGroupObservability: 'Observabilidad',
+    navConflicts: 'Conflictos de Conocimiento', navUsage: 'Uso y Costo', navStorageHealth: 'Salud del Almacenamiento',
+    navModelRouting: 'Enrutamiento de Modelos', navModelRegistry: 'Registro de Modelos', navRoutingRules: 'Reglas de Enrutamiento',
+    phConflictsSub: 'Información nueva que contradice conocimiento ya validado — resuelva antes de que un agente actúe sobre datos obsoletos',
+    phUsageSub: 'Consumo de tokens, costo y tendencias de ejecución — agregados del registro de episodios',
+    phStorageHealthSub: 'Estado por base de datos, salud de sincronización y contadores de fallback de Turso',
+    phModelRegistrySub: 'Modelos y sub-agentes registrados por harness, agrupados por nivel de capacidad',
+    phRoutingRulesSub: 'La matriz tipo de dominio x tipo de tarea x nivel de complejidad usada en las recomendaciones de modelo',
+    conflictsWithId: id => `conflicto con #${id}`,
+    conflictKeepBtn: 'Mantener existente', conflictAcceptBtn: 'Aceptar nuevo', conflictMergeBtn: 'Combinar',
+    emptyConflicts: 'No hay conflictos abiertos — todo el conocimiento validado es consistente',
+    usageStatTokens: 'Tokens Totales', usageStatTokensHint: 'autoinformado, mejor esfuerzo',
+    usageStatCost: 'Costo Total', usageStatCostHint: 'autoinformado, mejor esfuerzo',
+    usageStatSample: 'Tamaño de Muestra', usageStatSampleHint: 'episodios en la ventana',
+    usageByActionTitle: 'Por Acción', usageByOutcomeTitle: 'Por Resultado', usageDailyTitle: 'Tendencia Diaria',
+    usageColTokens: 'Tokens', usageColCost: 'Costo',
+    emptyUsage: 'Aún no hay datos de uso',
+    thDate: 'Fecha',
+    storageHealthy: 'Saludable', storageUnhealthy: 'No saludable',
+    storageLastSync: d => `última sincronización ${d}`, storageFailures: n => `${n} fallos consecutivos`,
+    storageFallbacks: n => `${n} eventos de fallback`,
+    emptyStorageHealth: 'Aún no hay datos de salud del almacenamiento',
+    registrySubAgent: name => `sub-agente: ${name}`, registryCostWeight: w => `costo ${w}`,
+    emptyModelRegistry: 'Aún no hay modelos registrados — use configure_model_registry o la página Registro de Modelos',
+    thDomainType: 'Tipo de Dominio', thTaskType: 'Tipo de Tarea', thComplexityTier: 'Nivel de Complejidad', thModelId: 'Modelo',
+    emptyRoutingRules: 'Aún no hay reglas de enrutamiento configuradas',
+    fldEnforced: 'Aplicado (regla obligatoria — señalada en las exportaciones de cumplimiento)',
+    dcEnforcedBadge: 'aplicado',
   },
   zh: {
     topbarSub: '知识控制台',
@@ -1584,6 +1800,34 @@ const LANGS = {
     authorEmpty: '作者名称不能为空。',
     authorRegistered: '作者名称已注册。',
     authorUpdated: '作者名称已更新。',
+    navGroupTrust: '信任与治理', navGroupObservability: '可观测性',
+    navConflicts: '知识冲突', navUsage: '用量与成本', navStorageHealth: '存储健康',
+    navModelRouting: '模型路由', navModelRegistry: '模型注册表', navRoutingRules: '路由规则',
+    phConflictsSub: '与已验证知识相矛盾的新信息 — 在智能体基于过时数据行动之前解决',
+    phUsageSub: '令牌消耗、成本与运行趋势 — 基于事件日志汇总',
+    phStorageHealthSub: '各数据库状态、同步健康度与 Turso 回退计数',
+    phModelRegistrySub: '按 harness 注册的模型与子智能体，按能力级别分组',
+    phRoutingRulesSub: '用于模型推荐的域类型 x 任务类型 x 复杂度级别矩阵',
+    conflictsWithId: id => `与 #${id} 冲突`,
+    conflictKeepBtn: '保留现有', conflictAcceptBtn: '接受新的', conflictMergeBtn: '合并',
+    emptyConflicts: '暂无未解决冲突 — 所有已验证知识一致',
+    usageStatTokens: '总令牌数', usageStatTokensHint: '自报告，尽力而为',
+    usageStatCost: '总成本', usageStatCostHint: '自报告，尽力而为',
+    usageStatSample: '样本量', usageStatSampleHint: '窗口内事件数',
+    usageByActionTitle: '按操作', usageByOutcomeTitle: '按结果', usageDailyTitle: '每日趋势',
+    usageColTokens: '令牌', usageColCost: '成本',
+    emptyUsage: '暂无用量数据',
+    thDate: '日期',
+    storageHealthy: '健康', storageUnhealthy: '不健康',
+    storageLastSync: d => `上次同步 ${d}`, storageFailures: n => `连续失败 ${n} 次`,
+    storageFallbacks: n => `回退事件 ${n} 次`,
+    emptyStorageHealth: '暂无存储健康数据',
+    registrySubAgent: name => `子智能体: ${name}`, registryCostWeight: w => `成本 ${w}`,
+    emptyModelRegistry: '尚未注册任何模型 — 请使用 configure_model_registry 或模型注册表页面',
+    thDomainType: '域类型', thTaskType: '任务类型', thComplexityTier: '复杂度级别', thModelId: '模型',
+    emptyRoutingRules: '尚未配置路由规则',
+    fldEnforced: '强制执行（强制规则 — 在合规导出中标记）',
+    dcEnforcedBadge: '强制执行',
   },
   pl: {
     topbarSub: 'panel wiedzy',
@@ -1731,6 +1975,34 @@ const LANGS = {
     authorEmpty: 'Nazwa autora nie może być pusta.',
     authorRegistered: 'Nazwa autora zarejestrowana.',
     authorUpdated: 'Nazwa autora zaktualizowana.',
+    navGroupTrust: 'Zaufanie i Zarządzanie', navGroupObservability: 'Obserwowalność',
+    navConflicts: 'Konflikty Wiedzy', navUsage: 'Użycie i Koszty', navStorageHealth: 'Kondycja Magazynu',
+    navModelRouting: 'Routing Modeli', navModelRegistry: 'Rejestr Modeli', navRoutingRules: 'Reguły Routingu',
+    phConflictsSub: 'Nowe informacje sprzeczne z już zatwierdzoną wiedzą — rozwiąż zanim agent zadziała na nieaktualnych danych',
+    phUsageSub: 'Zużycie tokenów, koszty i trendy uruchomień — zestawienia z dziennika epizodów',
+    phStorageHealthSub: 'Stan poszczególnych baz danych, kondycja synchronizacji i liczniki fallbacku Turso',
+    phModelRegistrySub: 'Modele i subagenci zarejestrowani dla każdego harnessu, pogrupowane wg poziomu możliwości',
+    phRoutingRulesSub: 'Macierz typ domeny x typ zadania x poziom złożoności używana w rekomendacjach modeli',
+    conflictsWithId: id => `konflikt z #${id}`,
+    conflictKeepBtn: 'Zachowaj istniejące', conflictAcceptBtn: 'Zaakceptuj nowe', conflictMergeBtn: 'Scal',
+    emptyConflicts: 'Brak otwartych konfliktów — cała zatwierdzona wiedza jest spójna',
+    usageStatTokens: 'Suma Tokenów', usageStatTokensHint: 'zgłaszane samodzielnie, szacunkowo',
+    usageStatCost: 'Całkowity Koszt', usageStatCostHint: 'zgłaszane samodzielnie, szacunkowo',
+    usageStatSample: 'Wielkość Próby', usageStatSampleHint: 'epizody w oknie',
+    usageByActionTitle: 'Wg Akcji', usageByOutcomeTitle: 'Wg Wyniku', usageDailyTitle: 'Trend Dzienny',
+    usageColTokens: 'Tokeny', usageColCost: 'Koszt',
+    emptyUsage: 'Brak jeszcze danych o użyciu',
+    thDate: 'Data',
+    storageHealthy: 'Sprawny', storageUnhealthy: 'Niesprawny',
+    storageLastSync: d => `ostatnia synchronizacja ${d}`, storageFailures: n => `${n} kolejnych błędów`,
+    storageFallbacks: n => `${n} zdarzeń fallback`,
+    emptyStorageHealth: 'Brak jeszcze danych o kondycji magazynu',
+    registrySubAgent: name => `subagent: ${name}`, registryCostWeight: w => `koszt ${w}`,
+    emptyModelRegistry: 'Brak jeszcze zarejestrowanych modeli — użyj configure_model_registry lub strony Rejestr Modeli',
+    thDomainType: 'Typ Domeny', thTaskType: 'Typ Zadania', thComplexityTier: 'Poziom Złożoności', thModelId: 'Model',
+    emptyRoutingRules: 'Brak jeszcze skonfigurowanych reguł routingu',
+    fldEnforced: 'Wymuszone (obowiązkowa reguła — oznaczona w eksportach zgodności)',
+    dcEnforcedBadge: 'wymuszone',
   },
 };
 
@@ -1794,7 +2066,7 @@ function setLang(code) {
 }
 
 // ── Global state ────────────────────────────────────────────────────────────
-let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [], training: [], trainStats: null, marketplaceTemplates: [], journal: [], submissions: [], isAdmin: false, author: null };
+let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [], training: [], trainStats: null, marketplaceTemplates: [], journal: [], submissions: [], isAdmin: false, author: null, conflicts: [], storageHealth: null, usage: null, modelRegistry: null, routingRules: null };
 
 // ── Filter state ─────────────────────────────────────────────────────────────
 let selectedDomainFilter = '';
@@ -1802,7 +2074,7 @@ let selectedKnowledgeDomainFilter = '';
 
 // ── Pagination state ─────────────────────────────────────────────────────────
 const PAGE_SZ = 10;
-const PAGER = { domains: 0, knowledge: 0, sources: 0, repos: 0, sessions: 0, training: 0, episodes: 0 };
+const PAGER = { domains: 0, knowledge: 0, sources: 0, repos: 0, sessions: 0, training: 0, episodes: 0, conflicts: 0, usageDaily: 0, usageByAction: 0, usageByOutcome: 0, modelRegistry: 0, routingRules: 0 };
 
 function pagerHtml(key, total) {
   const pages = Math.ceil(total / PAGE_SZ) || 1;
@@ -1823,6 +2095,12 @@ function changePage(key, delta) {
     : key==='sessions'  ? ((() => { const sel = document.getElementById('session-repo-filter'); const r = sel ? sel.value : ''; return r ? G.journal.filter(j=>j.repo===r).length : G.journal.length; })())
     : key==='training'  ? G.training.length
     : key==='episodes'  ? G.episodes.length
+    : key==='conflicts' ? (G.conflicts || []).length
+    : key==='usageDaily' ? Object.keys((G.usage && G.usage.daily_usage) || {}).length
+    : key==='usageByAction' ? Object.keys((G.usage && G.usage.by_action) || {}).length
+    : key==='usageByOutcome' ? Object.keys((G.usage && G.usage.by_outcome) || {}).length
+    : key==='modelRegistry' ? ((G.modelRegistry && G.modelRegistry.harnesses) || []).length
+    : key==='routingRules'  ? ((G.routingRules && G.routingRules.harnesses) || []).length
     : 0;
   const pages = Math.ceil(total / PAGE_SZ) || 1;
   PAGER[key] = Math.max(0, Math.min(pages - 1, PAGER[key] + delta));
@@ -1833,6 +2111,10 @@ function changePage(key, delta) {
   else if (key === 'sessions')  renderSessions();
   else if (key === 'training')  renderTraining();
   else if (key === 'episodes')  renderEpisodes();
+  else if (key === 'conflicts') renderConflicts();
+  else if (key === 'usageDaily' || key === 'usageByAction' || key === 'usageByOutcome') renderUsage();
+  else if (key === 'modelRegistry') renderModelRegistry();
+  else if (key === 'routingRules')  renderRoutingRules();
 }
 
 function populateSourcesFilter() {
@@ -2038,7 +2320,7 @@ function renderDomains() {
         return `
         <div class="dcard">
           <div id="dview-${i}" style="display:flex;flex-direction:column;flex:1">
-            <div class="dcard-name" style="cursor:pointer" onclick="editDomainInline(${i})" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="${escHtml(t('editBtn'))}">${escHtml(d.name)}</div>
+            <div class="dcard-name" style="cursor:pointer" onclick="editDomainInline(${i})" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'" title="${escHtml(t('editBtn'))}">${escHtml(d.name)}${d.enforced ? `<span class="badge b-reviewed" style="margin-left:6px;vertical-align:middle" data-i18n="dcEnforcedBadge"></span>` : ''}</div>
             <div class="dcard-desc">${escHtml(d.description||'—')}</div>
             <div class="dcard-row">
               <div class="clickable-stat" data-domain="${escHtml(d.name)}" onclick="showSourcesForDomain(this.dataset.domain)">
@@ -2061,6 +2343,10 @@ function renderDomains() {
             <div class="dcard-name" style="font-weight:700;margin-bottom:4px">${escHtml(d.name)}</div>
             ${editField(t('fldDescription'), `<textarea id="die-desc-${i}" rows="4" style="${EDIT_FIELD};resize:vertical;line-height:1.5;font-family:inherit">${escHtml(d.description||'')}</textarea>`)}
             ${editField(t('fldQueryHint'), `<textarea id="die-hint-${i}" rows="4" style="${EDIT_FIELD};resize:vertical;line-height:1.5;font-family:inherit">${escHtml(d.query_hint||'')}</textarea>`)}
+            <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--body);cursor:pointer">
+              <input type="checkbox" id="die-enforced-${i}" ${d.enforced ? 'checked' : ''}>
+              <span data-i18n="fldEnforced"></span>
+            </label>
             <div style="display:flex;gap:8px;justify-content:flex-end">
               <button class="sub-btn sub-btn-neutral" onclick="closeDomainInline(${i})">${t('cancelBtn')}</button>
               <button class="sub-btn sub-btn-primary" onclick="saveDomainInline(${i},'${encodeURIComponent(d.name)}')">${t('saveBtn')}</button>
@@ -2093,6 +2379,7 @@ async function saveDomainInline(i, nameEnc) {
     name: decodeURIComponent(nameEnc),
     description: val('die-desc-' + i),
     query_hint: val('die-hint-' + i),
+    enforced: document.getElementById('die-enforced-' + i)?.checked ?? false,
   });
   if (ok) startPolling();
 }
@@ -2253,6 +2540,213 @@ function renderTrust() {
     : `<tr><td colspan="5" class="empty">${t('emptyProposed')}</td></tr>`;
 }
 
+function resolveConflict(id, action, btn) {
+  if (btn) { btn.disabled = true; }
+  alert(`resolve_conflict(id=${id}, action="${action}")\n\nRun this MCP tool call in your Claude client to resolve this conflict.`);
+  if (btn) { btn.disabled = false; }
+}
+
+function renderConflicts() {
+  const list = document.getElementById('conflicts-list');
+  if (!list) return;
+  const conflicts = G.conflicts || [];
+  const total = conflicts.length;
+  document.getElementById('conflicts-count').textContent = t('itemsCount')(total);
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER.conflicts = Math.min(PAGER.conflicts, pages - 1);
+  const start = PAGER.conflicts * PAGE_SZ;
+  const slice = conflicts.slice(start, start + PAGE_SZ);
+  list.innerHTML = slice.length
+    ? slice.map(k => `
+        <div class="src-item" style="align-items:flex-start">
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:600;color:var(--navy)">${escHtml(k.title)}</div>
+            <div class="src-meta">${domainTag(k.domain)} · ${kindTag(k.kind)} · ${trustBadge(k.trust)} · ${t('conflictsWithId')(k.conflict_with_id ?? '—')}</div>
+            <div style="font-size:.79rem;color:var(--body);white-space:pre-wrap;margin-top:6px">${escHtml(k.body||'')}</div>
+          </div>
+          <div class="sub-actions" style="margin-left:0;flex-wrap:wrap">
+            <button class="sub-btn sub-btn-primary" onclick="resolveConflict(${k.id},'keep',this)">${t('conflictKeepBtn')}</button>
+            <button class="sub-btn sub-btn-neutral" onclick="resolveConflict(${k.id},'accept',this)">${t('conflictAcceptBtn')}</button>
+            <button class="sub-btn sub-btn-neutral" onclick="resolveConflict(${k.id},'merge',this)">${t('conflictMergeBtn')}</button>
+          </div>
+        </div>`).join('')
+    : `<div class="empty">${t('emptyConflicts')}</div>`;
+  const pagerEl = document.getElementById('conflicts-pager');
+  if (pagerEl) pagerEl.innerHTML = pagerHtml('conflicts', total);
+}
+
+function fmtCost(c) {
+  return '$' + (Number(c)||0).toFixed(4);
+}
+
+function renderUsage() {
+  const usage = G.usage;
+  const tokEl = document.getElementById('us-tokens');
+  const costEl = document.getElementById('us-cost');
+  const sampleEl = document.getElementById('us-sample');
+  if (!usage) {
+    if (tokEl) tokEl.textContent = '—';
+    if (costEl) costEl.textContent = '—';
+    if (sampleEl) sampleEl.textContent = '—';
+    return;
+  }
+  if (tokEl) tokEl.textContent = (usage.total_tokens_used ?? 0).toLocaleString();
+  if (costEl) costEl.textContent = fmtCost(usage.total_cost);
+  if (sampleEl) sampleEl.textContent = usage.sample_size ?? 0;
+
+  const byAction = document.getElementById('usage-by-action');
+  if (byAction) {
+    const allEntries = Object.entries(usage.by_action || {});
+    const total = allEntries.length;
+    const pages = Math.ceil(total / PAGE_SZ) || 1;
+    PAGER.usageByAction = Math.min(PAGER.usageByAction, pages - 1);
+    const start = PAGER.usageByAction * PAGE_SZ;
+    const entries = allEntries.slice(start, start + PAGE_SZ);
+    byAction.innerHTML = entries.length
+      ? entries.map(([k,v]) => `
+          <div class="src-item">
+            <div style="min-width:0;flex:1;font-weight:600;color:var(--navy)">${escHtml(k)}</div>
+            <div class="src-end">${v}</div>
+          </div>`).join('')
+      : `<div class="empty">${t('emptyUsage')}</div>`;
+    const pagerEl = document.getElementById('usage-by-action-pager');
+    if (pagerEl) pagerEl.innerHTML = pagerHtml('usageByAction', total);
+  }
+  const byOutcome = document.getElementById('usage-by-outcome');
+  if (byOutcome) {
+    const allEntries = Object.entries(usage.by_outcome || {});
+    const total = allEntries.length;
+    const pages = Math.ceil(total / PAGE_SZ) || 1;
+    PAGER.usageByOutcome = Math.min(PAGER.usageByOutcome, pages - 1);
+    const start = PAGER.usageByOutcome * PAGE_SZ;
+    const entries = allEntries.slice(start, start + PAGE_SZ);
+    byOutcome.innerHTML = entries.length
+      ? entries.map(([k,v]) => `
+          <div class="src-item">
+            <div style="min-width:0;flex:1;font-weight:600;color:var(--navy)">${escHtml(k)}</div>
+            <div class="src-end">${v}</div>
+          </div>`).join('')
+      : `<div class="empty">${t('emptyUsage')}</div>`;
+    const pagerEl = document.getElementById('usage-by-outcome-pager');
+    if (pagerEl) pagerEl.innerHTML = pagerHtml('usageByOutcome', total);
+  }
+  const daily = document.getElementById('tb-usage-daily');
+  if (daily) {
+    const allEntries = Object.entries(usage.daily_usage || {}).sort((a,b) => b[0].localeCompare(a[0]));
+    const total = allEntries.length;
+    const pages = Math.ceil(total / PAGE_SZ) || 1;
+    PAGER.usageDaily = Math.min(PAGER.usageDaily, pages - 1);
+    const start = PAGER.usageDaily * PAGE_SZ;
+    const entries = allEntries.slice(start, start + PAGE_SZ);
+    daily.innerHTML = entries.length
+      ? entries.map(([day, d]) => `
+          <tr>
+            <td class="td-main">${escHtml(day)}</td>
+            <td>${(d.tokens_used ?? 0).toLocaleString()}</td>
+            <td>${fmtCost(d.cost)}</td>
+          </tr>`).join('')
+      : `<tr><td colspan="3" class="empty">${t('emptyUsage')}</td></tr>`;
+    const pagerEl = document.getElementById('usage-daily-pager');
+    if (pagerEl) pagerEl.innerHTML = pagerHtml('usageDaily', total);
+  }
+}
+
+function renderStorageHealth() {
+  const list = document.getElementById('storage-health-list');
+  if (!list) return;
+  const health = G.storageHealth;
+  if (!health || health.error) {
+    list.innerHTML = `<div class="empty">${t('emptyStorageHealth')}</div>`;
+    return;
+  }
+  const entries = Object.entries(health);
+  list.innerHTML = entries.map(([db, info]) => {
+    const sync = info.sync || {};
+    const dotColor = info.healthy ? 'var(--green,#1DB87E)' : 'var(--danger,#EF4444)';
+    return `
+      <div class="src-item">
+        <div class="src-icon" style="background:${dotColor}22"><div style="width:10px;height:10px;border-radius:50%;background:${dotColor}"></div></div>
+        <div style="min-width:0;flex:1;">
+          <div style="font-weight:600;color:var(--navy)">${escHtml(db)} <span style="font-weight:400;color:var(--muted);font-size:.78rem">(${escHtml(info.engine||'—')})</span></div>
+          <div class="src-meta">
+            ${info.healthy ? t('storageHealthy') : t('storageUnhealthy')}
+            ${sync.last_success_at ? ` · ${t('storageLastSync')(fmtDate(sync.last_success_at))}` : ''}
+            ${'consecutive_failures' in sync ? ` · ${t('storageFailures')(sync.consecutive_failures ?? 0)}` : ''}
+            ${'fallback_events' in sync ? ` · ${t('storageFallbacks')(sync.fallback_events ?? 0)}` : ''}
+          </div>
+        </div>
+      </div>`;
+  }).join('') || `<div class="empty">${t('emptyStorageHealth')}</div>`;
+}
+
+function renderModelRegistry() {
+  const list = document.getElementById('model-registry-list');
+  if (!list) return;
+  const data = G.modelRegistry;
+  const allHarnesses = data && Array.isArray(data.harnesses) ? data.harnesses : [];
+  const total = allHarnesses.length;
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER.modelRegistry = Math.min(PAGER.modelRegistry, pages - 1);
+  const start = PAGER.modelRegistry * PAGE_SZ;
+  const harnesses = allHarnesses.slice(start, start + PAGE_SZ);
+  list.innerHTML = harnesses.length
+    ? harnesses.map(h => `
+        <div class="card-fw" style="margin-bottom:14px">
+          <div style="font-weight:700;color:var(--navy);margin-bottom:6px">${escHtml(h.harness)}</div>
+          ${Object.entries(h.tiers || {}).map(([tier, models]) => `
+            <div style="margin-bottom:8px">
+              <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);margin-bottom:4px">${escHtml(tier)}</div>
+              ${models.map(m => `
+                <div class="src-item">
+                  <div style="min-width:0;flex:1;">
+                    <div style="font-weight:600;color:var(--navy)">${escHtml(m.model_id)}</div>
+                    ${m.sub_agent_name ? `<div class="src-meta">${t('registrySubAgent')(escHtml(m.sub_agent_name))}</div>` : ''}
+                  </div>
+                  <div class="src-end">${t('registryCostWeight')(m.cost_weight)}</div>
+                </div>`).join('')}
+            </div>`).join('')}
+        </div>`).join('')
+    : `<div class="empty">${t('emptyModelRegistry')}</div>`;
+  const pagerEl = document.getElementById('model-registry-pager');
+  if (pagerEl) pagerEl.innerHTML = pagerHtml('modelRegistry', total);
+}
+
+function renderRoutingRules() {
+  const list = document.getElementById('routing-rules-list');
+  if (!list) return;
+  const data = G.routingRules;
+  const allHarnesses = data && Array.isArray(data.harnesses) ? data.harnesses : [];
+  const total = allHarnesses.length;
+  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  PAGER.routingRules = Math.min(PAGER.routingRules, pages - 1);
+  const start = PAGER.routingRules * PAGE_SZ;
+  const harnesses = allHarnesses.slice(start, start + PAGE_SZ);
+  list.innerHTML = harnesses.length
+    ? harnesses.map(h => `
+        <div class="card-fw" style="margin-bottom:14px">
+          <div style="font-weight:700;color:var(--navy);margin-bottom:6px">${escHtml(h.harness)}</div>
+          <div class="tw"><table>
+            <thead><tr>
+              <th data-i18n="thDomainType"></th><th data-i18n="thTaskType"></th>
+              <th data-i18n="thComplexityTier"></th><th data-i18n="thModelId"></th>
+            </tr></thead>
+            <tbody>
+              ${(h.rules || []).map(r => `
+                <tr>
+                  <td>${escHtml(r.domain_type)}</td>
+                  <td>${escHtml(r.task_type)}</td>
+                  <td>${escHtml(r.complexity_tier)}</td>
+                  <td class="td-main">${escHtml(r.model_id)}</td>
+                </tr>`).join('') || `<tr><td colspan="4" class="empty">${t('emptyRoutingRules')}</td></tr>`}
+            </tbody>
+          </table></div>
+        </div>`).join('')
+    : `<div class="empty">${t('emptyRoutingRules')}</div>`;
+  const pagerEl = document.getElementById('routing-rules-pager');
+  if (pagerEl) pagerEl.innerHTML = pagerHtml('routingRules', total);
+  applyLang(true);
+}
+
 function renderCodebase() {
   if (!G.codeStats) return;
   const s = G.codeStats;
@@ -2411,6 +2905,8 @@ function renderAll() {
   if (nbSessions) nbSessions.textContent = G.journal.length;
   const nbSubs = document.getElementById('nb-submissions');
   if (nbSubs) nbSubs.textContent = G.submissions.filter(s => s.status === 'pending').length;
+  const nbConflicts = document.getElementById('nb-conflicts');
+  if (nbConflicts) nbConflicts.textContent = G.conflicts.length;
   populateSourcesFilter();
   populateKnowledgeFilter();
   applyLang(true);
@@ -2419,6 +2915,8 @@ function renderAll() {
   renderCodebase(); renderTraining(); renderSettings();
   renderMarketplace();
   renderSessions(); renderSubmissions();
+  renderConflicts(); renderUsage(); renderStorageHealth();
+  renderModelRegistry(); renderRoutingRules();
   updateMarketplaceButtons();
 }
 
@@ -2678,7 +3176,7 @@ async function loadData(opts = {}) {
   if (btn && !silent) { btn.classList.add('spinning'); btn.textContent = t('btnLoading'); }
   try {
     const ok = v => v.status === 'fulfilled' ? v.value : null;
-    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos, training, trainStats, marketplaceTemplates, journal, submissions, admin, author, health] =
+    const [stats, domains, knowledge, sources, episodes, preferences, codeStats, codeRepos, training, trainStats, marketplaceTemplates, journal, submissions, admin, author, health, conflicts, storageHealth, usage, modelRegistry, routingRules] =
       (await Promise.allSettled([
         fetch('/api/stats').then(r=>r.json()),
         fetch('/api/domains').then(r=>r.json()),
@@ -2696,18 +3194,23 @@ async function loadData(opts = {}) {
         fetch('/api/admin').then(r=>r.json()),
         fetch('/api/author').then(r=>r.json()),
         fetch('/api/health').then(r=>r.json()),
+        fetch('/api/conflicts').then(r=>r.json()),
+        fetch('/api/storage-health').then(r=>r.json()),
+        fetch('/api/usage').then(r=>r.json()),
+        fetch('/api/model-registry').then(r=>r.json()),
+        fetch('/api/routing-rules').then(r=>r.json()),
       ])).map(ok);
     const live = !!stats;
     const dot = document.getElementById('status-dot');
     dot.style.background = '';
     // The status pill reflects all three databases: green only when every DB
     // responds; otherwise it names the failing one(s).
-    const DB_LABELS = { knowledge: 'klayer.db', code: 'klayer_code.db', train: 'klayer_train.db' };
+    const DB_LABELS = { knowledge: 'klayer.db', code: 'klayer_code.db', train: 'klayer_train.db', session: 'klayer_session.db' };
     let allLive = live;
     if (!live) {
       updateStatusText(t('statusError'));
     } else if (health && typeof health === 'object') {
-      const entries = ['knowledge','code','train'].filter(k => k in health);
+      const entries = ['knowledge','code','train','session'].filter(k => k in health);
       const failing = entries.filter(k => health[k] === false).map(k => DB_LABELS[k]);
       allLive = failing.length === 0;
       updateStatusText(allLive ? t('statusDbsLive')(entries.length) : t('statusDbDown')(failing.join(', ')));
@@ -2734,6 +3237,11 @@ async function loadData(opts = {}) {
       submissions: Array.isArray(submissions) ? submissions : G.submissions,
       isAdmin:     admin ? !!admin.admin : G.isAdmin,
       author:      author ?? G.author,
+      conflicts:      Array.isArray(conflicts) ? conflicts : G.conflicts,
+      storageHealth:  storageHealth ?? G.storageHealth,
+      usage:          usage ?? G.usage,
+      modelRegistry:  modelRegistry ?? G.modelRegistry,
+      routingRules:   routingRules ?? G.routingRules,
     };
     const sig = JSON.stringify(next);
     if (silent && sig === lastSig) return;  // nothing changed — don't disrupt UI

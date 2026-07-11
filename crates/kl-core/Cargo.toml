@@ -8,3 +8,7 @@ license.workspace = true
 serde.workspace = true
 async-trait.workspace = true
 anyhow.workspace = true
+libsql.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+chrono.workspace = true

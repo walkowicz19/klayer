@@ -1,17 +1,21 @@
 //! kl-code — persistent codebase memory store.
 //!
-//! Indexes local directories into a dedicated SQLite DB (`KLAYER_CODE_DB`,
+//! Indexes local directories into a dedicated libsql DB (`KLAYER_CODE_DB`,
 //! default `klayer_code.db`) with FTS5 over code chunks, so the LLM can
-//! recall any function, struct, or pattern across sessions.
+//! recall any function, struct, or pattern across sessions. When
+//! `KLAYER_TURSO_URL`/`KLAYER_TURSO_TOKEN` are set, the DB is opened as an
+//! embedded replica that periodically syncs against Turso; otherwise it is a
+//! pure local file, identical in behavior to the old rusqlite store.
 //!
 //! Intentionally separate from `klayer.db` (knowledge/episodes).
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use kl_core::{SyncHealth, SyncHealthSnapshot};
+use libsql::{params, Connection, Database};
 use serde::Serialize;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::Arc;
 
 const CHUNK_LINES: usize = 80;
 const MAX_FILE_BYTES: u64 = 512 * 1024;
@@ -39,7 +43,6 @@ const SKIP_DIRS: &[&str] = &[
 ];
 
 const SCHEMA: &str = "
-PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS repos (
@@ -76,7 +79,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(body);
 // ── Public types ─────────────────────────────────────────────────────────────
 
 pub struct CodeStore {
-    conn: Mutex<Connection>,
+    conn: Connection,
+    #[allow(dead_code)] // kept alive so the background sync task's Arc clone isn't orphaned
+    db: Arc<Database>,
+    health: Arc<SyncHealth>,
+    remote_configured: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -114,29 +121,46 @@ pub struct IndexStats {
     pub files: usize,
     pub chunks: usize,
     pub skipped: usize,
+    pub skip_reasons: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 // ── CodeStore impl ────────────────────────────────────────────────────────────
 
 impl CodeStore {
-    pub fn open(path: &str) -> Result<Self> {
-        let conn = Connection::open(path).with_context(|| format!("opening code db at {path}"))?;
+    pub async fn open(path: &str) -> Result<Self> {
+        let db = kl_core::open_db(path)
+            .await
+            .with_context(|| format!("opening code db at {path}"))?;
+        let db = Arc::new(db);
+        let conn = db.connect().context("opening code db connection")?;
+        let remote_configured = kl_core::turso_config().is_some();
+        let health = SyncHealth::new();
+        kl_core::spawn_sync_task(Arc::clone(&db), Arc::clone(&health));
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn,
+            db,
+            health,
+            remote_configured,
         })
     }
 
-    pub fn migrate(&self) -> Result<()> {
-        let c = self.conn.lock().unwrap();
-        c.execute_batch(SCHEMA).context("code db schema")?;
+    pub async fn migrate(&self) -> Result<()> {
+        self.conn
+            .execute_batch(SCHEMA)
+            .await
+            .context("code db schema")?;
         Ok(())
     }
 
-    pub fn stats(&self) -> Result<CodeStats> {
-        let c = self.conn.lock().unwrap();
-        let repos = c.query_row("SELECT COUNT(*) FROM repos", [], |r| r.get(0))?;
-        let files = c.query_row("SELECT COUNT(*) FROM code_files", [], |r| r.get(0))?;
-        let chunks = c.query_row("SELECT COUNT(*) FROM code_chunks", [], |r| r.get(0))?;
+    pub fn health(&self) -> SyncHealthSnapshot {
+        self.health.snapshot(self.remote_configured)
+    }
+
+    pub async fn stats(&self) -> Result<CodeStats> {
+        let repos = scalar_i64(&self.conn, "SELECT COUNT(*) FROM repos").await?;
+        let files = scalar_i64(&self.conn, "SELECT COUNT(*) FROM code_files").await?;
+        let chunks = scalar_i64(&self.conn, "SELECT COUNT(*) FROM code_chunks").await?;
         Ok(CodeStats {
             repos,
             files,
@@ -144,71 +168,125 @@ impl CodeStore {
         })
     }
 
-    pub fn list_repos(&self) -> Result<Vec<RepoInfo>> {
-        let c = self.conn.lock().unwrap();
-        let mut stmt = c.prepare(
-            "SELECT id, path, name, indexed_at, file_count, chunk_count
-             FROM repos ORDER BY indexed_at DESC",
-        )?;
-        let rows = stmt.query_map([], |r| {
-            Ok(RepoInfo {
+    /// Same shape as `stats()`, scoped to a single repo (matched by canonical
+    /// path or friendly name, same lookup `search`'s `repo_path` filter
+    /// uses). Needed because `stats()` aggregates across every indexed repo,
+    /// which is the wrong signal once more than one repo is indexed and a
+    /// caller wants complexity scoped to just one of them. Returns all-zero
+    /// stats (not an error) for an unknown repo, matching `forget_repo`'s
+    /// "not found is a normal outcome" convention.
+    pub async fn stats_for_repo(&self, repo: &str) -> Result<CodeStats> {
+        let repo_id: Option<i64> = {
+            let mut rows = self
+                .conn
+                .query(
+                    "SELECT id FROM repos WHERE path = ?1 OR name = ?1",
+                    params![repo],
+                )
+                .await?;
+            match rows.next().await? {
+                Some(r) => Some(r.get(0)?),
+                None => None,
+            }
+        };
+        let Some(repo_id) = repo_id else {
+            return Ok(CodeStats {
+                repos: 0,
+                files: 0,
+                chunks: 0,
+            });
+        };
+        let files = scalar_i64_params(
+            &self.conn,
+            "SELECT COUNT(*) FROM code_files WHERE repo_id = ?1",
+            params![repo_id],
+        )
+        .await?;
+        let chunks = scalar_i64_params(
+            &self.conn,
+            "SELECT COUNT(*) FROM code_chunks cc JOIN code_files cf ON cf.id = cc.file_id WHERE cf.repo_id = ?1",
+            params![repo_id],
+        )
+        .await?;
+        Ok(CodeStats {
+            repos: 1,
+            files,
+            chunks,
+        })
+    }
+
+    pub async fn list_repos(&self) -> Result<Vec<RepoInfo>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT id, path, name, indexed_at, file_count, chunk_count
+                 FROM repos ORDER BY indexed_at DESC",
+                (),
+            )
+            .await?;
+        let mut out = Vec::new();
+        while let Some(r) = rows.next().await? {
+            out.push(RepoInfo {
                 id: r.get(0)?,
                 path: r.get(1)?,
                 name: r.get(2)?,
                 indexed_at: r.get(3)?,
                 file_count: r.get(4)?,
                 chunk_count: r.get(5)?,
-            })
-        })?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(row?);
+            });
         }
         Ok(out)
     }
 
-    pub fn forget_repo(&self, path: &str) -> Result<bool> {
-        let c = self.conn.lock().unwrap();
-
-        let repo_id: Option<i64> = c
-            .query_row("SELECT id FROM repos WHERE path = ?1", params![path], |r| {
-                r.get(0)
-            })
-            .ok();
+    pub async fn forget_repo(&self, path: &str) -> Result<bool> {
+        let repo_id: Option<i64> = {
+            let mut rows = self
+                .conn
+                .query("SELECT id FROM repos WHERE path = ?1", params![path])
+                .await?;
+            match rows.next().await? {
+                Some(r) => Some(r.get(0)?),
+                None => None,
+            }
+        };
         let Some(repo_id) = repo_id else {
             return Ok(false);
         };
 
         // Collect chunk IDs before cascade-deleting (FTS5 must be cleaned first).
         let mut chunk_ids: Vec<i64> = Vec::new();
-        let mut stmt = c.prepare(
-            "SELECT cc.id FROM code_chunks cc
-             JOIN code_files cf ON cf.id = cc.file_id
-             WHERE cf.repo_id = ?1",
-        )?;
-        for row in stmt.query_map(params![repo_id], |r| r.get::<_, i64>(0))? {
-            chunk_ids.push(row?);
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT cc.id FROM code_chunks cc
+                 JOIN code_files cf ON cf.id = cc.file_id
+                 WHERE cf.repo_id = ?1",
+                params![repo_id],
+            )
+            .await?;
+        while let Some(r) = rows.next().await? {
+            chunk_ids.push(r.get(0)?);
         }
-        drop(stmt); // Release borrow on c before execute_batch
 
         // Remove from FTS5 then cascade-delete from repos
         for id in &chunk_ids {
-            c.execute("DELETE FROM code_fts WHERE rowid = ?1", params![id])?;
+            self.conn
+                .execute("DELETE FROM code_fts WHERE rowid = ?1", params![*id])
+                .await?;
         }
-        c.execute("DELETE FROM repos WHERE id = ?1", params![repo_id])?;
+        self.conn
+            .execute("DELETE FROM repos WHERE id = ?1", params![repo_id])
+            .await?;
         Ok(true)
     }
 
-    pub fn clear_all(&self) -> Result<u64> {
-        let c = self.conn.lock().unwrap();
-        c.execute_batch("DELETE FROM code_fts; DELETE FROM repos;")?;
-        let deleted: u64 = c
-            .query_row("SELECT changes()", [], |r| r.get(0))
-            .unwrap_or(0);
+    pub async fn clear_all(&self) -> Result<u64> {
+        self.conn.execute("DELETE FROM code_fts", ()).await?;
+        let deleted = self.conn.execute("DELETE FROM repos", ()).await?;
         Ok(deleted)
     }
 
-    pub fn search(
+    pub async fn search(
         &self,
         query: &str,
         repo_path: Option<&str>,
@@ -218,81 +296,83 @@ impl CodeStore {
             return Ok(vec![]);
         }
         let match_expr = fts_match(query);
-        let c = self.conn.lock().unwrap();
         let lim = limit as i64;
         let mut hits = Vec::new();
 
-        if let Some(rp) = repo_path {
-            let mut stmt = c.prepare(
-                "SELECT cc.content, cc.kind, cc.symbol_name,
-                        cc.line_start, cc.line_end,
-                        cf.rel_path, cf.language, r.path,
-                        bm25(code_fts) AS score
-                 FROM code_fts
-                 JOIN code_chunks cc ON cc.id = code_fts.rowid
-                 JOIN code_files  cf ON cf.id = cc.file_id
-                 JOIN repos        r ON  r.id = cf.repo_id
-                 WHERE code_fts MATCH ?1 AND r.path = ?2
-                 ORDER BY score ASC LIMIT ?3",
-            )?;
-            for row in stmt.query_map(params![match_expr, rp, lim], |r| {
-                Ok(CodeHit {
-                    snippet: r.get(0)?,
-                    kind: r.get(1)?,
-                    symbol_name: r.get(2)?,
-                    line_start: r.get(3)?,
-                    line_end: r.get(4)?,
-                    file_path: r.get(5)?,
-                    language: r.get(6)?,
-                    repo_path: r.get(7)?,
-                    score: r.get(8)?,
-                })
-            })? {
-                hits.push(row?);
-            }
+        let mut rows = if let Some(rp) = repo_path {
+            self.conn
+                .query(
+                    "SELECT cc.content, cc.kind, cc.symbol_name,
+                            cc.line_start, cc.line_end,
+                            cf.rel_path, cf.language, r.path,
+                            bm25(code_fts) AS score
+                     FROM code_fts
+                     JOIN code_chunks cc ON cc.id = code_fts.rowid
+                     JOIN code_files  cf ON cf.id = cc.file_id
+                     JOIN repos        r ON  r.id = cf.repo_id
+                     WHERE code_fts MATCH ?1 AND r.path = ?2
+                     ORDER BY score ASC LIMIT ?3",
+                    params![match_expr, rp, lim],
+                )
+                .await?
         } else {
-            let mut stmt = c.prepare(
-                "SELECT cc.content, cc.kind, cc.symbol_name,
-                        cc.line_start, cc.line_end,
-                        cf.rel_path, cf.language, r.path,
-                        bm25(code_fts) AS score
-                 FROM code_fts
-                 JOIN code_chunks cc ON cc.id = code_fts.rowid
-                 JOIN code_files  cf ON cf.id = cc.file_id
-                 JOIN repos        r ON  r.id = cf.repo_id
-                 WHERE code_fts MATCH ?1
-                 ORDER BY score ASC LIMIT ?2",
-            )?;
-            for row in stmt.query_map(params![match_expr, lim], |r| {
-                Ok(CodeHit {
-                    snippet: r.get(0)?,
-                    kind: r.get(1)?,
-                    symbol_name: r.get(2)?,
-                    line_start: r.get(3)?,
-                    line_end: r.get(4)?,
-                    file_path: r.get(5)?,
-                    language: r.get(6)?,
-                    repo_path: r.get(7)?,
-                    score: r.get(8)?,
-                })
-            })? {
-                hits.push(row?);
-            }
+            self.conn
+                .query(
+                    "SELECT cc.content, cc.kind, cc.symbol_name,
+                            cc.line_start, cc.line_end,
+                            cf.rel_path, cf.language, r.path,
+                            bm25(code_fts) AS score
+                     FROM code_fts
+                     JOIN code_chunks cc ON cc.id = code_fts.rowid
+                     JOIN code_files  cf ON cf.id = cc.file_id
+                     JOIN repos        r ON  r.id = cf.repo_id
+                     WHERE code_fts MATCH ?1
+                     ORDER BY score ASC LIMIT ?2",
+                    params![match_expr, lim],
+                )
+                .await?
+        };
+
+        while let Some(r) = rows.next().await? {
+            hits.push(CodeHit {
+                snippet: r.get(0)?,
+                kind: r.get(1)?,
+                symbol_name: r.get(2)?,
+                line_start: r.get(3)?,
+                line_end: r.get(4)?,
+                file_path: r.get(5)?,
+                language: r.get(6)?,
+                repo_path: r.get(7)?,
+                score: r.get(8)?,
+            });
         }
 
         Ok(hits)
     }
 
-    pub fn index_repo(&self, dir_path: &str, name: Option<&str>) -> Result<IndexStats> {
+    pub async fn index_repo(&self, dir_path: &str, name: Option<&str>) -> Result<IndexStats> {
         let canonical = std::fs::canonicalize(dir_path)
             .with_context(|| format!("resolving path: {dir_path}"))?;
         let canon_str = canonical.to_string_lossy().replace('\\', "/");
         let now = Utc::now().timestamp();
 
-        // Collect files outside the lock (blocking I/O, may be large).
+        // Collect files outside any DB call (blocking I/O, may be large).
         let mut file_data: Vec<FileEntry> = Vec::new();
-        let mut skipped = 0usize;
-        collect_files(&canonical, &canonical, &mut file_data, &mut skipped)?;
+        let mut skip_reasons = Vec::new();
+        collect_files(&canonical, &canonical, &mut file_data, &mut skip_reasons)?;
+        let skipped = skip_reasons.len();
+        let mut warnings = Vec::new();
+        for repo in self.list_repos().await? {
+            let existing = Path::new(&repo.path);
+            if existing != canonical
+                && (canonical.starts_with(existing) || existing.starts_with(&canonical))
+            {
+                warnings.push(format!(
+                    "overlapping repository index detected: '{}' and '{}' are stored separately",
+                    canon_str, repo.path
+                ));
+            }
+        }
 
         let total_files = file_data.len();
         let total_chunks: usize = file_data.iter().map(|f| f.chunks.len()).sum();
@@ -304,113 +384,146 @@ impl CodeStore {
             skipped
         );
 
-        let c = self.conn.lock().unwrap();
-
         // Upsert repo record.
-        c.execute(
-            "INSERT INTO repos (path, name, indexed_at, file_count, chunk_count)
-             VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(path) DO UPDATE SET
-                 name        = COALESCE(?2, name),
-                 indexed_at  = ?3,
-                 file_count  = ?4,
-                 chunk_count = ?5",
-            params![
-                canon_str,
-                name,
-                now,
-                total_files as i64,
-                total_chunks as i64
-            ],
-        )?;
-        let repo_id: i64 = c.query_row(
-            "SELECT id FROM repos WHERE path = ?1",
-            params![canon_str],
-            |r| r.get(0),
-        )?;
+        self.conn
+            .execute(
+                "INSERT INTO repos (path, name, indexed_at, file_count, chunk_count)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(path) DO UPDATE SET
+                     name        = COALESCE(?2, name),
+                     indexed_at  = ?3,
+                     file_count  = ?4,
+                     chunk_count = ?5",
+                params![
+                    canon_str.clone(),
+                    name,
+                    now,
+                    total_files as i64,
+                    total_chunks as i64
+                ],
+            )
+            .await?;
+        let repo_id: i64 = {
+            let mut rows = self
+                .conn
+                .query(
+                    "SELECT id FROM repos WHERE path = ?1",
+                    params![canon_str.clone()],
+                )
+                .await?;
+            rows.next()
+                .await?
+                .context("repo row missing after upsert")?
+                .get(0)?
+        };
 
         // Collect old chunk IDs before cascade-deleting (FTS cleanup required).
         let mut old_chunk_ids: Vec<i64> = Vec::new();
-        let mut stmt = c.prepare(
-            "SELECT cc.id FROM code_chunks cc
-             JOIN code_files cf ON cf.id = cc.file_id
-             WHERE cf.repo_id = ?1",
-        )?;
-        for row in stmt.query_map(params![repo_id], |r| r.get::<_, i64>(0))? {
-            old_chunk_ids.push(row?);
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT cc.id FROM code_chunks cc
+                 JOIN code_files cf ON cf.id = cc.file_id
+                 WHERE cf.repo_id = ?1",
+                params![repo_id],
+            )
+            .await?;
+        while let Some(r) = rows.next().await? {
+            old_chunk_ids.push(r.get(0)?);
         }
-        drop(stmt);
 
         // Clean FTS5 for old entries, then delete old files (cascade → chunks).
         for id in &old_chunk_ids {
-            c.execute("DELETE FROM code_fts WHERE rowid = ?1", params![id])?;
+            self.conn
+                .execute("DELETE FROM code_fts WHERE rowid = ?1", params![*id])
+                .await?;
         }
-        c.execute(
-            "DELETE FROM code_files WHERE repo_id = ?1",
-            params![repo_id],
-        )?;
+        self.conn
+            .execute(
+                "DELETE FROM code_files WHERE repo_id = ?1",
+                params![repo_id],
+            )
+            .await?;
 
         // Insert new files and chunks in one transaction.
-        insert_repo_data(&c, repo_id, &file_data)?;
+        insert_repo_data(&self.conn, repo_id, &file_data).await?;
 
         Ok(IndexStats {
             files: total_files,
             chunks: total_chunks,
             skipped,
+            skip_reasons,
+            warnings,
         })
     }
 }
 
-fn insert_repo_data(c: &Connection, repo_id: i64, file_data: &[FileEntry]) -> Result<()> {
-    c.execute_batch("SAVEPOINT index_repo;")?;
-    let result = (|| -> Result<()> {
-        for entry in file_data {
-            c.execute(
-                "INSERT INTO code_files (repo_id, rel_path, language) VALUES (?1, ?2, ?3)",
-                params![repo_id, entry.rel_path, entry.language],
-            )?;
-            let file_id = c.last_insert_rowid();
+async fn scalar_i64(conn: &Connection, sql: &str) -> Result<i64> {
+    let mut rows = conn.query(sql, ()).await?;
+    Ok(rows
+        .next()
+        .await?
+        .map(|r| r.get(0))
+        .transpose()?
+        .unwrap_or(0))
+}
 
-            for chunk in &entry.chunks {
-                c.execute(
-                    "INSERT INTO code_chunks
-                         (file_id, line_start, line_end, content, kind, symbol_name)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![
-                        file_id,
-                        chunk.line_start as i64,
-                        chunk.line_end as i64,
-                        chunk.content,
-                        chunk.kind,
-                        chunk.symbol_name
-                    ],
-                )?;
-                let chunk_id = c.last_insert_rowid();
+async fn scalar_i64_params(
+    conn: &Connection,
+    sql: &str,
+    p: impl libsql::params::IntoParams,
+) -> Result<i64> {
+    let mut rows = conn.query(sql, p).await?;
+    Ok(rows
+        .next()
+        .await?
+        .map(|r| r.get(0))
+        .transpose()?
+        .unwrap_or(0))
+}
 
-                let body = format!(
-                    "{} {}\n{}",
-                    chunk.symbol_name.as_deref().unwrap_or(""),
-                    entry.rel_path,
-                    chunk.content
-                );
-                c.execute(
-                    "INSERT INTO code_fts (rowid, body) VALUES (?1, ?2)",
-                    params![chunk_id, body],
-                )?;
-            }
-        }
-        Ok(())
-    })();
-    match result {
-        Ok(()) => {
-            c.execute_batch("RELEASE SAVEPOINT index_repo;")?;
-            Ok(())
-        }
-        Err(e) => {
-            c.execute_batch("ROLLBACK TO SAVEPOINT index_repo;").ok();
-            Err(e)
+async fn insert_repo_data(conn: &Connection, repo_id: i64, file_data: &[FileEntry]) -> Result<()> {
+    let tx = conn.transaction().await?;
+    for entry in file_data {
+        tx.execute(
+            "INSERT INTO code_files (repo_id, rel_path, language) VALUES (?1, ?2, ?3)",
+            params![repo_id, entry.rel_path.clone(), entry.language.clone()],
+        )
+        .await?;
+        let file_id = tx.last_insert_rowid();
+
+        for chunk in &entry.chunks {
+            tx.execute(
+                "INSERT INTO code_chunks
+                     (file_id, line_start, line_end, content, kind, symbol_name)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    file_id,
+                    chunk.line_start as i64,
+                    chunk.line_end as i64,
+                    chunk.content.clone(),
+                    chunk.kind.clone(),
+                    chunk.symbol_name.clone()
+                ],
+            )
+            .await?;
+            let chunk_id = tx.last_insert_rowid();
+
+            let body = format!(
+                "{} {}\n{}",
+                chunk.symbol_name.as_deref().unwrap_or(""),
+                entry.rel_path,
+                chunk.content
+            );
+            tx.execute(
+                "INSERT INTO code_fts (rowid, body) VALUES (?1, ?2)",
+                params![chunk_id, body],
+            )
+            .await?;
         }
     }
+    tx.commit().await?;
+    Ok(())
 }
 
 // ── FTS helper ────────────────────────────────────────────────────────────────
@@ -449,25 +562,36 @@ fn process_file_entry(
     path: &Path,
     lang: &str,
     out: &mut Vec<FileEntry>,
-    skipped: &mut usize,
+    skipped: &mut Vec<String>,
 ) -> Result<()> {
+    let rel_str = path
+        .strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/");
     if let Ok(meta) = std::fs::metadata(path) {
         if meta.len() > MAX_FILE_BYTES {
-            *skipped += 1;
+            skipped.push(format!("{rel_str}: exceeds {MAX_FILE_BYTES} byte limit"));
             return Ok(());
         }
     }
 
-    let Ok(content) = std::fs::read_to_string(path) else {
-        *skipped += 1;
+    let Ok(bytes) = std::fs::read(path) else {
+        skipped.push(format!("{rel_str}: unreadable"));
+        return Ok(());
+    };
+    if bytes.iter().take(8192).any(|b| *b == 0) {
+        skipped.push(format!("{rel_str}: binary content"));
+        return Ok(());
+    }
+    let Ok(content) = String::from_utf8(bytes) else {
+        skipped.push(format!("{rel_str}: not valid UTF-8 text"));
         return Ok(());
     };
     if content.trim().is_empty() {
         return Ok(());
     }
 
-    let rel = path.strip_prefix(root).unwrap_or(path);
-    let rel_str = rel.to_string_lossy().replace('\\', "/");
     let chunks = chunk_file(&content, lang);
     if !chunks.is_empty() {
         out.push(FileEntry {
@@ -483,12 +607,12 @@ fn collect_files(
     root: &Path,
     dir: &Path,
     out: &mut Vec<FileEntry>,
-    skipped: &mut usize,
+    skipped: &mut Vec<String>,
 ) -> Result<()> {
     let rd = match std::fs::read_dir(dir) {
         Ok(rd) => rd,
         Err(_) => {
-            *skipped += 1;
+            skipped.push(format!("{}: directory unreadable", dir.display()));
             return Ok(());
         }
     };
@@ -511,19 +635,15 @@ fn collect_files(
         }
 
         let path = entry.path();
-        let Some(lang) = detect_language(&path) else {
-            *skipped += 1;
-            continue;
-        };
-
+        let lang = detect_language(&path);
         process_file_entry(root, &path, lang, out, skipped)?;
     }
 
     Ok(())
 }
 
-fn detect_language(path: &Path) -> Option<&'static str> {
-    let ext = path.extension()?.to_str()?;
+fn detect_language(path: &Path) -> &'static str {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     const EXT_MAP: &[(&str, &str)] = &[
         ("rs", "rust"),
         ("py", "python"),
@@ -583,11 +703,86 @@ fn detect_language(path: &Path) -> Option<&'static str> {
         ("pbl", "powerscript"),
     ];
 
-    EXT_MAP.iter()
-        .find(|&&(e, _)| e == ext)
+    EXT_MAP
+        .iter()
+        .find(|&&(e, _)| e.eq_ignore_ascii_case(ext))
         .map(|&(_, lang)| lang)
+        .unwrap_or("text")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn unknown_extensions_fall_back_to_text_and_binary_skips_are_explained() {
+        let root = std::env::temp_dir().join(format!("klayer-index-test-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("PROGRAM.CBLX"),
+            "IDENTIFICATION DIVISION.\nPROGRAM-ID. HELLO.",
+        )
+        .unwrap();
+        std::fs::write(root.join("artifact.bin"), b"abc\0def").unwrap();
+        let db = root.join("code.db");
+        let store = CodeStore::open(db.to_str().unwrap()).await.unwrap();
+        store.migrate().await.unwrap();
+        let stats = store
+            .index_repo(root.to_str().unwrap(), Some("test"))
+            .await
+            .unwrap();
+        assert!(stats.files >= 1);
+        assert!(stats
+            .skip_reasons
+            .iter()
+            .any(|r| r.contains("artifact.bin: binary content")));
+        let hits = store.search("IDENTIFICATION", None, 5).await.unwrap();
+        assert!(hits.iter().any(|h| h.file_path == "PROGRAM.CBLX"));
+        drop(store);
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[tokio::test]
+    async fn stats_for_repo_scopes_to_one_repo_among_several() {
+        let root = std::env::temp_dir().join(format!("klayer-stats-test-{}", std::process::id()));
+        let repo_a = root.join("repo_a");
+        let repo_b = root.join("repo_b");
+        std::fs::create_dir_all(&repo_a).unwrap();
+        std::fs::create_dir_all(&repo_b).unwrap();
+        std::fs::write(repo_a.join("one.rs"), "fn one() {}\nfn two() {}\n").unwrap();
+        std::fs::write(repo_b.join("a.rs"), "fn a() {}\n").unwrap();
+        std::fs::write(repo_b.join("b.rs"), "fn b() {}\n").unwrap();
+        std::fs::write(repo_b.join("c.rs"), "fn c() {}\n").unwrap();
+
+        let db = root.join("code.db");
+        let store = CodeStore::open(db.to_str().unwrap()).await.unwrap();
+        store.migrate().await.unwrap();
+        store
+            .index_repo(repo_a.to_str().unwrap(), Some("repo_a"))
+            .await
+            .unwrap();
+        store
+            .index_repo(repo_b.to_str().unwrap(), Some("repo_b"))
+            .await
+            .unwrap();
+
+        let global = store.stats().await.unwrap();
+        assert_eq!(global.files, 4);
+
+        let scoped_a = store.stats_for_repo("repo_a").await.unwrap();
+        assert_eq!(scoped_a.files, 1);
+        let scoped_b = store.stats_for_repo("repo_b").await.unwrap();
+        assert_eq!(scoped_b.files, 3);
+        assert_ne!(scoped_a.files, global.files);
+
+        let unknown = store.stats_for_repo("does-not-exist").await.unwrap();
+        assert_eq!(unknown.files, 0);
+        assert_eq!(unknown.repos, 0);
+
+        drop(store);
+        std::fs::remove_dir_all(root).ok();
+    }
+}
 
 fn chunk_file(content: &str, lang: &str) -> Vec<ChunkEntry> {
     let lines: Vec<&str> = content.lines().collect();

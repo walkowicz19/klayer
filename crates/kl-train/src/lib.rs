@@ -9,8 +9,10 @@
 //! runs the teacher model and the verifier, then deposits rows here. This crate
 //! has no LLM/HTTP dependency and never shells out to a compiler.
 //!
-//! Storage lives in its own SQLite DB (`KLAYER_TRAIN_DB`, default
-//! `klayer_train.db`), separate from `klayer.db` and `klayer_code.db`.
+//! Storage lives in its own libsql DB (`KLAYER_TRAIN_DB`, default
+//! `klayer_train.db`), separate from `klayer.db` and `klayer_code.db`. When
+//! `KLAYER_TURSO_URL`/`KLAYER_TURSO_TOKEN` are set, it is opened as an
+//! embedded replica that periodically syncs against Turso.
 //!
 //! Safety spine:
 //!   * Every row records `provenance ∈ {student, teacher, human}` and a
@@ -20,18 +22,22 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use kl_core::{EpisodeRow, KnowledgeRow, StageRow};
-use rusqlite::{params, Connection, OptionalExtension};
+use kl_core::{EpisodeRow, KnowledgeRow, StageRow, SyncHealth, SyncHealthSnapshot};
+use libsql::{params, Connection, Database};
 use serde::Serialize;
 use std::collections::HashSet;
-use std::sync::Mutex;
+use std::sync::Arc;
 
 const MIGRATION: &str = include_str!("migrations/0001_init.sql");
 
 // ── Public types ───────────────────────────────────────────────────────────────
 
 pub struct TrainStore {
-    conn: Mutex<Connection>,
+    conn: Connection,
+    #[allow(dead_code)] // kept alive so the background sync task's Arc clone isn't orphaned
+    db: Arc<Database>,
+    health: Arc<SyncHealth>,
+    remote_configured: bool,
 }
 
 /// A single training example row. Mirrors the `training_examples` columns.
@@ -81,17 +87,33 @@ pub struct ExportFile {
 // ── TrainStore impl ─────────────────────────────────────────────────────────────
 
 impl TrainStore {
-    pub fn open(path: &str) -> Result<Self> {
-        let conn = Connection::open(path).with_context(|| format!("opening train db at {path}"))?;
+    pub async fn open(path: &str) -> Result<Self> {
+        let db = kl_core::open_db(path)
+            .await
+            .with_context(|| format!("opening train db at {path}"))?;
+        let db = Arc::new(db);
+        let conn = db.connect().context("opening train db connection")?;
+        let remote_configured = kl_core::turso_config().is_some();
+        let health = SyncHealth::new();
+        kl_core::spawn_sync_task(Arc::clone(&db), Arc::clone(&health));
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn,
+            db,
+            health,
+            remote_configured,
         })
     }
 
-    pub fn migrate(&self) -> Result<()> {
-        let c = self.conn.lock().unwrap();
-        c.execute_batch(MIGRATION).context("train db schema")?;
+    pub async fn migrate(&self) -> Result<()> {
+        self.conn
+            .execute_batch(MIGRATION)
+            .await
+            .context("train db schema")?;
         Ok(())
+    }
+
+    pub fn health(&self) -> SyncHealthSnapshot {
+        self.health.snapshot(self.remote_configured)
     }
 
     // ── capture & authoring ──────────────────────────────────────────────────
@@ -100,7 +122,7 @@ impl TrainStore {
     /// supplied by the caller (the external teacher project deposits `teacher`
     /// rows; the faucets deposit `student` stubs). Promotable only if not student.
     #[allow(clippy::too_many_arguments)]
-    pub fn capture_example(
+    pub async fn capture_example(
         &self,
         domain: &str,
         system_prompt: Option<&str>,
@@ -122,12 +144,13 @@ impl TrainStore {
             retrieval_ref,
             verify_log,
         )
+        .await
     }
 
     /// Insert a human-authored pair: `trust='user'`, `provenance='human'`,
     /// exportable immediately (mirrors `Store::remember`).
     #[allow(clippy::too_many_arguments)]
-    pub fn author_example(
+    pub async fn author_example(
         &self,
         domain: &str,
         system_prompt: Option<&str>,
@@ -148,10 +171,11 @@ impl TrainStore {
             retrieval_ref,
             verify_log,
         )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn insert_row(
+    async fn insert_row(
         &self,
         domain: &str,
         system_prompt: Option<&str>,
@@ -164,34 +188,37 @@ impl TrainStore {
         verify_log: Option<&str>,
     ) -> Result<i64> {
         let now = now();
-        let c = self.conn.lock().unwrap();
-        c.execute(
-            "INSERT INTO training_examples
-               (domain, system_prompt, user_content, assistant_content, label_type,
-                trust, provenance, retrieval_ref, verify_log, created_at, updated_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10)",
-            params![
-                domain,
-                system_prompt,
-                user_content,
-                assistant_content,
-                label_type,
-                trust,
-                provenance,
-                retrieval_ref,
-                verify_log,
-                now
-            ],
-        )?;
-        let id = c.last_insert_rowid();
+        self.conn
+            .execute(
+                "INSERT INTO training_examples
+                   (domain, system_prompt, user_content, assistant_content, label_type,
+                    trust, provenance, retrieval_ref, verify_log, created_at, updated_at)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10)",
+                params![
+                    domain,
+                    system_prompt,
+                    user_content,
+                    assistant_content,
+                    label_type,
+                    trust,
+                    provenance,
+                    retrieval_ref,
+                    verify_log,
+                    now
+                ],
+            )
+            .await?;
+        let id = self.conn.last_insert_rowid();
         let body = match assistant_content {
             Some(a) if !a.is_empty() => format!("{user_content}\n{a}"),
             _ => user_content.to_string(),
         };
-        c.execute(
-            "INSERT INTO training_fts (rowid, body) VALUES (?1, ?2)",
-            params![id, body],
-        )?;
+        self.conn
+            .execute(
+                "INSERT INTO training_fts (rowid, body) VALUES (?1, ?2)",
+                params![id, body],
+            )
+            .await?;
         Ok(id)
     }
 
@@ -199,26 +226,32 @@ impl TrainStore {
 
     /// Validation gate: promote a proposed row to `reviewed`. The model-collapse
     /// guard refuses any row with `provenance='student'`.
-    pub fn promote_example(&self, id: i64) -> Result<PromoteOutcome> {
+    pub async fn promote_example(&self, id: i64) -> Result<PromoteOutcome> {
         let now = now();
-        let c = self.conn.lock().unwrap();
-        let n = c.execute(
-            "UPDATE training_examples SET trust='reviewed', updated_at=?2
-             WHERE id=?1 AND trust='proposed' AND provenance != 'student'",
-            params![id, now],
-        )?;
+        let n = self
+            .conn
+            .execute(
+                "UPDATE training_examples SET trust='reviewed', updated_at=?2
+                 WHERE id=?1 AND trust='proposed' AND provenance != 'student'",
+                params![id, now],
+            )
+            .await?;
         if n > 0 {
             return Ok(PromoteOutcome::Promoted);
         }
         // Nothing changed — disambiguate the collapse-guard rejection from a
         // missing / already-promoted row so callers get an honest message.
-        let row: Option<(String, String)> = c
-            .query_row(
+        let mut rows = self
+            .conn
+            .query(
                 "SELECT trust, provenance FROM training_examples WHERE id=?1",
                 params![id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
             )
-            .optional()?;
+            .await?;
+        let row: Option<(String, String)> = match rows.next().await? {
+            Some(r) => Some((r.get(0)?, r.get(1)?)),
+            None => None,
+        };
         match row {
             Some((trust, prov)) if prov == "student" && trust == "proposed" => {
                 Ok(PromoteOutcome::BlockedStudent)
@@ -230,24 +263,28 @@ impl TrainStore {
     // ── listing & export ─────────────────────────────────────────────────────
 
     /// List training rows, newest first, optionally filtered by domain and trust.
-    pub fn list_training(
+    pub async fn list_training(
         &self,
         domain: Option<&str>,
         trust: Option<&str>,
     ) -> Result<Vec<TrainingRow>> {
-        let c = self.conn.lock().unwrap();
-        let mut stmt = c.prepare(
-            "SELECT id, domain, system_prompt, user_content, assistant_content,
-                    label_type, trust, provenance, retrieval_ref, verify_log,
-                    created_at, updated_at
-               FROM training_examples
-              WHERE (?1 IS NULL OR domain = ?1)
-                AND (?2 IS NULL OR trust = ?2)
-              ORDER BY updated_at DESC
-              LIMIT 200",
-        )?;
-        let rows = stmt.query_map(params![domain, trust], |r| {
-            Ok(TrainingRow {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT id, domain, system_prompt, user_content, assistant_content,
+                        label_type, trust, provenance, retrieval_ref, verify_log,
+                        created_at, updated_at
+                   FROM training_examples
+                  WHERE (?1 IS NULL OR domain = ?1)
+                    AND (?2 IS NULL OR trust = ?2)
+                  ORDER BY updated_at DESC
+                  LIMIT 200",
+                params![domain, trust],
+            )
+            .await?;
+        let mut out = Vec::new();
+        while let Some(r) = rows.next().await? {
+            out.push(TrainingRow {
                 id: r.get(0)?,
                 domain: r.get(1)?,
                 system_prompt: r.get(2)?,
@@ -260,51 +297,60 @@ impl TrainStore {
                 verify_log: r.get(9)?,
                 created_at: r.get(10)?,
                 updated_at: r.get(11)?,
-            })
-        })?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+            });
+        }
+        Ok(out)
     }
 
     /// Export the dataset as chat JSONL, one file (`<domain>.jsonl`) per domain.
     /// Only `reviewed` + `user` rows with a non-empty assistant turn are emitted
     /// (the export gate). Returns one `ExportFile` per non-empty domain.
-    pub fn export_dataset(&self, domain: Option<&str>, out_dir: &str) -> Result<Vec<ExportFile>> {
+    pub async fn export_dataset(
+        &self,
+        domain: Option<&str>,
+        out_dir: &str,
+    ) -> Result<Vec<ExportFile>> {
         std::fs::create_dir_all(out_dir)
             .with_context(|| format!("creating export dir {out_dir}"))?;
-        let c = self.conn.lock().unwrap();
 
         let domains: Vec<String> = if let Some(d) = domain {
             vec![d.to_string()]
         } else {
-            let mut stmt = c.prepare(
-                "SELECT DISTINCT domain FROM training_examples
-                  WHERE trust IN ('reviewed','user') ORDER BY domain",
-            )?;
-            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()?
+            let mut rows = self
+                .conn
+                .query(
+                    "SELECT DISTINCT domain FROM training_examples
+                      WHERE trust IN ('reviewed','user') ORDER BY domain",
+                    (),
+                )
+                .await?;
+            let mut out = Vec::new();
+            while let Some(r) = rows.next().await? {
+                out.push(r.get::<String>(0)?);
+            }
+            out
         };
 
         let mut out = Vec::new();
         for dom in domains {
-            let mut stmt = c.prepare(
-                "SELECT system_prompt, user_content, assistant_content
-                   FROM training_examples
-                  WHERE domain = ?1 AND trust IN ('reviewed','user')
-                    AND assistant_content IS NOT NULL AND assistant_content != ''
-                  ORDER BY id ASC",
-            )?;
-            let triples = stmt.query_map(params![dom], |r| {
-                Ok((
-                    r.get::<_, Option<String>>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                ))
-            })?;
+            let mut rows = self
+                .conn
+                .query(
+                    "SELECT system_prompt, user_content, assistant_content
+                       FROM training_examples
+                      WHERE domain = ?1 AND trust IN ('reviewed','user')
+                        AND assistant_content IS NOT NULL AND assistant_content != ''
+                      ORDER BY id ASC",
+                    params![dom.clone()],
+                )
+                .await?;
 
             let mut buf = String::new();
             let mut n = 0usize;
-            for triple in triples {
-                let (system, user, assistant) = triple?;
+            while let Some(r) = rows.next().await? {
+                let system: Option<String> = r.get(0)?;
+                let user: String = r.get(1)?;
+                let assistant: String = r.get(2)?;
                 let mut messages = Vec::new();
                 if let Some(s) = system {
                     messages.push(serde_json::json!({ "role": "system", "content": s }));
@@ -342,7 +388,7 @@ impl TrainStore {
     /// Reads no DB but its own: episodes are passed in by `kl-mcp` from the main
     /// store, keeping this crate decoupled. Deduplicated by `(domain, query)`
     /// against both the current batch and rows already stored.
-    pub fn queue_weak(&self, episodes: &[EpisodeRow], threshold: i64) -> Result<usize> {
+    pub async fn queue_weak(&self, episodes: &[EpisodeRow], threshold: i64) -> Result<usize> {
         let mut seen: HashSet<(String, String)> = HashSet::new();
         let mut inserted = 0usize;
         for ep in episodes {
@@ -367,7 +413,7 @@ impl TrainStore {
             if seen.contains(&key) {
                 continue;
             }
-            if self.row_exists(&domain, &query)? {
+            if self.row_exists(&domain, &query).await? {
                 seen.insert(key);
                 continue;
             }
@@ -383,7 +429,8 @@ impl TrainStore {
                 "student",
                 Some(&rref),
                 None,
-            )?;
+            )
+            .await?;
             seen.insert(key);
             inserted += 1;
         }
@@ -401,7 +448,7 @@ impl TrainStore {
     /// registers or creates a domain (the crate has no `domains` table) — it only
     /// writes `training_examples` for the `domain` it is told about. Deduplicated
     /// by `(domain, question)`.
-    fn seed_knowledge_topics(
+    async fn seed_knowledge_topics(
         &self,
         domain: &str,
         stage: Option<&str>,
@@ -420,13 +467,13 @@ impl TrainStore {
             }
             let rref = format!("knowledge:#{}", k.id);
             for q in topic_questions(k) {
-                inserted += self.seed_one(domain, &q, &rref, seen)?;
+                inserted += self.seed_one(domain, &q, &rref, seen).await?;
             }
         }
         Ok(inserted)
     }
 
-    fn seed_stage_topics(
+    async fn seed_stage_topics(
         &self,
         domain: &str,
         stage: Option<&str>,
@@ -450,12 +497,12 @@ impl TrainStore {
                     s.name
                 ),
             };
-            inserted += self.seed_one(domain, &q, &rref, seen)?;
+            inserted += self.seed_one(domain, &q, &rref, seen).await?;
         }
         Ok(inserted)
     }
 
-    pub fn seed_from_topics(
+    pub async fn seed_from_topics(
         &self,
         domain: &str,
         stage: Option<&str>,
@@ -465,21 +512,25 @@ impl TrainStore {
         let mut seen: HashSet<String> = HashSet::new();
         let mut inserted = 0usize;
 
-        inserted += self.seed_knowledge_topics(domain, stage, knowledge, &mut seen)?;
-        inserted += self.seed_stage_topics(domain, stage, stages, &mut seen)?;
+        inserted += self
+            .seed_knowledge_topics(domain, stage, knowledge, &mut seen)
+            .await?;
+        inserted += self
+            .seed_stage_topics(domain, stage, stages, &mut seen)
+            .await?;
 
         Ok(inserted)
     }
 
     /// Insert one stub if it is not a dup (batch or stored). Returns 1 if inserted.
-    fn seed_one(
+    async fn seed_one(
         &self,
         domain: &str,
         question: &str,
         retrieval_ref: &str,
         seen: &mut HashSet<String>,
     ) -> Result<usize> {
-        if seen.contains(question) || self.row_exists(domain, question)? {
+        if seen.contains(question) || self.row_exists(domain, question).await? {
             seen.insert(question.to_string());
             return Ok(0);
         }
@@ -492,49 +543,64 @@ impl TrainStore {
             "student",
             Some(retrieval_ref),
             None,
-        )?;
+        )
+        .await?;
         seen.insert(question.to_string());
         Ok(1)
     }
 
     /// True if a row with this exact `(domain, user_content)` already exists — the
-    /// dedup guard for the faucets. Locks and releases on its own (do not call
-    /// while holding `conn`).
-    fn row_exists(&self, domain: &str, user_content: &str) -> Result<bool> {
-        let c = self.conn.lock().unwrap();
-        let found: Option<i64> = c
-            .query_row(
+    /// dedup guard for the faucets.
+    async fn row_exists(&self, domain: &str, user_content: &str) -> Result<bool> {
+        let mut rows = self
+            .conn
+            .query(
                 "SELECT id FROM training_examples WHERE domain=?1 AND user_content=?2 LIMIT 1",
                 params![domain, user_content],
-                |r| r.get(0),
             )
-            .optional()?;
-        Ok(found.is_some())
+            .await?;
+        Ok(rows.next().await?.is_some())
     }
 
     // ── dashboard helpers ────────────────────────────────────────────────────
 
-    pub fn stats(&self) -> Result<TrainStats> {
-        let c = self.conn.lock().unwrap();
-        let count = |sql: &str| -> Result<i64> { Ok(c.query_row(sql, [], |r| r.get(0))?) };
+    pub async fn stats(&self) -> Result<TrainStats> {
         Ok(TrainStats {
-            total: count("SELECT COUNT(*) FROM training_examples")?,
-            proposed: count("SELECT COUNT(*) FROM training_examples WHERE trust = 'proposed'")?,
-            reviewed: count("SELECT COUNT(*) FROM training_examples WHERE trust = 'reviewed'")?,
-            user: count("SELECT COUNT(*) FROM training_examples WHERE trust = 'user'")?,
-            stubs: count(
-                "SELECT COUNT(*) FROM training_examples \
-                 WHERE assistant_content IS NULL OR assistant_content = ''",
-            )?,
+            total: self.count("SELECT COUNT(*) FROM training_examples").await?,
+            proposed: self
+                .count("SELECT COUNT(*) FROM training_examples WHERE trust = 'proposed'")
+                .await?,
+            reviewed: self
+                .count("SELECT COUNT(*) FROM training_examples WHERE trust = 'reviewed'")
+                .await?,
+            user: self
+                .count("SELECT COUNT(*) FROM training_examples WHERE trust = 'user'")
+                .await?,
+            stubs: self
+                .count(
+                    "SELECT COUNT(*) FROM training_examples \
+                     WHERE assistant_content IS NULL OR assistant_content = ''",
+                )
+                .await?,
         })
     }
 
-    pub fn clear_all(&self) -> Result<u64> {
-        let c = self.conn.lock().unwrap();
-        c.execute_batch("DELETE FROM training_fts; DELETE FROM training_examples;")?;
-        let deleted: u64 = c
-            .query_row("SELECT changes()", [], |r| r.get(0))
-            .unwrap_or(0);
+    async fn count(&self, sql: &str) -> Result<i64> {
+        let mut rows = self.conn.query(sql, ()).await?;
+        Ok(rows
+            .next()
+            .await?
+            .map(|r| r.get(0))
+            .transpose()?
+            .unwrap_or(0))
+    }
+
+    pub async fn clear_all(&self) -> Result<u64> {
+        self.conn.execute("DELETE FROM training_fts", ()).await?;
+        let deleted = self
+            .conn
+            .execute("DELETE FROM training_examples", ())
+            .await?;
         Ok(deleted)
     }
 }
@@ -611,15 +677,15 @@ fn parse_hits(observation: &str) -> Option<i64> {
 mod tests {
     use super::*;
 
-    fn store() -> TrainStore {
-        let s = TrainStore::open(":memory:").unwrap();
-        s.migrate().unwrap();
+    async fn store() -> TrainStore {
+        let s = TrainStore::open(":memory:").await.unwrap();
+        s.migrate().await.unwrap();
         s
     }
 
-    #[test]
-    fn collapse_guard_blocks_student_promotion() {
-        let s = store();
+    #[tokio::test]
+    async fn collapse_guard_blocks_student_promotion() {
+        let s = store().await;
         // A student-provenance row must never be promotable.
         let sid = s
             .capture_example(
@@ -632,14 +698,15 @@ mod tests {
                 None,
                 None,
             )
+            .await
             .unwrap();
         assert_eq!(
-            s.promote_example(sid).unwrap(),
+            s.promote_example(sid).await.unwrap(),
             PromoteOutcome::BlockedStudent
         );
 
         // It stays proposed after the rejected promote.
-        let rows = s.list_training(Some("d"), Some("proposed")).unwrap();
+        let rows = s.list_training(Some("d"), Some("proposed")).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].trust, "proposed");
 
@@ -655,13 +722,17 @@ mod tests {
                 None,
                 None,
             )
+            .await
             .unwrap();
-        assert_eq!(s.promote_example(tid).unwrap(), PromoteOutcome::Promoted);
+        assert_eq!(
+            s.promote_example(tid).await.unwrap(),
+            PromoteOutcome::Promoted
+        );
     }
 
-    #[test]
-    fn export_emits_only_reviewed_and_user() {
-        let s = store();
+    #[tokio::test]
+    async fn export_emits_only_reviewed_and_user() {
+        let s = store().await;
         // proposed teacher (must be EXCLUDED)
         s.capture_example(
             "d",
@@ -673,6 +744,7 @@ mod tests {
             None,
             None,
         )
+        .await
         .unwrap();
         // reviewed teacher (must be included)
         let r = s
@@ -686,15 +758,20 @@ mod tests {
                 None,
                 None,
             )
+            .await
             .unwrap();
-        assert_eq!(s.promote_example(r).unwrap(), PromoteOutcome::Promoted);
+        assert_eq!(
+            s.promote_example(r).await.unwrap(),
+            PromoteOutcome::Promoted
+        );
         // user/human (must be included)
         s.author_example("d", None, "uq?", "ua", "grounded", None, None)
+            .await
             .unwrap();
 
         let dir = std::env::temp_dir().join(format!("kltrain_test_{}", std::process::id()));
         let dir_s = dir.to_string_lossy().to_string();
-        let files = s.export_dataset(None, &dir_s).unwrap();
+        let files = s.export_dataset(None, &dir_s).await.unwrap();
 
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].rows, 2); // reviewed + user only, NOT the proposed row
@@ -715,9 +792,9 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    #[test]
-    fn queue_weak_captures_zero_hit_recalls_once() {
-        let s = store();
+    #[tokio::test]
+    async fn queue_weak_captures_zero_hit_recalls_once() {
+        let s = store().await;
         let ep = |step: i64, q: &str, hits: i64| EpisodeRow {
             id: step,
             run_id: "run1".into(),
@@ -727,6 +804,11 @@ mod tests {
             observation: Some(format!("returned {hits} hits")),
             outcome: Some("success".into()),
             ts: 0,
+            knowledge_ids_used: Vec::new(),
+            domain: Some("secdev".into()),
+            model: None,
+            tokens_used: None,
+            cost: None,
         };
         let eps = vec![
             ep(1, "how to sanitize input?", 0), // weak -> captured
@@ -734,10 +816,13 @@ mod tests {
             ep(3, "how to sanitize input?", 0), // dup of #1 -> skipped
         ];
 
-        let n = s.queue_weak(&eps, 0).unwrap();
+        let n = s.queue_weak(&eps, 0).await.unwrap();
         assert_eq!(n, 1);
 
-        let rows = s.list_training(Some("secdev"), Some("proposed")).unwrap();
+        let rows = s
+            .list_training(Some("secdev"), Some("proposed"))
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].provenance, "student");
         assert_eq!(rows[0].label_type, "grounded");
@@ -748,12 +833,12 @@ mod tests {
             .is_empty());
 
         // Re-running over the same trail inserts nothing (already stored).
-        assert_eq!(s.queue_weak(&eps, 0).unwrap(), 0);
+        assert_eq!(s.queue_weak(&eps, 0).await.unwrap(), 0);
     }
 
-    #[test]
-    fn seed_from_topics_emits_varied_student_stubs() {
-        let s = store();
+    #[tokio::test]
+    async fn seed_from_topics_emits_varied_student_stubs() {
+        let s = store().await;
         let k = |id: i64, kind: &str, title: &str| KnowledgeRow {
             id,
             kind: kind.into(),
@@ -766,6 +851,8 @@ mod tests {
             severity: Some("block".into()),
             created_at: 0,
             updated_at: 0,
+            conflict_with_id: None,
+            conflict_status: None,
         };
         let knowledge = vec![
             k(1, "rule", "validate all input"),
@@ -776,10 +863,14 @@ mod tests {
         // 3 variants for the rule + 2 for the fact = 5 stubs.
         let n = s
             .seed_from_topics("secdev", None, &knowledge, &stages)
+            .await
             .unwrap();
         assert_eq!(n, 5);
 
-        let rows = s.list_training(Some("secdev"), Some("proposed")).unwrap();
+        let rows = s
+            .list_training(Some("secdev"), Some("proposed"))
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 5);
         assert!(rows.iter().all(|r| r.provenance == "student"));
         assert!(rows
@@ -794,6 +885,7 @@ mod tests {
         // Idempotent: re-seeding the same topics inserts nothing.
         assert_eq!(
             s.seed_from_topics("secdev", None, &knowledge, &stages)
+                .await
                 .unwrap(),
             0
         );
