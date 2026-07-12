@@ -795,7 +795,17 @@ impl Store {
         sub_agent: Option<&str>,
     ) -> Result<()> {
         let c = self.conn.lock().unwrap();
-        c.execute("INSERT INTO model_registry(harness,model_id,capability_tier,cost_weight,sub_agent_name) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(harness,model_id,sub_agent_name) DO UPDATE SET capability_tier=excluded.capability_tier,cost_weight=excluded.cost_weight", params![harness,model_id,tier,cost,sub_agent])?;
+        // `ON CONFLICT(harness,model_id,sub_agent_name)` never fires when
+        // sub_agent_name is NULL — SQLite treats NULL as distinct from NULL
+        // for uniqueness purposes, so the PRIMARY KEY doesn't actually
+        // dedupe rows with no sub-agent. Delete-then-insert with `IS`
+        // (which does match NULL correctly) instead of relying on the
+        // conflict target.
+        c.execute(
+            "DELETE FROM model_registry WHERE harness=?1 AND model_id=?2 AND sub_agent_name IS ?3",
+            params![harness, model_id, sub_agent],
+        )?;
+        c.execute("INSERT INTO model_registry(harness,model_id,capability_tier,cost_weight,sub_agent_name) VALUES(?1,?2,?3,?4,?5)", params![harness,model_id,tier,cost,sub_agent])?;
         Ok(())
     }
 
@@ -1544,6 +1554,28 @@ mod model_registry_tests {
         let rules = store.list_routing_rules().unwrap();
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].model_id, "sonnet");
+    }
+
+    #[test]
+    fn configure_model_upserts_rather_than_duplicates_with_null_sub_agent() {
+        let store = fixture();
+        store
+            .configure_model("claude-code", "opus", "balanced", 4.0, None)
+            .unwrap();
+        // Re-configuring the same (harness, model_id) with sub_agent_name=NULL
+        // must replace the existing row, not add a second one — this is the
+        // exact case `ON CONFLICT` silently failed to dedupe.
+        store
+            .configure_model("claude-code", "opus", "heavy-reasoning", 20.0, None)
+            .unwrap();
+        let rows = store.list_model_registry().unwrap();
+        let matching: Vec<_> = rows
+            .iter()
+            .filter(|r| r.harness == "claude-code" && r.model_id == "opus")
+            .collect();
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].capability_tier, "heavy-reasoning");
+        assert_eq!(matching[0].cost_weight, 20.0);
     }
 
     #[test]
