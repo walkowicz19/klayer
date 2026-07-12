@@ -326,6 +326,23 @@ use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Case-folded, separator-folded, version-suffix-stripped harness key. MCP
+/// `clientInfo` auto-capture produces strings like `"claude-code/2.1.207"`
+/// or the literal product name `"Claude Code"`, neither of which equals a
+/// harness a user registered rules/models under by hand (`"claude-code"`)
+/// under plain string equality — strip everything but alphanumerics so
+/// `"Claude Code"`, `"claude-code"`, and `"claude_code"` all collapse to the
+/// same key.
+pub fn normalize_harness(h: &str) -> String {
+    h.split('/')
+        .next()
+        .unwrap_or(h)
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
 /// Env vars that opt a store into embedded-replica mode. Empty/unset means
 /// pure local mode — no behavior change from plain SQLite-over-libsql.
 pub const TURSO_URL_ENV: &str = "KLAYER_TURSO_URL";

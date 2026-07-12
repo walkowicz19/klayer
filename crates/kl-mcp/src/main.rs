@@ -1335,7 +1335,8 @@ fn model_registry_grouped(
             serde_json::json!({
                 "harness": harness,
                 "tiers": tiers,
-                "connected_now": captured_harness.as_deref() == Some(harness.as_str()),
+                "connected_now": captured_harness.as_deref().map(kl_core::normalize_harness)
+                    == Some(kl_core::normalize_harness(&harness)),
                 "last_edit_ts": store.last_episode_ts_for("model_registry", &needle),
                 "last_recommendation_ts": store.last_episode_ts_for("model_recommendation", &needle),
             })

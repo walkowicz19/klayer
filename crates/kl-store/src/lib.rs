@@ -896,6 +896,30 @@ impl Store {
         Ok(rows)
     }
 
+    /// Harness strings to try, in priority order: the exact string first (so
+    /// a deliberately version-scoped registration still wins if present),
+    /// then every other harness on record whose normalized form matches —
+    /// covers both the version-suffix and casing mismatches above.
+    fn candidate_harnesses(c: &rusqlite::Connection, harness: &str) -> Result<Vec<String>> {
+        let mut stmt = c.prepare(
+            "SELECT harness FROM model_registry UNION SELECT harness FROM routing_rules",
+        )?;
+        let all: Vec<String> = stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        let target = kl_core::normalize_harness(harness);
+        let mut out = Vec::new();
+        if all.iter().any(|h| h == harness) {
+            out.push(harness.to_string());
+        }
+        for h in all {
+            if h != harness && kl_core::normalize_harness(&h) == target {
+                out.push(h);
+            }
+        }
+        Ok(out)
+    }
+
     pub fn recommend_model(
         &self,
         harness: &str,
@@ -904,12 +928,46 @@ impl Store {
         complexity: &str,
     ) -> Result<Option<(String, f64, String)>> {
         let c = self.conn.lock().unwrap();
-        let configured: Option<(String, f64)> = c.query_row("SELECT model_id,cost_weight FROM model_registry WHERE harness=?1 AND model_id=(SELECT model_id FROM routing_rules WHERE harness=?1 AND domain_type=?2 AND task_type=?3 AND complexity_tier=?4) LIMIT 1", params![harness,domain_type,task_type,complexity], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
-        if let Some((model, cost)) = configured {
-            return Ok(Some((model, cost, "routing rule match".into())));
+        let candidates = Self::candidate_harnesses(&c, harness)?;
+        for h in &candidates {
+            let configured: Option<(String, f64)> = c.query_row("SELECT model_id,cost_weight FROM model_registry WHERE harness=?1 AND model_id=(SELECT model_id FROM routing_rules WHERE harness=?1 AND domain_type=?2 AND task_type=?3 AND complexity_tier=?4) LIMIT 1", params![h,domain_type,task_type,complexity], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
+            if let Some((model, cost)) = configured {
+                return Ok(Some((model, cost, "routing rule match".into())));
+            }
         }
-        let fallback: Option<(String,f64)> = c.query_row("SELECT model_id,cost_weight FROM model_registry WHERE harness=?1 ORDER BY cost_weight ASC LIMIT 1", params![harness], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
-        Ok(fallback.map(|(m, cost)| (m, cost, "no exact rule; cheapest configured model".into())))
+        // A rule matched on (domain_type, task_type, complexity_tier) but its
+        // model_id isn't registered under this harness — surface that
+        // distinctly from "no rule at all" so a dangling reference doesn't
+        // silently look identical to an unconfigured tier.
+        for h in &candidates {
+            let dangling: Option<String> = c
+                .query_row(
+                    "SELECT model_id FROM routing_rules WHERE harness=?1 AND domain_type=?2 AND task_type=?3 AND complexity_tier=?4",
+                    params![h, domain_type, task_type, complexity],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(model_id) = dangling {
+                return Ok(Some((
+                    model_id.clone(),
+                    0.0,
+                    format!(
+                        "routing rule points to unregistered model '{model_id}' for harness '{h}' — register it or fix the rule"
+                    ),
+                )));
+            }
+        }
+        for h in &candidates {
+            let fallback: Option<(String, f64)> = c.query_row("SELECT model_id,cost_weight FROM model_registry WHERE harness=?1 ORDER BY cost_weight ASC LIMIT 1", params![h], |r| Ok((r.get(0)?,r.get(1)?))).optional()?;
+            if let Some((m, cost)) = fallback {
+                return Ok(Some((
+                    m,
+                    cost,
+                    "no exact rule; cheapest configured model".into(),
+                )));
+            }
+        }
+        Ok(None)
     }
 
     pub fn list_domains(&self) -> Result<Vec<DomainRow>> {
@@ -1649,6 +1707,52 @@ mod model_registry_tests {
             .unwrap();
         assert_eq!(model, "opus");
         assert_eq!(reason, "routing rule match");
+    }
+
+    #[test]
+    fn recommend_model_matches_versioned_and_differently_cased_harness() {
+        let store = fixture();
+        store
+            .configure_model("claude-code", "opus", "heavy-reasoning", 10.0, None)
+            .unwrap();
+        store
+            .add_routing_rule("claude-code", "frontend", "feature", "high", "opus")
+            .unwrap();
+        // Auto-captured clientInfo harness carries a version suffix that
+        // never equals what a user registered rules/models under by hand.
+        let (model, _cost, reason) = store
+            .recommend_model("claude-code/2.1.207", "frontend", "feature", "high")
+            .unwrap()
+            .unwrap();
+        assert_eq!(model, "opus");
+        assert_eq!(reason, "routing rule match");
+        // Different casing (e.g. the literal clientInfo.name "Claude Code").
+        let (model, ..) = store
+            .recommend_model("Claude Code", "frontend", "feature", "high")
+            .unwrap()
+            .unwrap();
+        assert_eq!(model, "opus");
+    }
+
+    #[test]
+    fn recommend_model_reports_dangling_routing_rule_distinctly() {
+        let store = fixture();
+        store
+            .configure_model("claude-code", "opus", "heavy-reasoning", 10.0, None)
+            .unwrap();
+        // Rule references a model that was never registered.
+        store
+            .add_routing_rule("claude-code", "general", "any", "low", "haiku-nonexistent")
+            .unwrap();
+        let (model, _cost, reason) = store
+            .recommend_model("claude-code", "general", "any", "low")
+            .unwrap()
+            .unwrap();
+        assert_eq!(model, "haiku-nonexistent");
+        assert!(
+            reason.contains("unregistered model"),
+            "reason was: {reason}"
+        );
     }
 
     #[test]
