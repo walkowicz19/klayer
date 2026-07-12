@@ -25,13 +25,15 @@
 
 mod compliance;
 mod notify;
+mod tui;
 
 use std::sync::Arc;
 
 use anyhow::Result;
 use axum::{
-    extract::{Query, State},
+    extract::{Query, Request, State},
     http::header,
+    middleware::{self, Next},
     response::{Html, IntoResponse, Response},
     routing::get,
     Json, Router,
@@ -79,6 +81,10 @@ struct Klayer {
     /// principle re-initialize; the last handshake wins.
     captured_harness: Arc<std::sync::Mutex<Option<String>>>,
     notify: Arc<notify::NotifyState>,
+    /// Per-tenant retention ceiling from `KLAYER_MAX_RETENTION_DAYS`, read
+    /// once at startup. When set, any `retention_days` being written (domain
+    /// default or per-item override) that exceeds it is clamped down to it.
+    max_retention_days: Option<i64>,
 }
 
 // ----- tool parameter types ------------------------------------------------
@@ -186,6 +192,19 @@ struct IdParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct SetKnowledgeRetentionParams {
+    id: i64,
+    #[schemars(
+        description = "Per-item retention window in days, overriding the owning domain's retention_days for this item only (subject to the KLAYER_MAX_RETENTION_DAYS ceiling, if configured — an over-limit value is clamped down to it, not rejected). Ignored if clear:true is also passed."
+    )]
+    retention_days: Option<i64>,
+    #[schemars(
+        description = "If true, clears this item's override so the owning domain's retention_days (if any) applies again. If false/omitted, retention_days is used instead."
+    )]
+    clear: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 struct IngestMediaParams {
     #[schemars(description = "Base64-encoded raw image bytes.")]
     data_base64: String,
@@ -252,6 +271,18 @@ struct RegisterDomainParams {
         description = "If true, this domain's enforceable knowledge is presented with mandatory-compliance framing by recall(), and execute_change() refuses actions against it without a prior recall() in the same run (unless override:true). Omit to leave the current value unchanged (default false on first registration)."
     )]
     enforced: Option<bool>,
+    #[schemars(
+        description = "If true (the default on first registration), title/body text stored via remember/propose and chunk text ingested for this domain is scanned for PII (emails, phone numbers, card-shaped digit sequences, national-ID-shaped digit sequences) and redacted before storage. Omit to leave the current value unchanged."
+    )]
+    redact_enabled: Option<bool>,
+    #[schemars(
+        description = "Default retention window in days for knowledge in this domain (subject to the KLAYER_MAX_RETENTION_DAYS ceiling, if configured — an over-limit value is clamped down to it, not rejected). Omit to leave the current value unchanged. Ignored if clear_retention:true is also passed."
+    )]
+    retention_days: Option<i64>,
+    #[schemars(
+        description = "If true, clears this domain's retention_days back to no-expiration, regardless of retention_days. Omit/false to leave the current value unchanged."
+    )]
+    clear_retention: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -808,6 +839,12 @@ struct DashState {
     code_store: Arc<CodeStore>,
     train_store: Arc<TrainStore>,
     session_store: Arc<SessionStore>,
+    /// Shared with the `Klayer` MCP server instance running in the same
+    /// process (see `main()`), so the dashboard can show which harness, if
+    /// any, is the live MCP connection right now. In `--dashboard`-only mode
+    /// there is no MCP server, so this stays `None` forever — expected, not
+    /// a bug.
+    captured_harness: Arc<std::sync::Mutex<Option<String>>>,
     html: &'static str,
 }
 
@@ -832,6 +869,12 @@ impl axum::extract::FromRef<DashState> for Arc<TrainStore> {
 impl axum::extract::FromRef<DashState> for Arc<SessionStore> {
     fn from_ref(s: &DashState) -> Self {
         s.session_store.clone()
+    }
+}
+
+impl axum::extract::FromRef<DashState> for Arc<std::sync::Mutex<Option<String>>> {
+    fn from_ref(s: &DashState) -> Self {
+        s.captured_harness.clone()
     }
 }
 
@@ -960,6 +1003,10 @@ fn apply_marketplace_template(
         &template.slug,
         Some(&template.description),
         Some(&template.query_hint),
+        None,
+        None,
+        None,
+        Some(true),
         None,
     )?;
 
@@ -1256,7 +1303,17 @@ fn usage_rollup(rows: &[EpisodeRow]) -> serde_json::Value {
 /// by capability tier within it, matching how the Model Registry dashboard
 /// page (Stage H) presents the data — one long undifferentiated table isn't
 /// useful once a user has more than one harness configured.
-fn model_registry_grouped(rows: &[kl_core::ModelRegistryRow]) -> serde_json::Value {
+///
+/// `connected_now` and the two `*_ts` fields are best-effort derived data
+/// (see `Store::last_episode_ts_for`), not a clean presence system — klayer
+/// has exactly one real liveness signal (`captured_harness`, the current
+/// MCP process's handshake), and no historical "last seen" beyond what the
+/// `episodes` log incidentally records.
+fn model_registry_grouped(
+    rows: &[kl_core::ModelRegistryRow],
+    store: &Store,
+    captured_harness: &Option<String>,
+) -> serde_json::Value {
     let mut by_harness =
         std::collections::BTreeMap::<String, std::collections::BTreeMap<String, Vec<_>>>::new();
     for r in rows {
@@ -1273,14 +1330,27 @@ fn model_registry_grouped(rows: &[kl_core::ModelRegistryRow]) -> serde_json::Val
     }
     let harnesses: Vec<serde_json::Value> = by_harness
         .into_iter()
-        .map(|(harness, tiers)| serde_json::json!({"harness": harness, "tiers": tiers}))
+        .map(|(harness, tiers)| {
+            let needle = format!("harness={harness}");
+            serde_json::json!({
+                "harness": harness,
+                "tiers": tiers,
+                "connected_now": captured_harness.as_deref() == Some(harness.as_str()),
+                "last_edit_ts": store.last_episode_ts_for("model_registry", &needle),
+                "last_recommendation_ts": store.last_episode_ts_for("model_recommendation", &needle),
+            })
+        })
         .collect();
     serde_json::json!({ "harnesses": harnesses })
 }
 
-async fn dash_model_registry(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
+async fn dash_model_registry(
+    State(store): State<Arc<Store>>,
+    State(captured_harness): State<Arc<std::sync::Mutex<Option<String>>>>,
+) -> Json<serde_json::Value> {
+    let captured = captured_harness.lock().ok().and_then(|g| g.clone());
     match store.list_model_registry() {
-        Ok(rows) => Json(model_registry_grouped(&rows)),
+        Ok(rows) => Json(model_registry_grouped(&rows, &store, &captured)),
         Err(e) => Json(serde_json::json!({"error": e.to_string()})),
     }
 }
@@ -1870,19 +1940,50 @@ async fn dash_knowledge_update(
     ))
 }
 
+#[derive(Clone)]
+struct AuthState {
+    token: Arc<String>,
+}
+
+fn bearer_token_matches(expected: &str, header_value: Option<&str>) -> bool {
+    match header_value.and_then(|v| v.strip_prefix("Bearer ")) {
+        Some(presented) => presented == expected,
+        None => false,
+    }
+}
+
+async fn require_bearer_token(State(auth): State<AuthState>, req: Request, next: Next) -> Response {
+    let presented = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
+    if bearer_token_matches(&auth.token, presented) {
+        next.run(req).await
+    } else {
+        (axum::http::StatusCode::UNAUTHORIZED, "unauthorized").into_response()
+    }
+}
+
 async fn start_dashboard(
     store: Arc<Store>,
     code_store: Arc<CodeStore>,
     train_store: Arc<TrainStore>,
     session_store: Arc<SessionStore>,
+    captured_harness: Arc<std::sync::Mutex<Option<String>>>,
     port: u16,
     html: &'static str,
+    // `Some` only in `--mode=server`; drives both the bind address (below) and
+    // whether the auth layer is attached at all, so the default (localhost,
+    // no auth) code path is untouched rather than a layer that always runs
+    // and happens to no-op.
+    server_auth_token: Option<Arc<String>>,
 ) {
     let state = DashState {
         store,
         code_store,
         train_store,
         session_store,
+        captured_harness,
         html,
     };
     let app = Router::new()
@@ -1948,12 +2049,26 @@ async fn start_dashboard(
         .route("/api/sources/clear", get(dash_sources_clear))
         .route("/api/source/delete", get(dash_source_delete))
         .route("/api/episodes/clear", get(dash_episodes_clear))
-        .layer(CorsLayer::permissive())
-        .with_state(state);
+        .layer(CorsLayer::permissive());
 
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+    let app = if let Some(token) = server_auth_token.clone() {
+        app.layer(middleware::from_fn_with_state(
+            AuthState { token },
+            require_bearer_token,
+        ))
+    } else {
+        app
+    };
+    let app = app.with_state(state);
+
+    let bind_addr = if server_auth_token.is_some() {
+        "0.0.0.0"
+    } else {
+        "127.0.0.1"
+    };
+    let listener = tokio::net::TcpListener::bind((bind_addr, port))
         .await
-        .unwrap_or_else(|e| panic!("dashboard: cannot bind port {port}: {e}"));
+        .unwrap_or_else(|e| panic!("dashboard: cannot bind {bind_addr}:{port}: {e}"));
 
     axum::serve(listener, app).await.unwrap();
 }
@@ -1968,11 +2083,15 @@ impl Klayer {
         train_store: Arc<TrainStore>,
         session_store: Arc<SessionStore>,
         notify: Arc<notify::NotifyState>,
+        captured_harness: Arc<std::sync::Mutex<Option<String>>>,
     ) -> Self {
         let session_run_id = std::env::var("KLAYER_RUN_ID").unwrap_or_else(|_| {
             let now = chrono::Utc::now();
             format!("run-{}", now.format("%Y%m%d-%H%M%S"))
         });
+        let max_retention_days = std::env::var("KLAYER_MAX_RETENTION_DAYS")
+            .ok()
+            .and_then(|v| v.parse().ok());
         Self {
             store,
             code_store,
@@ -1981,8 +2100,9 @@ impl Klayer {
             search: Arc::from(build_search()),
             tool_router: Self::tool_router(),
             session_run_id,
-            captured_harness: Arc::new(std::sync::Mutex::new(None)),
+            captured_harness,
             notify,
+            max_retention_days,
         }
     }
 
@@ -2303,6 +2423,50 @@ impl Klayer {
         })
     }
 
+    #[tool(
+        description = "Set or clear a per-item retention override on a knowledge item, taking precedence over its domain's retention_days for that item only. Used by the retention sweep (see register_domain's retention_days) to decide when to purge."
+    )]
+    fn set_knowledge_retention(
+        &self,
+        Parameters(p): Parameters<SetKnowledgeRetentionParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let retention_days = if p.clear == Some(true) {
+            None
+        } else {
+            p.retention_days
+        };
+        let ok = self
+            .store
+            .set_knowledge_retention(p.id, retention_days, self.max_retention_days)
+            .map_err(err)?;
+        let observation = if ok {
+            format!(
+                "set retention override on knowledge #{} to {:?} days",
+                p.id, retention_days
+            )
+        } else {
+            format!("no knowledge item #{} found", p.id)
+        };
+        self.store
+            .log_episode_auto(
+                &self.session_run_id,
+                Some("set_knowledge_retention"),
+                Some(&format!("set_knowledge_retention id={}", p.id)),
+                Some(&observation),
+                Some("success"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .ok();
+        text_ok(if ok {
+            format!("Updated retention override on knowledge #{}.", p.id)
+        } else {
+            format!("No item #{}.", p.id)
+        })
+    }
+
     #[tool(description = "Store a durable user preference (always honored, outranks web data).")]
     fn set_preference(
         &self,
@@ -2346,12 +2510,21 @@ impl Klayer {
         &self,
         Parameters(p): Parameters<RegisterDomainParams>,
     ) -> Result<CallToolResult, McpError> {
+        let retention_days = if p.clear_retention == Some(true) {
+            Some(None)
+        } else {
+            p.retention_days.map(Some)
+        };
         self.store
             .register_domain(
                 &p.name,
                 p.description.as_deref(),
                 p.query_hint.as_deref(),
                 p.enforced,
+                p.redact_enabled,
+                retention_days,
+                None,
+                self.max_retention_days,
             )
             .map_err(err)?;
         let observation = format!("registered/updated domain '{}'", p.name);
@@ -2596,6 +2769,26 @@ impl Klayer {
             .store
             .recommend_model(&harness, &p.domain_type, &p.task_type, complexity)
             .map_err(err)?;
+        let recommended_summary = recommendation
+            .as_ref()
+            .map(|(model, _cost, reason)| format!("{model} ({reason})"))
+            .unwrap_or_else(|| "none".to_string());
+        self.store
+            .log_episode_auto(
+                &self.session_run_id,
+                Some("model_recommendation"),
+                Some(&format!(
+                    "estimate_task_complexity harness={} domain_type={} task_type={} complexity={}",
+                    harness, p.domain_type, p.task_type, complexity
+                )),
+                Some(&format!("recommended model={recommended_summary}")),
+                Some("success"),
+                p.domain.as_deref(),
+                None,
+                None,
+                None,
+            )
+            .ok();
         json_ok(
             &serde_json::json!({"complexity_tier":complexity,"harness":harness,"signal_source":source,"signal":signal,"repo":p.repo,"recommendation":recommendation.map(|(model,cost,reason)|serde_json::json!({"model_id":model,"cost_weight":cost,"reason":reason})),"advisory":true}),
         )
@@ -3569,6 +3762,101 @@ fn get_klayer_dir() -> std::path::PathBuf {
     std::path::PathBuf::from(home).join(".klayer")
 }
 
+struct DbPaths {
+    db: String,
+    code_db: String,
+    train_db: String,
+    session_db: String,
+}
+
+/// Resolves the four DB file paths the same way `main()` always has (env var
+/// override, else under `get_klayer_dir()`) — shared with `tui::open_stores`
+/// so `klayer status`/`klayer tui` see the exact same databases the MCP
+/// server and dashboard do.
+fn resolve_db_paths() -> DbPaths {
+    let klayer_dir = get_klayer_dir();
+    let db = std::env::var("KLAYER_DB")
+        .unwrap_or_else(|_| klayer_dir.join("klayer.db").to_string_lossy().to_string());
+    let code_db = std::env::var("KLAYER_CODE_DB").unwrap_or_else(|_| {
+        klayer_dir
+            .join("klayer_code.db")
+            .to_string_lossy()
+            .to_string()
+    });
+    let train_db = std::env::var("KLAYER_TRAIN_DB").unwrap_or_else(|_| {
+        klayer_dir
+            .join("klayer_train.db")
+            .to_string_lossy()
+            .to_string()
+    });
+    let session_db = std::env::var("KLAYER_SESSION_DB").unwrap_or_else(|_| {
+        klayer_dir
+            .join("klayer_session.db")
+            .to_string_lossy()
+            .to_string()
+    });
+    DbPaths {
+        db,
+        code_db,
+        train_db,
+        session_db,
+    }
+}
+
+fn generate_server_token() -> String {
+    use rand::Rng;
+    let bytes: [u8; 32] = rand::thread_rng().gen();
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Resolves the server-mode auth token: `KLAYER_SERVER_TOKEN` wins if set;
+/// otherwise a token is persisted under `get_klayer_dir()` so restarts reuse
+/// the same value instead of invalidating every previously-issued client.
+fn resolve_server_token(klayer_dir: &std::path::Path) -> String {
+    if let Ok(token) = std::env::var("KLAYER_SERVER_TOKEN") {
+        return token;
+    }
+    let token_path = klayer_dir.join("server_token.txt");
+    if let Ok(existing) = std::fs::read_to_string(&token_path) {
+        let trimmed = existing.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let token = generate_server_token();
+    if let Err(e) = std::fs::create_dir_all(klayer_dir) {
+        tracing::warn!("failed to create {}: {e}", klayer_dir.display());
+    }
+    if let Err(e) = std::fs::write(&token_path, &token) {
+        tracing::warn!(
+            "failed to persist server-mode auth token to {}: {e}",
+            token_path.display()
+        );
+    }
+    token
+}
+
+fn print_tls_warning_if_needed() {
+    let tls_terminated = std::env::var("KLAYER_TLS_TERMINATED")
+        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false);
+    if tls_terminated {
+        return;
+    }
+    eprintln!(
+        "\n\
+         ############################################################\n\
+         # WARNING: klayer is running in --mode=server WITHOUT TLS. #\n\
+         # All traffic (including the auth token) is UNENCRYPTED.   #\n\
+         # Put a reverse proxy (nginx, Caddy, etc.) in front of this#\n\
+         # process to terminate TLS before exposing it beyond       #\n\
+         # localhost.                                               #\n\
+         # Set KLAYER_TLS_TERMINATED=1 to silence this warning once #\n\
+         # a proxy is in place.                                     #\n\
+         ############################################################\n"
+    );
+}
+
 /// Root directory media bytes are written under. `KLAYER_MEDIA_DIR` overrides;
 /// otherwise defaults alongside the other klayer state under `get_klayer_dir()`.
 fn get_media_dir() -> std::path::PathBuf {
@@ -3774,6 +4062,59 @@ fn spawn_notify_watch_task(
     });
 }
 
+/// Periodic retention sweep: purges knowledge past its effective retention
+/// window (see `Store::retention_sweep`) and session journal rows past
+/// `KLAYER_SESSION_RETENTION_DAYS` (see `SessionStore::purge_older_than`).
+/// Spawned unconditionally from `main()` — unlike `spawn_notify_watch_task`,
+/// retention doesn't depend on notifications being configured. Runs hourly:
+/// retention windows are day-granularity, so this doesn't need the
+/// notify-watch task's 60-second cadence.
+fn spawn_retention_sweep_task(
+    store: Arc<Store>,
+    session_store: Arc<SessionStore>,
+    session_retention_days: Option<i64>,
+    run_id: String,
+) {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
+
+            if let Ok(purged) = store.retention_sweep(&run_id) {
+                if purged > 0 {
+                    tracing::info!(purged, "retention sweep purged knowledge items");
+                }
+            } else {
+                tracing::warn!("retention sweep over knowledge failed");
+            }
+
+            if let Some(days) = session_retention_days {
+                match session_store.purge_older_than(days).await {
+                    Ok(purged) => {
+                        if purged > 0 {
+                            store
+                                .log_episode_auto(
+                                    &run_id,
+                                    Some("retention_sweep"),
+                                    Some(&format!(
+                                        "purge session journal rows older than {days} days"
+                                    )),
+                                    Some(&format!("purged {purged} row(s)")),
+                                    Some("success"),
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                )
+                                .ok();
+                        }
+                    }
+                    Err(e) => tracing::warn!(error = %e, "session journal retention purge failed"),
+                }
+            }
+        }
+    });
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -3784,6 +4125,13 @@ async fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
+    let subcommand = std::env::args().nth(1);
+    match subcommand.as_deref() {
+        Some("status") => return tui::run_status().await,
+        Some("tui") => return tui::run_tui().await,
+        _ => {}
+    }
+
     let print_config = std::env::args().any(|a| a == "--print-mcp-config");
     let install_config = std::env::args().any(|a| a == "--install" || a == "--install-mcp");
 
@@ -3792,26 +4140,12 @@ async fn main() -> Result<()> {
     }
 
     let klayer_dir = get_klayer_dir();
-    let db = std::env::var("KLAYER_DB")
-        .unwrap_or_else(|_| klayer_dir.join("klayer.db").to_string_lossy().to_string());
-    let code_db = std::env::var("KLAYER_CODE_DB").unwrap_or_else(|_| {
-        klayer_dir
-            .join("klayer_code.db")
-            .to_string_lossy()
-            .to_string()
-    });
-    let train_db = std::env::var("KLAYER_TRAIN_DB").unwrap_or_else(|_| {
-        klayer_dir
-            .join("klayer_train.db")
-            .to_string_lossy()
-            .to_string()
-    });
-    let session_db = std::env::var("KLAYER_SESSION_DB").unwrap_or_else(|_| {
-        klayer_dir
-            .join("klayer_session.db")
-            .to_string_lossy()
-            .to_string()
-    });
+    let DbPaths {
+        db,
+        code_db,
+        train_db,
+        session_db,
+    } = resolve_db_paths();
     let port: u16 = std::env::var("KLAYER_DASHBOARD_PORT")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -3859,14 +4193,49 @@ async fn main() -> Result<()> {
         );
     }
 
+    let session_retention_days = std::env::var("KLAYER_SESSION_RETENTION_DAYS")
+        .ok()
+        .and_then(|v| v.parse().ok());
+    let retention_run_id =
+        std::env::var("KLAYER_RUN_ID").unwrap_or_else(|_| "retention-sweep".to_string());
+    spawn_retention_sweep_task(
+        Arc::clone(&store),
+        Arc::clone(&session_store),
+        session_retention_days,
+        retention_run_id,
+    );
+
     let html = load_dashboard_html();
+    // Shared with `Klayer` below so the dashboard can reflect the live MCP
+    // connection's harness (see `DashState::captured_harness` doc comment).
+    let captured_harness = Arc::new(std::sync::Mutex::new(None));
+
+    let server_mode = std::env::args().any(|a| a == "--mode=server");
+    let server_auth_token = if server_mode {
+        let token = resolve_server_token(&klayer_dir);
+        eprintln!("klayer server-mode auth token: {token}  (save this, printed once)");
+        print_tls_warning_if_needed();
+        Some(Arc::new(token))
+    } else {
+        None
+    };
 
     let dashboard_only = std::env::args().any(|a| a == "--dashboard");
     if dashboard_only {
         tracing::info!("running in dashboard-only mode (no MCP server)");
         tracing::info!("klayer dashboard  →  http://localhost:{port}");
         eprintln!("\n  klayer dashboard  →  http://localhost:{port}\n  Press Ctrl+C to stop.\n");
-        start_dashboard(store, code_store, train_store, session_store, port, html).await;
+        start_dashboard(
+            store,
+            code_store,
+            train_store,
+            session_store,
+            captured_harness,
+            port,
+            html,
+            server_auth_token,
+        )
+        .await;
         return Ok(());
     }
 
@@ -3875,14 +4244,23 @@ async fn main() -> Result<()> {
         Arc::clone(&code_store),
         Arc::clone(&train_store),
         Arc::clone(&session_store),
+        Arc::clone(&captured_harness),
         port,
         html,
+        server_auth_token,
     ));
     tracing::info!("klayer dashboard  →  http://localhost:{port}");
 
-    let service = Klayer::new(store, code_store, train_store, session_store, notify_state)
-        .serve(stdio())
-        .await?;
+    let service = Klayer::new(
+        store,
+        code_store,
+        train_store,
+        session_store,
+        notify_state,
+        captured_harness,
+    )
+    .serve(stdio())
+    .await?;
     service.waiting().await?;
     Ok(())
 }
@@ -3908,7 +4286,16 @@ mod stage_c_tests {
     fn execute_change_blocks_enforced_domain_without_prior_recall() {
         let store = fixture();
         store
-            .register_domain("secure-coding", None, None, Some(true))
+            .register_domain(
+                "secure-coding",
+                None,
+                None,
+                Some(true),
+                None,
+                None,
+                None,
+                None,
+            )
             .unwrap();
 
         let decision = execute_change_gate(&store, "secure-coding", "run-blocks", false).unwrap();
@@ -3920,7 +4307,16 @@ mod stage_c_tests {
     fn execute_change_allows_after_prior_recall_in_same_run() {
         let store = fixture();
         store
-            .register_domain("secure-coding", None, None, Some(true))
+            .register_domain(
+                "secure-coding",
+                None,
+                None,
+                Some(true),
+                None,
+                None,
+                None,
+                None,
+            )
             .unwrap();
         store
             .remember("secure-coding", "Always validate input.")
@@ -3954,7 +4350,16 @@ mod stage_c_tests {
     fn execute_change_override_bypasses_block_and_is_logged() {
         let store = fixture();
         store
-            .register_domain("secure-coding", None, None, Some(true))
+            .register_domain(
+                "secure-coding",
+                None,
+                None,
+                Some(true),
+                None,
+                None,
+                None,
+                None,
+            )
             .unwrap();
 
         let run_id = "run-override";
@@ -3990,10 +4395,28 @@ mod stage_c_tests {
     fn recall_marks_enforced_domain_items_with_imperative_framing() {
         let store = fixture();
         store
-            .register_domain("secure-coding", None, None, Some(true))
+            .register_domain(
+                "secure-coding",
+                None,
+                None,
+                Some(true),
+                None,
+                None,
+                None,
+                None,
+            )
             .unwrap();
         store
-            .register_domain("open-notes", None, None, Some(false))
+            .register_domain(
+                "open-notes",
+                None,
+                None,
+                Some(false),
+                None,
+                None,
+                None,
+                None,
+            )
             .unwrap();
         store
             .remember("secure-coding", "Never log plaintext passwords.")
@@ -4022,7 +4445,16 @@ mod stage_c_tests {
     fn compliance_report_surfaces_override_and_bypass_gaps() {
         let store = fixture();
         store
-            .register_domain("secure-coding", None, None, Some(true))
+            .register_domain(
+                "secure-coding",
+                None,
+                None,
+                Some(true),
+                None,
+                None,
+                None,
+                None,
+            )
             .unwrap();
 
         let run_id = "run-compliance-gap";
@@ -4360,7 +4792,9 @@ mod stage_e_tests {
                 sub_agent_name: Some("frontend-agent".into()),
             },
         ];
-        let shaped = model_registry_grouped(&rows);
+        let store = Store::open(":memory:").expect("open in-memory store");
+        store.migrate().expect("migrate");
+        let shaped = model_registry_grouped(&rows, &store, &Some("claude-code".to_string()));
         let harnesses = shaped["harnesses"].as_array().unwrap();
         assert_eq!(harnesses.len(), 2);
         let claude = harnesses
@@ -4369,11 +4803,47 @@ mod stage_e_tests {
             .unwrap();
         assert!(claude["tiers"]["heavy-reasoning"].as_array().unwrap().len() == 1);
         assert!(claude["tiers"]["fast-cheap"].as_array().unwrap().len() == 1);
+        assert_eq!(claude["connected_now"], true);
+        assert!(claude["last_edit_ts"].is_null());
+        assert!(claude["last_recommendation_ts"].is_null());
         let cursor = harnesses.iter().find(|h| h["harness"] == "cursor").unwrap();
         assert_eq!(
             cursor["tiers"]["balanced"][0]["sub_agent_name"],
             "frontend-agent"
         );
+        assert_eq!(cursor["connected_now"], false);
+    }
+
+    #[test]
+    fn model_registry_grouped_surfaces_last_edit_ts_from_episodes() {
+        let store = Store::open(":memory:").expect("open in-memory store");
+        store.migrate().expect("migrate");
+        store
+            .log_episode_auto(
+                "run-1",
+                Some("model_registry"),
+                Some("configure_model_registry action=add harness=claude-code model=opus"),
+                Some("model registry updated"),
+                Some("success"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        let rows = vec![kl_core::ModelRegistryRow {
+            harness: "claude-code".into(),
+            model_id: "opus".into(),
+            capability_tier: "heavy-reasoning".into(),
+            cost_weight: 10.0,
+            sub_agent_name: None,
+        }];
+        let shaped = model_registry_grouped(&rows, &store, &None);
+        let harnesses = shaped["harnesses"].as_array().unwrap();
+        let claude = harnesses[0].clone();
+        assert!(claude["last_edit_ts"].as_i64().is_some());
+        assert!(claude["last_recommendation_ts"].is_null());
+        assert_eq!(claude["connected_now"], false);
     }
 
     #[test]
@@ -4400,5 +4870,41 @@ mod stage_e_tests {
         let rules = harnesses[0]["rules"].as_array().unwrap();
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0]["model_id"], "opus");
+    }
+}
+
+#[cfg(test)]
+mod stage_f_tests {
+    use super::*;
+
+    #[test]
+    fn bearer_token_matches_exact_token() {
+        assert!(bearer_token_matches(
+            "secret-token",
+            Some("Bearer secret-token")
+        ));
+    }
+
+    #[test]
+    fn bearer_token_rejects_mismatched_token() {
+        assert!(!bearer_token_matches(
+            "secret-token",
+            Some("Bearer wrong-token")
+        ));
+    }
+
+    #[test]
+    fn bearer_token_rejects_missing_header() {
+        assert!(!bearer_token_matches("secret-token", None));
+    }
+
+    #[test]
+    fn bearer_token_rejects_missing_bearer_prefix() {
+        assert!(!bearer_token_matches("secret-token", Some("secret-token")));
+    }
+
+    #[test]
+    fn bearer_token_rejects_empty_presented_value() {
+        assert!(!bearer_token_matches("secret-token", Some("Bearer ")));
     }
 }

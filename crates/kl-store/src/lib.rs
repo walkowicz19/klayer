@@ -74,6 +74,12 @@ impl Store {
         c.execute_batch("CREATE TABLE IF NOT EXISTS domain_permissions (identity TEXT NOT NULL, domain TEXT NOT NULL, allowed INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(identity, domain)); CREATE INDEX IF NOT EXISTS domain_permissions_domain ON domain_permissions(domain);")?;
         c.execute_batch("CREATE TABLE IF NOT EXISTS model_registry (harness TEXT NOT NULL, model_id TEXT NOT NULL, capability_tier TEXT NOT NULL, cost_weight REAL NOT NULL, sub_agent_name TEXT, PRIMARY KEY(harness, model_id, sub_agent_name)); CREATE TABLE IF NOT EXISTS routing_rules (harness TEXT NOT NULL, domain_type TEXT NOT NULL, task_type TEXT NOT NULL, complexity_tier TEXT NOT NULL, model_id TEXT NOT NULL, PRIMARY KEY(harness, domain_type, task_type, complexity_tier));")?;
         ensure_column(&c, "domains", "enforced", "BOOLEAN NOT NULL DEFAULT 0")?;
+        ensure_column(
+            &c,
+            "domains",
+            "redact_enabled",
+            "BOOLEAN NOT NULL DEFAULT 1",
+        )?;
         ensure_column(&c, "episodes", "domain", "TEXT")?;
         // Best-effort, self-reported usage metadata (Stage D). MCP has no
         // standard field for token/cost accounting, so these are never
@@ -82,6 +88,14 @@ impl Store {
         ensure_column(&c, "episodes", "model", "TEXT")?;
         ensure_column(&c, "episodes", "tokens_used", "INTEGER")?;
         ensure_column(&c, "episodes", "cost", "REAL")?;
+        ensure_column(&c, "domains", "retention_days", "INTEGER")?;
+        ensure_column(
+            &c,
+            "domains",
+            "is_marketplace_template",
+            "BOOLEAN NOT NULL DEFAULT 0",
+        )?;
+        ensure_column(&c, "knowledge", "retention_days", "INTEGER")?;
         Ok(())
     }
 
@@ -107,9 +121,17 @@ impl Store {
     /// Insert reference chunks and mirror them into the FTS index (rowid == chunk id).
     pub fn add_chunks(&self, source_id: i64, domain: &str, chunks: &[String]) -> Result<usize> {
         let now = Utc::now().timestamp();
+        let redact = self.domain_redact_enabled(domain)?;
         let mut c = self.conn.lock().unwrap();
         let tx = c.transaction()?;
         for (ord, text) in chunks.iter().enumerate() {
+            let redacted;
+            let text: &str = if redact {
+                redacted = kl_core::redact::redact(text);
+                &redacted
+            } else {
+                text
+            };
             tx.execute(
                 "INSERT INTO chunks (source_id, domain, ord, text) VALUES (?1, ?2, ?3, ?4)",
                 params![source_id, domain, ord as i64, text],
@@ -274,6 +296,19 @@ impl Store {
         trust: Trust,
     ) -> Result<i64> {
         let now = Utc::now().timestamp();
+        // Redaction must happen before the INSERT and before the conflict-
+        // detection query below, since that query matches on title/body text
+        // and must never compare against (or persist) raw PII.
+        let (title, body) = if self.domain_redact_enabled(domain)? {
+            (
+                kl_core::redact::redact(title),
+                kl_core::redact::redact(body),
+            )
+        } else {
+            (title.to_string(), body.to_string())
+        };
+        let title = title.as_str();
+        let body = body.as_str();
         let c = self.conn.lock().unwrap();
         c.execute(
             "INSERT INTO knowledge
@@ -432,7 +467,7 @@ impl Store {
         let c = self.conn.lock().unwrap();
         let mut stmt = c.prepare(
             "SELECT id, kind, domain, stage, title, body, trust, severity, created_at, updated_at,
-                    conflict_with_id, conflict_status
+                    conflict_with_id, conflict_status, retention_days
                FROM knowledge
               WHERE domain = ?1
                 AND (?2 IS NULL OR trust = ?2)
@@ -457,6 +492,40 @@ impl Store {
                 updated_at: r.get(9)?,
                 conflict_with_id: r.get(10)?,
                 conflict_status: r.get(11)?,
+                retention_days: r.get(12)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Like `list_knowledge` but unpaginated (no LIMIT) — used by the
+    /// retention sweep, which must see every item in a domain, not just the
+    /// newest 100.
+    fn list_knowledge_all(&self, domain: &str) -> Result<Vec<KnowledgeRow>> {
+        let c = self.conn.lock().unwrap();
+        let mut stmt = c.prepare(
+            "SELECT id, kind, domain, stage, title, body, trust, severity, created_at, updated_at,
+                    conflict_with_id, conflict_status, retention_days
+               FROM knowledge
+              WHERE domain = ?1",
+        )?;
+        let rows = stmt.query_map(params![domain], |r| {
+            let trust_s: String = r.get(6)?;
+            Ok(KnowledgeRow {
+                id: r.get(0)?,
+                kind: r.get(1)?,
+                domain: r.get(2)?,
+                stage: r.get(3)?,
+                title: r.get(4)?,
+                body: r.get(5)?,
+                enforceable: Trust::parse(&trust_s).is_enforceable(),
+                trust: trust_s,
+                severity: r.get(7)?,
+                created_at: r.get(8)?,
+                updated_at: r.get(9)?,
+                conflict_with_id: r.get(10)?,
+                conflict_status: r.get(11)?,
+                retention_days: r.get(12)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -470,7 +539,7 @@ impl Store {
             .query_row(
                 "SELECT k.id, k.kind, k.domain, k.stage, k.title, k.body, k.trust, k.severity,
                         k.created_at, k.updated_at, k.conflict_with_id, k.conflict_status,
-                        s.title, s.uri
+                        s.title, s.uri, k.retention_days
                    FROM knowledge k
                    LEFT JOIN sources s ON s.id = k.source_id
                   WHERE k.id = ?1",
@@ -492,6 +561,7 @@ impl Store {
                             updated_at: r.get(9)?,
                             conflict_with_id: r.get(10)?,
                             conflict_status: r.get(11)?,
+                            retention_days: r.get(14)?,
                         },
                         source_title: r.get(12)?,
                         source_uri: r.get(13)?,
@@ -506,7 +576,7 @@ impl Store {
         let c = self.conn.lock().unwrap();
         let mut stmt = c.prepare(
             "SELECT id, kind, domain, stage, title, body, trust, severity, created_at, updated_at,
-                    conflict_with_id, conflict_status FROM knowledge
+                    conflict_with_id, conflict_status, retention_days FROM knowledge
              WHERE conflict_status='open' AND (?1 IS NULL OR domain=?1)
              ORDER BY updated_at DESC LIMIT 200",
         )?;
@@ -526,6 +596,7 @@ impl Store {
                 updated_at: r.get(9)?,
                 conflict_with_id: r.get(10)?,
                 conflict_status: r.get(11)?,
+                retention_days: r.get(12)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -585,27 +656,78 @@ impl Store {
 
     // ---- registries (drive the router) -----------------------------------
 
+    /// Register or update a domain.
+    ///
+    /// `retention_days` is tri-state to distinguish "leave whatever it
+    /// currently is alone" from "explicitly clear back to no-expiration":
+    /// `None` = don't touch; `Some(None)` = clear to no-expiration;
+    /// `Some(Some(n))` = set to `n` days (clamped to `max_retention_days`
+    /// if that ceiling is provided and `n` exceeds it — clamped rather than
+    /// rejected, so a caller requesting an overly long retention still gets
+    /// a working policy instead of an error).
+    #[allow(clippy::too_many_arguments)]
     pub fn register_domain(
         &self,
         name: &str,
         description: Option<&str>,
         query_hint: Option<&str>,
         enforced: Option<bool>,
+        redact_enabled: Option<bool>,
+        retention_days: Option<Option<i64>>,
+        is_marketplace_template: Option<bool>,
+        max_retention_days: Option<i64>,
     ) -> Result<()> {
         let now = Utc::now().timestamp();
         let c = self.conn.lock().unwrap();
         let enforced_i = enforced.map(|b| b as i64);
+        let redact_enabled_i = redact_enabled.map(|b| b as i64);
+        let is_marketplace_template_i = is_marketplace_template.map(|b| b as i64);
+        let (retention_touched, retention_value) = match retention_days {
+            None => (0i64, None),
+            Some(v) => (1i64, clamp_retention(v, max_retention_days)),
+        };
         c.execute(
-            "INSERT INTO domains (name, description, query_hint, enforced, last_updated)
-             VALUES (?1, ?2, ?3, COALESCE(?4, 0), ?5)
+            "INSERT INTO domains (name, description, query_hint, enforced, redact_enabled, retention_days, is_marketplace_template, last_updated)
+             VALUES (?1, ?2, ?3, COALESCE(?4, 0), COALESCE(?5, 1), ?6, COALESCE(?7, 0), ?8)
              ON CONFLICT(name) DO UPDATE SET
                description = COALESCE(excluded.description, domains.description),
                query_hint  = COALESCE(excluded.query_hint,  domains.query_hint),
                enforced    = COALESCE(?4, domains.enforced),
+               redact_enabled = COALESCE(?5, domains.redact_enabled),
+               retention_days = CASE WHEN ?9 = 1 THEN ?6 ELSE domains.retention_days END,
+               is_marketplace_template = COALESCE(?7, domains.is_marketplace_template),
                last_updated = excluded.last_updated",
-            params![name, description, query_hint, enforced_i, now],
+            params![
+                name,
+                description,
+                query_hint,
+                enforced_i,
+                redact_enabled_i,
+                retention_value,
+                is_marketplace_template_i,
+                now,
+                retention_touched,
+            ],
         )?;
         Ok(())
+    }
+
+    /// Set (or clear) the per-item retention override on a knowledge row.
+    /// Same tri-state shape and clamping behavior as `register_domain`'s
+    /// `retention_days`. Returns `false` if `id` doesn't exist.
+    pub fn set_knowledge_retention(
+        &self,
+        id: i64,
+        retention_days: Option<i64>,
+        max_retention_days: Option<i64>,
+    ) -> Result<bool> {
+        let value = clamp_retention(retention_days, max_retention_days);
+        let c = self.conn.lock().unwrap();
+        let n = c.execute(
+            "UPDATE knowledge SET retention_days = ?1 WHERE id = ?2",
+            params![value, id],
+        )?;
+        Ok(n > 0)
     }
 
     /// Whether a domain has the enforced flag set. Unknown domains are treated
@@ -619,6 +741,21 @@ impl Store {
         )
         .optional()?
         .unwrap_or(0)
+            != 0)
+    }
+
+    /// Whether a domain redacts PII from title/body/chunk text before storage.
+    /// Unknown domains fail safe (redact), matching the column's DEFAULT 1 —
+    /// unlike `domain_enforced`, which fails open (not enforced) by design.
+    pub fn domain_redact_enabled(&self, name: &str) -> Result<bool> {
+        let c = self.conn.lock().unwrap();
+        Ok(c.query_row(
+            "SELECT redact_enabled FROM domains WHERE name = ?1",
+            params![name],
+            |r| r.get::<_, i64>(0),
+        )
+        .optional()?
+        .unwrap_or(1)
             != 0)
     }
 
@@ -771,7 +908,7 @@ impl Store {
             "SELECT d.name, d.description, d.query_hint, d.doc_count,
                     (SELECT COUNT(*) FROM knowledge k WHERE k.domain = d.name AND k.kind = 'rule'
                        AND k.trust IN ('reviewed','user')) AS rule_count,
-                    d.last_updated, d.enforced
+                    d.last_updated, d.enforced, d.retention_days, d.is_marketplace_template
                FROM domains d ORDER BY d.name",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -783,6 +920,8 @@ impl Store {
                 rule_count: r.get::<_, Option<i64>>(4)?.unwrap_or(0),
                 last_updated: r.get(5)?,
                 enforced: r.get::<_, i64>(6)? != 0,
+                retention_days: r.get(7)?,
+                is_marketplace_template: r.get::<_, i64>(8)? != 0,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -879,6 +1018,57 @@ impl Store {
         Ok(c.last_insert_rowid())
     }
 
+    /// Purge knowledge items whose effective retention window has elapsed.
+    ///
+    /// Effective retention per item is `knowledge.retention_days` if set,
+    /// else the owning domain's `retention_days`; if both are `None` the
+    /// item never expires. A marketplace-template domain (`is_marketplace_template`)
+    /// is skipped entirely unless it has its own explicit `retention_days` —
+    /// otherwise applying a template would silently start a countdown the
+    /// user never asked for.
+    ///
+    /// Pure/synchronous and independent of the tokio sweep task's loop/sleep
+    /// wrapper, so it can be exercised directly in tests. Each purge is
+    /// logged via `log_episode_auto` under `stage="retention_sweep"`, tagged
+    /// with `run_id` so it shows up in that run's episode trace.
+    pub fn retention_sweep(&self, run_id: &str) -> Result<usize> {
+        let now = Utc::now().timestamp();
+        let mut purged = 0usize;
+        for d in self.list_domains()? {
+            if d.is_marketplace_template && d.retention_days.is_none() {
+                continue;
+            }
+            for item in self.list_knowledge_all(&d.name)? {
+                let Some(days) = item.retention_days.or(d.retention_days) else {
+                    continue;
+                };
+                let cutoff = item.created_at + days * 86_400;
+                if now < cutoff {
+                    continue;
+                }
+                if self.forget(item.id)? {
+                    purged += 1;
+                    self.log_episode_auto(
+                        run_id,
+                        Some("retention_sweep"),
+                        Some(&format!(
+                            "purge knowledge id={} domain={} retention_days={days}",
+                            item.id, item.domain
+                        )),
+                        None,
+                        Some("success"),
+                        Some(&item.domain),
+                        None,
+                        None,
+                        None,
+                    )
+                    .ok();
+                }
+            }
+        }
+        Ok(purged)
+    }
+
     /// Whether a `recall` episode against `domain` already exists earlier in
     /// `run_id` — the precondition `execute_change` gates on for enforced domains.
     pub fn has_prior_recall(&self, run_id: &str, domain: &str) -> Result<bool> {
@@ -889,6 +1079,21 @@ impl Store {
             |r| r.get(0),
         )?;
         Ok(n > 0)
+    }
+
+    /// Most recent `ts` of an episode with the given `stage` whose `action`
+    /// text contains `harness_needle` (e.g. `"harness=Claude Code"`) — a
+    /// best-effort derivation over the free-text `action` field, not a clean
+    /// indexed lookup (there is no dedicated harness column on `episodes`).
+    pub fn last_episode_ts_for(&self, stage: &str, harness_needle: &str) -> Option<i64> {
+        let c = self.conn.lock().ok()?;
+        c.query_row(
+            "SELECT MAX(ts) FROM episodes WHERE stage = ?1 AND action LIKE ?2",
+            params![stage, format!("%{harness_needle}%")],
+            |r| r.get(0),
+        )
+        .ok()
+        .flatten()
     }
 
     /// List ingested sources for a domain (or all domains if None). Newest first, limit 100.
@@ -1342,6 +1547,59 @@ mod model_registry_tests {
     }
 
     #[test]
+    fn last_episode_ts_for_finds_most_recent_matching_action() {
+        let store = fixture();
+        store
+            .log_episode_auto(
+                "run-1",
+                Some("model_registry"),
+                Some("configure_model_registry action=add harness=claude-code model=opus"),
+                Some("model registry updated"),
+                Some("success"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        let second_id = store
+            .log_episode_auto(
+                "run-1",
+                Some("model_registry"),
+                Some("configure_model_registry action=add harness=claude-code model=haiku"),
+                Some("model registry updated"),
+                Some("success"),
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+        let ts = store
+            .last_episode_ts_for("model_registry", "harness=claude-code")
+            .expect("expected a matching episode ts");
+        let expected: i64 = store
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT ts FROM episodes WHERE id = ?1",
+                params![second_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ts, expected);
+
+        assert!(store
+            .last_episode_ts_for("model_registry", "harness=cursor")
+            .is_none());
+        assert!(store
+            .last_episode_ts_for("model_recommendation", "harness=claude-code")
+            .is_none());
+    }
+
+    #[test]
     fn recommend_model_uses_routing_rule_once_populated() {
         let store = fixture();
         store
@@ -1525,6 +1783,104 @@ mod media_tests {
     }
 }
 
+#[cfg(test)]
+mod redact_tests {
+    use super::*;
+
+    fn fixture() -> Store {
+        let store = Store::open(":memory:").expect("open in-memory store");
+        store.migrate().expect("migrate");
+        store
+    }
+
+    #[test]
+    fn remember_redacts_by_default() {
+        let store = fixture();
+        let id = store
+            .remember("pii-domain", "reach me at leak@example.com anytime")
+            .unwrap();
+        let items = store.list_knowledge("pii-domain", None, None).unwrap();
+        let row = items.into_iter().find(|r| r.id == id).unwrap();
+        assert!(row.body.contains("[REDACTED:EMAIL]"));
+        assert!(!row.body.contains("leak@example.com"));
+    }
+
+    #[test]
+    fn propose_redacts_by_default() {
+        let store = fixture();
+        let id = store
+            .propose(
+                Kind::Fact,
+                "pii-domain",
+                None,
+                "card on file",
+                "card number is 4111-1111-1111-1111",
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        let items = store.list_knowledge("pii-domain", None, None).unwrap();
+        let row = items.into_iter().find(|r| r.id == id).unwrap();
+        assert!(row.body.contains("[REDACTED:CARD]"));
+        assert!(!row.body.contains("4111"));
+    }
+
+    #[test]
+    fn redact_disabled_domain_stores_raw_text() {
+        let store = fixture();
+        store
+            .register_domain(
+                "open-domain",
+                None,
+                None,
+                None,
+                Some(false),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        let id = store
+            .remember("open-domain", "reach me at leak@example.com anytime")
+            .unwrap();
+        let items = store.list_knowledge("open-domain", None, None).unwrap();
+        let row = items.into_iter().find(|r| r.id == id).unwrap();
+        assert!(row.body.contains("leak@example.com"));
+        assert!(!row.body.contains("[REDACTED"));
+    }
+
+    #[test]
+    fn add_chunks_redacts_by_default() {
+        let store = fixture();
+        let source_id = store.add_source("web", None, None, "pii-domain").unwrap();
+        store
+            .add_chunks(
+                source_id,
+                "pii-domain",
+                &["call +1-555-123-4567 for support".to_string()],
+            )
+            .unwrap();
+        let c = store.conn.lock().unwrap();
+        let text: String = c
+            .query_row(
+                "SELECT text FROM chunks WHERE source_id = ?1",
+                params![source_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(text.contains("[REDACTED:PHONE]"));
+        assert!(!text.contains("555-123-4567"));
+    }
+
+    #[test]
+    fn domain_redact_enabled_defaults_true_for_unknown_domain() {
+        let store = fixture();
+        assert!(store.domain_redact_enabled("never-registered").unwrap());
+    }
+}
+
 fn submission_from_row(r: &rusqlite::Row) -> rusqlite::Result<SubmissionRow> {
     let items_json: String = r.get(4)?;
     let item_count = serde_json::from_str::<serde_json::Value>(&items_json)
@@ -1561,6 +1917,18 @@ fn ensure_column(c: &Connection, table: &str, col: &str, decl: &str) -> Result<(
     Ok(())
 }
 
+/// Clamp a requested retention value down to `max` (the per-tenant
+/// `KLAYER_MAX_RETENTION_DAYS` ceiling), if both are present and the request
+/// exceeds it. `None` (no expiration) is never clamped — a ceiling caps how
+/// long data may be *kept*, it doesn't force an expiration onto data that
+/// wasn't given one.
+fn clamp_retention(value: Option<i64>, max: Option<i64>) -> Option<i64> {
+    match (value, max) {
+        (Some(n), Some(max)) if n > max => Some(max),
+        (v, _) => v,
+    }
+}
+
 /// Build a safe FTS5 MATCH expression: each whitespace token quoted, OR-joined.
 fn fts_match(query: &str) -> String {
     let terms: Vec<String> = query
@@ -1570,4 +1938,229 @@ fn fts_match(query: &str) -> String {
         .map(|t| format!("\"{t}\""))
         .collect();
     terms.join(" OR ")
+}
+
+#[cfg(test)]
+mod retention_tests {
+    use super::*;
+
+    fn fixture() -> Store {
+        let store = Store::open(":memory:").expect("open in-memory store");
+        store.migrate().expect("migrate");
+        store
+    }
+
+    /// Backdate a knowledge item's `created_at` directly, bypassing the
+    /// public API (there's no supported way to set it in the past otherwise).
+    fn backdate(store: &Store, id: i64, days_ago: i64) {
+        let c = store.conn.lock().unwrap();
+        let ts = Utc::now().timestamp() - days_ago * 86_400;
+        c.execute(
+            "UPDATE knowledge SET created_at = ?1 WHERE id = ?2",
+            params![ts, id],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn sweep_purges_item_past_domain_retention() {
+        let store = fixture();
+        store
+            .register_domain(
+                "expiring",
+                None,
+                None,
+                None,
+                None,
+                Some(Some(30)),
+                None,
+                None,
+            )
+            .unwrap();
+        let id = store.remember("expiring", "an old fact").unwrap();
+        backdate(&store, id, 31);
+
+        let purged = store.retention_sweep("test-run").unwrap();
+        assert_eq!(purged, 1);
+        assert!(store.get_knowledge_by_id(id).unwrap().is_none());
+    }
+
+    #[test]
+    fn sweep_leaves_item_within_domain_retention() {
+        let store = fixture();
+        store
+            .register_domain(
+                "expiring",
+                None,
+                None,
+                None,
+                None,
+                Some(Some(30)),
+                None,
+                None,
+            )
+            .unwrap();
+        let id = store.remember("expiring", "a fresh fact").unwrap();
+        backdate(&store, id, 5);
+
+        let purged = store.retention_sweep("test-run").unwrap();
+        assert_eq!(purged, 0);
+        assert!(store.get_knowledge_by_id(id).unwrap().is_some());
+    }
+
+    #[test]
+    fn item_override_wins_over_domain_default() {
+        let store = fixture();
+        store
+            .register_domain(
+                "team-domain",
+                None,
+                None,
+                None,
+                None,
+                Some(Some(365)),
+                None,
+                None,
+            )
+            .unwrap();
+        let id = store.remember("team-domain", "short-lived fact").unwrap();
+        store.set_knowledge_retention(id, Some(7), None).unwrap();
+        backdate(&store, id, 10);
+
+        let purged = store.retention_sweep("test-run").unwrap();
+        assert_eq!(purged, 1);
+        assert!(store.get_knowledge_by_id(id).unwrap().is_none());
+    }
+
+    #[test]
+    fn marketplace_template_without_explicit_retention_is_skipped() {
+        let store = fixture();
+        store
+            .register_domain(
+                "template-domain",
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(true),
+                None,
+            )
+            .unwrap();
+        let id = store.remember("template-domain", "template fact").unwrap();
+        backdate(&store, id, 9999);
+
+        let purged = store.retention_sweep("test-run").unwrap();
+        assert_eq!(purged, 0);
+        assert!(store.get_knowledge_by_id(id).unwrap().is_some());
+    }
+
+    #[test]
+    fn marketplace_template_with_explicit_retention_is_not_skipped() {
+        let store = fixture();
+        store
+            .register_domain(
+                "template-domain",
+                None,
+                None,
+                None,
+                None,
+                Some(Some(10)),
+                Some(true),
+                None,
+            )
+            .unwrap();
+        let id = store.remember("template-domain", "template fact").unwrap();
+        backdate(&store, id, 11);
+
+        let purged = store.retention_sweep("test-run").unwrap();
+        assert_eq!(purged, 1);
+        assert!(store.get_knowledge_by_id(id).unwrap().is_none());
+    }
+
+    #[test]
+    fn register_domain_clamps_retention_to_ceiling() {
+        let store = fixture();
+        store
+            .register_domain(
+                "capped-domain",
+                None,
+                None,
+                None,
+                None,
+                Some(Some(400)),
+                None,
+                Some(90),
+            )
+            .unwrap();
+        let domains = store.list_domains().unwrap();
+        let d = domains.iter().find(|d| d.name == "capped-domain").unwrap();
+        assert_eq!(d.retention_days, Some(90));
+    }
+
+    #[test]
+    fn register_domain_clear_retention_resets_to_no_expiration() {
+        let store = fixture();
+        store
+            .register_domain(
+                "clearable",
+                None,
+                None,
+                None,
+                None,
+                Some(Some(30)),
+                None,
+                None,
+            )
+            .unwrap();
+        store
+            .register_domain("clearable", None, None, None, None, Some(None), None, None)
+            .unwrap();
+        let domains = store.list_domains().unwrap();
+        let d = domains.iter().find(|d| d.name == "clearable").unwrap();
+        assert_eq!(d.retention_days, None);
+    }
+
+    #[test]
+    fn register_domain_unspecified_retention_leaves_it_unchanged() {
+        let store = fixture();
+        store
+            .register_domain(
+                "untouched",
+                None,
+                None,
+                None,
+                None,
+                Some(Some(15)),
+                None,
+                None,
+            )
+            .unwrap();
+        store
+            .register_domain(
+                "untouched",
+                Some("updated description"),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        let domains = store.list_domains().unwrap();
+        let d = domains.iter().find(|d| d.name == "untouched").unwrap();
+        assert_eq!(d.retention_days, Some(15));
+    }
+
+    #[test]
+    fn set_knowledge_retention_clamps_to_ceiling() {
+        let store = fixture();
+        let id = store.remember("some-domain", "a fact").unwrap();
+        store
+            .set_knowledge_retention(id, Some(200), Some(60))
+            .unwrap();
+        let item = store.get_knowledge_by_id(id).unwrap().unwrap();
+        assert_eq!(item.row.retention_days, Some(60));
+    }
 }

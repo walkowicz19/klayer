@@ -47,3 +47,11 @@ This skill guides AI agents to automatically utilize `klayer` for grounding, cod
 
 8. **Observability**:
    - When self-reporting is available, pass `model`, `tokens_used`, and `cost` on `recall`/`remember`/`ingest` calls — these are best-effort and optional (MCP has no standard field for this), but improve the accuracy of the Usage & Cost dashboard when supplied.
+
+9. **PII Redaction**:
+   - By default, every domain redacts pattern-matched PII (emails, phone numbers, card numbers, ID-shaped digit sequences) in `remember`/`propose`/`ingest`/`log_work` content before it's stored — a recalled item containing `[REDACTED:EMAIL]`, `[REDACTED:CARD]`, `[REDACTED:PHONE]`, or `[REDACTED:ID_NUMBER]` reflects the original having matched one of these patterns, not a bug or missing content. Don't try to "fix" or re-insert what was redacted.
+   - A domain can only skip redaction if `register_domain` was called with `redact_enabled: false` — deliberately rare (structured PII under proper access control). Do not set this without an explicit user request.
+
+10. **Retention (TTL)**:
+    - `register_domain`'s `retention_days` sets how long that domain's knowledge lives before a background sweep purges it (`clear_retention: true` removes the limit again). `set_knowledge_retention(id, retention_days)` overrides the domain default for one item. Default is no expiration — don't set a retention window unless the user asks for one, since it's a real, logged deletion, not a soft flag.
+    - Domains created from a Marketplace template are excluded from retention by default (shared reference content), even if the surrounding domain has a retention policy — only an explicit `retention_days` set directly on that template domain overrides this.

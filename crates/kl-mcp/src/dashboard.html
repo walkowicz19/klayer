@@ -1298,6 +1298,8 @@ const LANGS = {
     storageFallbacks: n => `${n} fallback events`,
     emptyStorageHealth: 'No storage health data yet',
     registrySubAgent: name => `sub-agent: ${name}`, registryCostWeight: w => `cost ${w}`, registryModelCount: n => `${n} model${n===1?'':'s'}`,
+    registryModelsStat: 'models', registrySubAgentsStat: 'sub-agents',
+    registryConnectedNow: 'connected now', registryLastEdit: 'last edit', registryLastRecommendation: 'last recommendation',
     emptyModelRegistry: 'No models registered yet — use configure_model_registry or the Model Registry page',
     thDomainType: 'Domain Type', thTaskType: 'Task Type', thComplexityTier: 'Complexity Tier', thModelId: 'Model',
     emptyRoutingRules: 'No routing rules configured yet',
@@ -1473,6 +1475,8 @@ const LANGS = {
     storageFallbacks: n => `${n} eventos de fallback`,
     emptyStorageHealth: 'Ainda não há dados de saúde de armazenamento',
     registrySubAgent: name => `sub-agente: ${name}`, registryCostWeight: w => `custo ${w}`, registryModelCount: n => `${n} modelo${n===1?'':'s'}`,
+    registryModelsStat: 'modelos', registrySubAgentsStat: 'sub-agentes',
+    registryConnectedNow: 'conectado agora', registryLastEdit: 'última edição', registryLastRecommendation: 'última recomendação',
     emptyModelRegistry: 'Nenhum modelo registrado ainda — use configure_model_registry ou a página Registro de Modelos',
     thDomainType: 'Tipo de Domínio', thTaskType: 'Tipo de Tarefa', thComplexityTier: 'Nível de Complexidade', thModelId: 'Modelo',
     emptyRoutingRules: 'Nenhuma regra de roteamento configurada ainda',
@@ -1648,6 +1652,8 @@ const LANGS = {
     storageFallbacks: n => `${n} eventos de fallback`,
     emptyStorageHealth: 'Aún no hay datos de salud del almacenamiento',
     registrySubAgent: name => `sub-agente: ${name}`, registryCostWeight: w => `costo ${w}`, registryModelCount: n => `${n} modelo${n===1?'':'s'}`,
+    registryModelsStat: 'modelos', registrySubAgentsStat: 'sub-agentes',
+    registryConnectedNow: 'conectado ahora', registryLastEdit: 'última edición', registryLastRecommendation: 'última recomendación',
     emptyModelRegistry: 'Aún no hay modelos registrados — use configure_model_registry o la página Registro de Modelos',
     thDomainType: 'Tipo de Dominio', thTaskType: 'Tipo de Tarea', thComplexityTier: 'Nivel de Complejidad', thModelId: 'Modelo',
     emptyRoutingRules: 'Aún no hay reglas de enrutamiento configuradas',
@@ -1823,6 +1829,8 @@ const LANGS = {
     storageFallbacks: n => `回退事件 ${n} 次`,
     emptyStorageHealth: '暂无存储健康数据',
     registrySubAgent: name => `子智能体: ${name}`, registryCostWeight: w => `成本 ${w}`, registryModelCount: n => `${n} 个模型`,
+    registryModelsStat: '模型', registrySubAgentsStat: '子智能体',
+    registryConnectedNow: '当前已连接', registryLastEdit: '最后编辑', registryLastRecommendation: '最后推荐',
     emptyModelRegistry: '尚未注册任何模型 — 请使用 configure_model_registry 或模型注册表页面',
     thDomainType: '域类型', thTaskType: '任务类型', thComplexityTier: '复杂度级别', thModelId: '模型',
     emptyRoutingRules: '尚未配置路由规则',
@@ -1998,6 +2006,8 @@ const LANGS = {
     storageFallbacks: n => `${n} zdarzeń fallback`,
     emptyStorageHealth: 'Brak jeszcze danych o kondycji magazynu',
     registrySubAgent: name => `subagent: ${name}`, registryCostWeight: w => `koszt ${w}`, registryModelCount: n => `${n} model${n===1?'':'i'}`,
+    registryModelsStat: 'modele', registrySubAgentsStat: 'subagenci',
+    registryConnectedNow: 'połączono teraz', registryLastEdit: 'ostatnia edycja', registryLastRecommendation: 'ostatnia rekomendacja',
     emptyModelRegistry: 'Brak jeszcze zarejestrowanych modeli — użyj configure_model_registry lub strony Rejestr Modeli',
     thDomainType: 'Typ Domeny', thTaskType: 'Typ Zadania', thComplexityTier: 'Poziom Złożoności', thModelId: 'Model',
     emptyRoutingRules: 'Brak jeszcze skonfigurowanych reguł routingu',
@@ -2218,6 +2228,16 @@ const outcomeEl = o => {
 };
 const dotColor = o => ({ok:'#1DB87E',warn:'#F59E0B',blocked:'#EF4444',error:'#EF4444'}[o]||'#9BA8C0');
 const domainIcon = d => ({'clean-code':'📄','cybersecurity':'🔐','design-ui-ux':'🎨','ingest-test':'🧪','mvp-poc':'🚀','sdlc':'⚙️'}[d]||'📄');
+// Substring match (case-insensitive) against known harness names, since
+// harness strings often carry a version suffix (e.g. "Claude Code/1.2.3").
+function harnessIcon(name) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('claude desktop')) return '🖥️';
+  if (n.includes('claude code')) return '⌨️';
+  if (n.includes('cursor')) return '✏️';
+  if (n.includes('vs code') || n.includes('vscode')) return '📘';
+  return '🔌';
+}
 const fmtDate = ts => ts ? new Date(ts*1000).toISOString().slice(0,10) : '—';
 const fmtTs   = ts => ts ? new Date(ts*1000).toISOString().replace('T',' ').slice(0,16) : '—';
 
@@ -2695,18 +2715,31 @@ function renderModelRegistry() {
   const start = PAGER.modelRegistry * PAGE_SZ;
   const harnesses = allHarnesses.slice(start, start + PAGE_SZ);
   list.innerHTML = harnesses.length
-    ? harnesses.map(h => {
+    ? `<div class="domain-grid">${harnesses.map(h => {
         const tiers = h.tiers || {};
         const tierNames = [...TIER_ORDER.filter(k => tiers[k]), ...Object.keys(tiers).filter(k => !TIER_ORDER.includes(k)).sort()];
         const modelCount = tierNames.reduce((n, tier) => n + (tiers[tier]||[]).length, 0);
+        const subAgentCount = tierNames.reduce((n, tier) => n + (tiers[tier]||[]).filter(m => m.sub_agent_name).length, 0);
         return `
-        <div class="card-fw" style="margin-bottom:16px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--hairline)">
-            <div style="font-weight:700;color:var(--navy);font-size:15px">${escHtml(h.harness)}</div>
-            <div style="font-size:.72rem;color:var(--mute)">${t('registryModelCount')(modelCount)}</div>
+        <div class="dcard">
+          <div class="dcard-name">${harnessIcon(h.harness)} ${escHtml(h.harness)}${h.connected_now ? `<span class="badge b-user" style="margin-left:8px;vertical-align:middle">${t('registryConnectedNow')}</span>` : ''}</div>
+          <div class="dcard-row">
+            <div>
+              <div class="dcard-stat-val">${modelCount}</div>
+              <div class="dcard-stat-lbl">${t('registryModelsStat')}</div>
+            </div>
+            <div>
+              <div class="dcard-stat-val">${subAgentCount}</div>
+              <div class="dcard-stat-lbl">${t('registrySubAgentsStat')}</div>
+            </div>
           </div>
+          ${h.last_edit_ts || h.last_recommendation_ts ? `
+          <div style="margin-top:10px;font-size:11px;color:var(--mute);display:flex;flex-direction:column;gap:2px">
+            ${h.last_edit_ts ? `<div>${t('registryLastEdit')}: ${fmtTs(h.last_edit_ts)}</div>` : ''}
+            ${h.last_recommendation_ts ? `<div>${t('registryLastRecommendation')}: ${fmtTs(h.last_recommendation_ts)}</div>` : ''}
+          </div>` : ''}
           ${tierNames.map(tier => `
-            <div style="margin-bottom:16px">
+            <div style="margin-top:16px">
               <div style="margin-bottom:8px">${tierBadge(tier)}</div>
               <div style="display:flex;flex-direction:column;gap:6px">
                 ${(tiers[tier]||[]).map(m => `
@@ -2721,7 +2754,7 @@ function renderModelRegistry() {
               </div>
             </div>`).join('')}
         </div>`;
-      }).join('')
+      }).join('')}</div>`
     : `<div class="empty">${t('emptyModelRegistry')}</div>`;
   const pagerEl = document.getElementById('model-registry-pager');
   if (pagerEl) pagerEl.innerHTML = pagerHtml('modelRegistry', total);

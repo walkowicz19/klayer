@@ -54,6 +54,21 @@ Put it in a **permanent folder** — the MCP config is global, and all your data
 chmod +x klayer-macos-arm64   # macOS/Linux only
 ```
 
+**Alternative — no manual download, via npx:**
+
+```json
+{
+  "mcpServers": {
+    "klayer": {
+      "command": "npx",
+      "args": ["-y", "klayer-mcp@latest"]
+    }
+  }
+}
+```
+
+This is a thin launcher ([`npm/klayer-mcp`](npm/klayer-mcp)) that downloads the right platform binary on first run and caches it under `~/.klayer/bin/` — same binary, same databases, zero manual steps. The manual download above still works and gives you full control over binary placement; this is additive, not a replacement.
+
 </details>
 
 <details open>
@@ -245,6 +260,41 @@ Optional outbound webhook (`KLAYER_NOTIFY_WEBHOOK_URL`, unset = fully disabled, 
 </details>
 
 <details>
+<summary><b>PII redaction</b></summary>
+
+Every domain redacts pattern-matched PII (emails, phone numbers, card numbers, ID-shaped digit sequences) before it's written by `remember`/`propose`/`ingest`/`log_work` — matches are replaced with `[REDACTED:EMAIL]`/`[REDACTED:CARD]`/`[REDACTED:PHONE]`/`[REDACTED:ID_NUMBER]`, and this runs before the trust-tier/conflict-detection pipeline, not as cleanup after the fact. Default is on; `register_domain(..., redact_enabled: false)` opts a specific domain out for the rare case where it's meant to hold structured PII under proper access control. Session memory (`log_work`) always redacts — it has no per-domain scope to opt out with.
+
+</details>
+
+<details>
+<summary><b>Retention (TTL)</b></summary>
+
+`register_domain(..., retention_days: N)` purges that domain's knowledge older than `N` days via an hourly background sweep (`clear_retention: true` removes the limit again); `set_knowledge_retention(id, retention_days)` overrides the domain default for a single item. Default is no expiration — nothing changes until you opt in. Every purge is logged to the Episode Log (`stage=retention_sweep`), so "why did this disappear" is always answerable. Domains created from a Marketplace template are excluded from retention by default (shared reference content other users depend on), unless the template domain itself is given an explicit `retention_days`. `KLAYER_SESSION_RETENTION_DAYS` applies the same sweep to session memory (unset = never expires). `KLAYER_MAX_RETENTION_DAYS`, if set, clamps any `retention_days` request above that ceiling at write time — a per-tenant safety cap, not a per-request rejection.
+
+</details>
+
+<details>
+<summary><b>Server mode (VPS / remote access)</b></summary>
+
+klayer's dashboard binds `127.0.0.1`-only by default — unauthenticated, since only you can reach it. Passing `--mode=server` (e.g. `klayer --dashboard --mode=server`) switches this to `0.0.0.0` and *requires* a bearer token on every request: set `KLAYER_SERVER_TOKEN` yourself, or let klayer generate one on first run (printed once to stderr, persisted at `~/.klayer/server_token.txt` so restarts don't rotate it). This is strictly opt-in — without the flag, behavior is byte-for-byte unchanged.
+
+klayer has no built-in TLS termination by design. `--mode=server` without `KLAYER_TLS_TERMINATED=1` prints a loud startup warning that the connection is unencrypted — put a reverse proxy (nginx, Caddy) in front of it for TLS, then set that env var to silence the warning once it's in place.
+
+```bash
+curl http://your-vps:7474/api/stats                                    # 401 unauthorized
+curl -H "Authorization: Bearer <token>" http://your-vps:7474/api/stats # 200
+```
+
+</details>
+
+<details>
+<summary><b>Terminal UI (headless / SSH-only access)</b></summary>
+
+For a pure-SSH session with no browser: `klayer status` prints a one-shot plain-text summary (proposed-item count, recent Episode Log entries, per-database Storage Health) and exits — safe to script or pipe. `klayer tui` opens an interactive, read-only terminal view of the same three panels using `ratatui`; navigate with arrow keys, quit with `q`. No write actions (promote, resolve) — those stay web-only; the TUI's job is "check on things from a terminal," not replacing the dashboard.
+
+</details>
+
+<details>
 <summary><b>Ingest sources</b></summary>
 
 `ingest` accepts HTTP/HTTPS URLs, absolute local paths, and `file://` URIs. Content-type auto-detected: HTML, PDF, JSON, Markdown, plain text, Office docs (`.docx`/`.xlsx`/`.pptx`), YAML, JSONL, SQL, CSS, and common source-code extensions. `index_codebase` walks a directory for the **Codebase** search tool — known languages get symbol-aware metadata, everything else (including legacy/niche formats) falls back to plain-text chunks; binaries/oversized/unreadable files are skipped with an explicit per-file reason, never a silent success.
@@ -287,6 +337,11 @@ export_dataset(out_dir="./dataset_out")                   # reviewed+user only, 
 | `KLAYER_NOTIFY_WEBHOOK_URL` | — | Notification relay target; unset disables it entirely |
 | `KLAYER_PROPOSED_AGE_THRESHOLD_SECS` | `604800` (7d) | Age threshold before a "proposed item aging" alert fires |
 | `KLAYER_DENIAL_SPIKE_THRESHOLD` | `5` | Denials within the window before a "denial spike" alert fires |
+| `KLAYER_MAX_RETENTION_DAYS` | — | Per-tenant ceiling; clamps any `retention_days` request above it |
+| `KLAYER_SESSION_RETENTION_DAYS` | — | TTL for session memory journal rows; unset = never expires |
+| `KLAYER_SERVER_TOKEN` | auto-generated | Bearer token required by `--mode=server`; persisted at `~/.klayer/server_token.txt` if not set |
+| `KLAYER_TLS_TERMINATED` | — | Set to silence the unencrypted-connection warning in `--mode=server` once a reverse proxy handles TLS |
+| `KLAYER_MCP_VERSION` | `latest` | (npm shim only) pin the release tag `npx klayer-mcp` downloads |
 | `KLAYER_SEARCH` | `auto` | `auto` · `duckduckgo` · `bing` · `brave` |
 | `KLAYER_BRAVE_API_KEY` | — | Required when `KLAYER_SEARCH=brave` |
 | `RUST_LOG` | `info` | Log level (stderr only, never the MCP channel) |
@@ -317,7 +372,8 @@ Default build is keyword-only (FTS5/BM25) — zero extra native deps. Extension 
 | `promote` | Validate a proposed item → `trust=reviewed` |
 | `forget` | Delete a knowledge item by id |
 | `list_knowledge` / `list_sources` / `list_domains` | List with ids, trust, provenance |
-| `register_domain` | Create/update a domain (description, query hint, `enforced` flag) |
+| `register_domain` | Create/update a domain (description, query hint, `enforced`/`redact_enabled` flags, `retention_days`/`clear_retention`) |
+| `set_knowledge_retention` | Override a domain's retention window for one knowledge item |
 | `set_preference` | Store a durable user preference (always honored) |
 | `clear_domain` / `clear_domains` / `clear_knowledge` / `clear_sources` | Wipe knowledge-store data at varying scope |
 

@@ -853,6 +853,7 @@ mod tests {
             updated_at: 0,
             conflict_with_id: None,
             conflict_status: None,
+            retention_days: None,
         };
         let knowledge = vec![
             k(1, "rule", "validate all input"),

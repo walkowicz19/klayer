@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.6.0"
+version = "1.6.5"
 edition = "2021"
 license = "MIT"
 rust-version = "1.82"
@@ -54,6 +54,11 @@ rmcp = { version = "0.16", features = ["server", "transport-io", "macros"] }
 printpdf = { version = "0.10", default-features = false, features = ["text_layout"] }
 base64 = "0.22"
 sha2 = "0.10"
+regex = "1"
+rand = "0.8"
+# Lightweight terminal UI (`klayer tui`/`klayer status`, Stage 5).
+ratatui = "0.29"
+crossterm = "0.28"
 
 # internal crates
 kl-core   = { path = "crates/kl-core" }

@@ -8,6 +8,8 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+pub mod redact;
+
 /// What kind of curated knowledge an item is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -120,6 +122,10 @@ pub struct KnowledgeRow {
     pub updated_at: i64,
     pub conflict_with_id: Option<i64>,
     pub conflict_status: Option<String>,
+    /// Per-item retention override, in days. When set, wins over the owning
+    /// domain's `retention_days` for this item; when `None`, the domain's
+    /// setting (if any) applies instead.
+    pub retention_days: Option<i64>,
 }
 
 /// A knowledge row plus its originating source's title/uri (if any), used to
@@ -142,6 +148,15 @@ pub struct DomainRow {
     pub rule_count: i64,
     pub last_updated: Option<i64>,
     pub enforced: bool,
+    /// Default retention window (days) for knowledge in this domain, absent
+    /// a per-item override. `None` means no expiration.
+    pub retention_days: Option<i64>,
+    /// Whether this domain was created by applying a marketplace template.
+    /// Such domains are skipped by the retention sweep unless they've been
+    /// explicitly opted into a `retention_days` value — the marketplace
+    /// content itself shouldn't silently expire just because it came from a
+    /// template.
+    pub is_marketplace_template: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

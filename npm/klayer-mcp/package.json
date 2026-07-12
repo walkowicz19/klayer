@@ -1,0 +1,35 @@
+{
+  "name": "klayer-mcp",
+  "version": "1.6.5",
+  "description": "Zero-install launcher for the klayer MCP server — downloads and runs the right platform binary for you.",
+  "bin": {
+    "klayer-mcp": "./bin/klayer-mcp.js"
+  },
+  "main": "./bin/klayer-mcp.js",
+  "files": [
+    "bin/klayer-mcp.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/walkowicz19/klayer.git"
+  },
+  "homepage": "https://github.com/walkowicz19/klayer#readme",
+  "bugs": {
+    "url": "https://github.com/walkowicz19/klayer/issues"
+  },
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "klayer",
+    "model-context-protocol"
+  ]
+}

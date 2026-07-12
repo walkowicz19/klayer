@@ -61,6 +61,11 @@ impl SessionStore {
 
     /// Append one curated entry to a repo's session journal.
     /// `kind` is one of 'done' | 'failed' | 'avoid' | 'decision' | 'note'.
+    ///
+    /// Title/body are always redacted, unconditionally — unlike knowledge/
+    /// chunk storage in kl-store, the journal is repo-scoped rather than
+    /// domain-scoped, so there is no per-domain unit to hang a `redact_enabled`
+    /// opt-out on in this stage.
     pub async fn log_work(
         &self,
         repo: &str,
@@ -70,6 +75,8 @@ impl SessionStore {
         is_checkpoint: bool,
     ) -> Result<i64> {
         let now = Utc::now().timestamp();
+        let title = kl_core::redact::redact(title);
+        let body = body.map(kl_core::redact::redact);
         self.conn
             .execute(
                 "INSERT INTO journal (repo, kind, title, body, ts, is_checkpoint) VALUES (?1,?2,?3,?4,?5,?6)",
@@ -121,6 +128,19 @@ impl SessionStore {
             out.push(journal_from_row(&r)?);
         }
         Ok(out)
+    }
+
+    /// Purge journal rows older than `days` days (by `ts`). Returns rows deleted.
+    /// Global across all repos — `journal` is repo-scoped, not domain-scoped,
+    /// so there's no per-domain unit to attach a retention setting to; this
+    /// is driven by the process-wide `KLAYER_SESSION_RETENTION_DAYS` env var.
+    pub async fn purge_older_than(&self, days: i64) -> Result<u64> {
+        let cutoff = Utc::now().timestamp() - days * 86_400;
+        let n = self
+            .conn
+            .execute("DELETE FROM journal WHERE ts < ?1", params![cutoff])
+            .await?;
+        Ok(n)
     }
 
     /// Clear a repo's journal, or every repo's journal if None. Returns rows deleted.
@@ -182,5 +202,56 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn log_work_redacts_title_and_body_unconditionally() {
+        let s = store().await;
+        s.log_work(
+            "repo1",
+            "note",
+            "contact leak@example.com",
+            Some("card 4111-1111-1111-1111 on file"),
+            false,
+        )
+        .await
+        .unwrap();
+
+        let all = s.recall_session("repo1", None, 10, false).await.unwrap();
+        assert_eq!(all.len(), 1);
+        assert!(all[0].title.contains("[REDACTED:EMAIL]"));
+        assert!(!all[0].title.contains("leak@example.com"));
+        let body = all[0].body.as_deref().unwrap();
+        assert!(body.contains("[REDACTED:CARD]"));
+        assert!(!body.contains("4111"));
+    }
+
+    #[tokio::test]
+    async fn purge_older_than_deletes_old_rows_and_keeps_recent() {
+        let s = store().await;
+        let old_id = s
+            .log_work("repo1", "note", "an old entry", None, false)
+            .await
+            .unwrap();
+        let recent_id = s
+            .log_work("repo1", "note", "a recent entry", None, false)
+            .await
+            .unwrap();
+
+        let old_ts = Utc::now().timestamp() - 40 * 86_400;
+        s.conn
+            .execute(
+                "UPDATE journal SET ts = ?1 WHERE id = ?2",
+                params![old_ts, old_id],
+            )
+            .await
+            .unwrap();
+
+        let purged = s.purge_older_than(30).await.unwrap();
+        assert_eq!(purged, 1);
+
+        let remaining = s.recall_session("repo1", None, 10, false).await.unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, recent_id);
     }
 }
