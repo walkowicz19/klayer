@@ -51,6 +51,44 @@ fn get_claude_config_path() -> Option<std::path::PathBuf> {
     }
 }
 
+/// Cursor's global MCP config — same `{"mcpServers": {...}}` shape as Claude
+/// Desktop's, so `--install`/`--print-mcp-config` can target either with the
+/// same JSON body. Verified against Cursor's own documented location; unlike
+/// Claude Desktop's path, this one doesn't vary by OS.
+fn get_cursor_config_path() -> Option<std::path::PathBuf> {
+    let home = if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE").ok()?
+    } else {
+        std::env::var("HOME").ok()?
+    };
+    Some(
+        std::path::PathBuf::from(home)
+            .join(".cursor")
+            .join("mcp.json"),
+    )
+}
+
+/// Resolves the `--client=<name>` CLI flag to a (display name, config path
+/// resolver) pair. Defaults to Claude Desktop when the flag is absent, for
+/// backward compatibility with existing `--install`/`--print-mcp-config`
+/// invocations that predate multi-client support.
+///
+/// Antigravity (and any other MCP client) deliberately has no dedicated case
+/// here: its config format wasn't verified at the time this was written, so
+/// forcing a guessed path/shape risked writing something that silently didn't
+/// work. `--print-mcp-config` always emits the plain `mcpServers` JSON body,
+/// which is the de facto standard shape most MCP clients accept — paste it
+/// into whatever config file an unlisted client expects.
+fn resolve_install_client() -> (&'static str, fn() -> Option<std::path::PathBuf>) {
+    match std::env::args()
+        .find_map(|a| a.strip_prefix("--client=").map(str::to_string))
+        .as_deref()
+    {
+        Some("cursor") => ("Cursor", get_cursor_config_path as fn() -> _),
+        _ => ("Claude Desktop", get_claude_config_path as fn() -> _),
+    }
+}
+
 /// Resolves the user's home directory across the env vars IDEs/MCP clients
 /// commonly strip when spawning the server subprocess with a minimal
 /// environment. Deliberately does NOT fall back to "." (the process's
@@ -273,12 +311,18 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
                 }
             }
         });
+        eprintln!(
+            "Paste the JSON below into your MCP client's config (same \"mcpServers\" shape \
+             used by Claude Desktop and Cursor). For a client with a known config path, use \
+             --install --client=<claude|cursor> instead to write it automatically."
+        );
         println!("{}", serde_json::to_string_pretty(&config)?);
         return Ok(Some(()));
     }
 
     if install_config {
-        let config_path = get_claude_config_path();
+        let (client_name, resolve_path) = resolve_install_client();
+        let config_path = resolve_path();
         if let Some(path) = config_path {
             let mut root: serde_json::Value = if path.exists() {
                 let s = std::fs::read_to_string(&path)?;
@@ -310,11 +354,11 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
 
             let pretty = serde_json::to_string_pretty(&root)?;
             std::fs::write(&path, pretty)?;
-            println!("Successfully configured Claude Desktop MCP server in:");
+            println!("Successfully configured {client_name} MCP server in:");
             println!("  {}", path.display());
         } else {
             return Err(anyhow::anyhow!(
-                "Could not detect Claude Desktop config directory on this OS."
+                "Could not detect {client_name} config directory on this OS."
             ));
         }
         return Ok(Some(()));

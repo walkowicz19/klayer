@@ -76,9 +76,17 @@ This is a thin launcher ([`npm/klayer-mcp`](npm/klayer-mcp)) that downloads the 
 
 **Automatic (recommended):**
 ```bash
-./klayer-windows-x86_64.exe --install              # merges config into Claude Desktop
-./klayer-windows-x86_64.exe --print-mcp-config      # or just print the JSON to paste yourself
+./klayer-windows-x86_64.exe --install                          # merges config into Claude Desktop
+./klayer-windows-x86_64.exe --install --client=cursor           # merges config into Cursor (~/.cursor/mcp.json)
+./klayer-windows-x86_64.exe --print-mcp-config                  # or just print the JSON to paste yourself
 ```
+
+`--client` currently supports `claude` (default) and `cursor` — both write the same
+`mcpServers` JSON shape to their respective config file. For any other MCP-compatible
+client (Antigravity, Windsurf, etc.), use `--print-mcp-config` and paste the output into
+that client's config — the shape is the same one Claude Desktop and Cursor both use, but
+we haven't verified every other client's exact config file location/format, so there's no
+dedicated `--client` flag for them yet.
 
 **Manual** — add to your client's MCP config:
 

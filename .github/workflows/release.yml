@@ -60,5 +60,6 @@ jobs:
           files: |
             ${{ matrix.artifact_name }}
             klayer-skill/SKILL.md
+            klayer-skill/klayer.mdc
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
