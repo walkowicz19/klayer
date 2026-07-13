@@ -138,21 +138,21 @@ async fn open_stores() -> Result<(
     Arc<TrainStore>,
     Arc<SessionStore>,
 )> {
-    let paths = crate::resolve_db_paths();
+    let paths = crate::bootstrap::resolve_db_paths();
 
-    crate::ensure_parent_dir(&paths.code_db)?;
+    crate::bootstrap::ensure_parent_dir(&paths.code_db)?;
     let code_store = Arc::new(CodeStore::open(&paths.code_db).await?);
     code_store.migrate().await?;
 
-    crate::ensure_parent_dir(&paths.train_db)?;
+    crate::bootstrap::ensure_parent_dir(&paths.train_db)?;
     let train_store = Arc::new(TrainStore::open(&paths.train_db).await?);
     train_store.migrate().await?;
 
-    crate::ensure_parent_dir(&paths.session_db)?;
+    crate::bootstrap::ensure_parent_dir(&paths.session_db)?;
     let session_store = Arc::new(SessionStore::open(&paths.session_db).await?);
     session_store.migrate().await?;
 
-    crate::ensure_parent_dir(&paths.db)?;
+    crate::bootstrap::ensure_parent_dir(&paths.db)?;
     let store = Arc::new(Store::open(&paths.db)?);
     store.migrate()?;
 
