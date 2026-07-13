@@ -205,10 +205,14 @@ fn parse_rpg_symbol(s: &str) -> Option<(String, String)> {
         }
     }
     if su.starts_with('P') && su.len() > 1 {
-        let name_part: String = su.chars().skip(6).take(14).collect();
-        let name = name_part.trim().to_string();
-        if valid_ident(&name) {
-            return Some(("procedure".into(), name));
+        // Fixed-format P-spec: `s` has already been through `line.trim()` in
+        // parse_symbol, which strips the variable-width sequence-number margin
+        // (columns 1-5) real RPG source has — so the name can't be recovered by
+        // a fixed column offset counted from this trimmed string. Take the first
+        // whitespace-separated token after the spec letter instead.
+        let name = su[1..].trim_start().split_whitespace().next().unwrap_or("");
+        if valid_ident(name) {
+            return Some(("procedure".into(), name.to_string()));
         }
     }
     for prefix in ["BEGSR ", "BEGSR\n"] {

@@ -73,6 +73,14 @@ A few things look like inconsistencies or oversights but are deliberate:
   folder happened to be the process's cwd when an IDE spawned the MCP server subprocess
   without `USERPROFILE`/`HOME` in its environment — which looked like klayer "duplicating"
   databases per open project folder. Do not reintroduce a `.`/cwd fallback here.
+- **`marketplace.json` is not purely compile-time embedded either**, and follows the same
+  disk-precedence pattern as `dashboard.html` below: `load_marketplace_templates()` checks
+  `KLAYER_MARKETPLACE`, then `./marketplace.json` (cwd), then `~/.klayer/marketplace.json`,
+  and only falls back to the compiled-in copy if none of those exist — by design, so an
+  approved marketplace submission can be appended to a live, mutable copy. If you edit the
+  embedded source (`crates/kl-mcp/src/marketplace.json`) and a stale copy already exists at
+  either disk location from earlier use, it will silently shadow your edit. Sync (or delete)
+  the stale copy after editing, same as the `dashboard.html` gotcha.
 - **`dashboard.html` is not purely compile-time embedded.** `load_dashboard_html()` in
   `kl-mcp` checks, in order: the `KLAYER_DASHBOARD_HTML` env var, then a `dashboard.html`
   file next to the running executable (e.g. `target/release/dashboard.html`), and only

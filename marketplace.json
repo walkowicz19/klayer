@@ -3,6 +3,7 @@
     "slug": "clean-code",
     "description": "Professional clean-code guidance covering simplicity, maintainability, naming, duplication control, i18n, and privacy compliance. Includes references to Clean Code by Robert C. Martin, Refactoring by Martin Fowler, and Google Style Guides.",
     "query_hint": "Recall this domain for implementation quality, refactors, naming, duplication, simplicity, i18n, and LGPD/GDPR-sensitive code decisions. Also recall for Clean Code, Refactoring, and Google Style Guides.",
+    "author": "matheus-walkowicz",
     "items": [
       {
         "kind": "rule",
@@ -127,6 +128,7 @@
     "slug": "architecture",
     "description": "Architecture decision guidance for selecting patterns by context, complexity, team maturity, and operational constraints. Includes principles from Patterns of Enterprise Application Architecture by Martin Fowler, and System Design Interview by Alex Xu.",
     "query_hint": "Recall this domain before choosing architectural style, service boundaries, modularization, or teacher-mode trade-off evaluation. Also recall for Enterprise Application Architecture and System Design.",
+    "author": "matheus-walkowicz",
     "items": [
       {
         "kind": "procedure",
@@ -197,6 +199,7 @@
     "slug": "cyber-security",
     "description": "Security guidance for web risks, attack simulation, multi-party authorization, dispatch authentication, payload validation, fine-grained RBAC, audit trails, anomaly detection, rate limiting, and kill-switch patterns — with cross-language library references for every major ecosystem. Aligned with OWASP Top 10, NIST Cybersecurity Framework, MITRE ATT&CK, and CIS Controls.",
     "query_hint": "Recall this domain for threat modeling, injection/XSS, rate limits, red-team simulation, dual/m-of-n authorization, FROST threshold signatures, Keycloak/SPIFFE authentication, CAP payload validation, OpenFGA/Casbin RBAC, immudb audit trails, Wazuh anomaly detection, and feature-flag kill switches. Also recall for OWASP Top 10, NIST, MITRE ATT&CK, and CIS Controls.",
+    "author": "matheus-walkowicz",
     "items": [
       {
         "kind": "rule",
@@ -312,6 +315,7 @@
     "slug": "quality-assurance",
     "description": "Testing strategy guidance for unit, integration, stress, load, and browser automation coverage. Incorporates ISTQB Guidelines, Cypress Best Practices, Playwright documentation, and Selenium Docs.",
     "query_hint": "Recall this domain when planning or reviewing tests, load tooling, browser automation, or release confidence. Also recall for ISTQB, Cypress, Playwright, and Selenium.",
+    "author": "matheus-walkowicz",
     "items": [
       {
         "kind": "rule",
@@ -382,6 +386,7 @@
     "slug": "front-end",
     "description": "Enterprise front-end practices covering framework selection, component design, accessibility (WCAG), IHC usability heuristics, and the Hick-Hyman Law. Based on MDN Web Docs, React/Vue/Svelte Official Documentation, Smashing Magazine, Nielsen Norman Group, and WCAG.",
     "query_hint": "Recall this domain for Angular, React, Vue, Svelte, UI component design, accessibility (WCAG), IHC usability heuristics, and Hick-Hyman choice optimization. Also recall for MDN, Smashing Magazine, Nielsen Norman Group, and WCAG.",
+    "author": "matheus-walkowicz",
     "items": [
       {
         "kind": "rule",
@@ -587,6 +592,7 @@
     "slug": "build-agents",
     "description": "Agent-building guidance across orchestration frameworks, SDKs, tool design, evaluation, and production safeguards. Powered by the ReAct Paper, LangChain, CrewAI, Anthropic/OpenAI Cookbooks, and n8n.",
     "query_hint": "Recall this domain when designing agents, choosing orchestration frameworks, adding tools, or evaluating agent reliability. Also recall for ReAct, LangChain, CrewAI, OpenAI Cookbooks, and n8n.",
+    "author": "matheus-walkowicz",
     "items": [
       {
         "kind": "rule",
