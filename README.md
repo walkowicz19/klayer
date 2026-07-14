@@ -78,15 +78,24 @@ This is a thin launcher ([`npm/klayer-mcp`](npm/klayer-mcp)) that downloads the 
 ```bash
 ./klayer-windows-x86_64.exe --install                          # merges config into Claude Desktop
 ./klayer-windows-x86_64.exe --install --client=cursor           # merges config into Cursor (~/.cursor/mcp.json)
+./klayer-windows-x86_64.exe --install --client=cline            # merges config into Cline CLI (~/.cline/mcp.json)
+./klayer-windows-x86_64.exe --install --client=codex             # merges config into Codex (~/.codex/config.toml)
 ./klayer-windows-x86_64.exe --print-mcp-config                  # or just print the JSON to paste yourself
 ```
 
-`--client` currently supports `claude` (default) and `cursor` — both write the same
-`mcpServers` JSON shape to their respective config file. For any other MCP-compatible
-client (Antigravity, Windsurf, etc.), use `--print-mcp-config` and paste the output into
-that client's config — the shape is the same one Claude Desktop and Cursor both use, but
-we haven't verified every other client's exact config file location/format, so there's no
-dedicated `--client` flag for them yet.
+`--client` currently supports `claude` (default), `cursor`, `cline`, and `codex`. The
+first three write the same `mcpServers` JSON shape to their respective config file;
+Codex's config is TOML (`[mcp_servers.klayer]`), handled separately since its format
+differs. Cline's VS Code extension stores its MCP settings somewhere under VS Code's
+own global storage rather than the CLI path above — Cline's docs don't pin down an
+exact, version-stable location for that, so only the CLI path (`~/.cline/mcp.json`) is
+wired up; configure the extension through its own UI instead.
+
+For any other MCP-compatible client (Antigravity, Windsurf, etc.), use
+`--print-mcp-config` and paste the output into that client's config — the shape is the
+same one Claude Desktop, Cursor, and Cline all use, but we haven't verified every other
+client's exact config file location/format, so there's no dedicated `--client` flag for
+them yet.
 
 **Manual** — add to your client's MCP config:
 

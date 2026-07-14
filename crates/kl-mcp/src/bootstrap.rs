@@ -68,24 +68,65 @@ fn get_cursor_config_path() -> Option<std::path::PathBuf> {
     )
 }
 
-/// Resolves the `--client=<name>` CLI flag to a (display name, config path
-/// resolver) pair. Defaults to Claude Desktop when the flag is absent, for
-/// backward compatibility with existing `--install`/`--print-mcp-config`
-/// invocations that predate multi-client support.
+/// Cline's CLI config path (`~/.cline/mcp.json`, same `mcpServers` JSON shape) —
+/// per Cline's own docs. The VS Code extension variant stores its settings
+/// somewhere under VS Code's global storage instead, but Cline's docs don't
+/// pin down an exact, version-stable path for that, so only the CLI path is
+/// wired up here; forcing a guessed extension-storage path risked writing to
+/// nothing the extension actually reads.
+fn get_cline_config_path() -> Option<std::path::PathBuf> {
+    let home = if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE").ok()?
+    } else {
+        std::env::var("HOME").ok()?
+    };
+    Some(
+        std::path::PathBuf::from(home)
+            .join(".cline")
+            .join("mcp.json"),
+    )
+}
+
+/// Codex's global MCP config (`~/.codex/config.toml`, `%USERPROFILE%\.codex\config.toml`
+/// on Windows) — TOML, not JSON like every other supported client. Handled as its
+/// own branch in `handle_install_or_print` rather than through the generic JSON
+/// merge path.
+fn get_codex_config_path() -> Option<std::path::PathBuf> {
+    let home = if cfg!(target_os = "windows") {
+        std::env::var("USERPROFILE").ok()?
+    } else {
+        std::env::var("HOME").ok()?
+    };
+    Some(
+        std::path::PathBuf::from(home)
+            .join(".codex")
+            .join("config.toml"),
+    )
+}
+
+/// Resolves the `--client=<name>` CLI flag to a display name. Defaults to
+/// Claude Desktop when the flag is absent, for backward compatibility with
+/// existing `--install`/`--print-mcp-config` invocations that predate
+/// multi-client support. `"codex"` is handled separately in
+/// `handle_install_or_print` since its config is TOML, not JSON — it's
+/// listed here only so its display name/error message stay consistent with
+/// the other clients.
 ///
-/// Antigravity (and any other MCP client) deliberately has no dedicated case
-/// here: its config format wasn't verified at the time this was written, so
-/// forcing a guessed path/shape risked writing something that silently didn't
-/// work. `--print-mcp-config` always emits the plain `mcpServers` JSON body,
-/// which is the de facto standard shape most MCP clients accept — paste it
-/// into whatever config file an unlisted client expects.
-fn resolve_install_client() -> (&'static str, fn() -> Option<std::path::PathBuf>) {
+/// Antigravity (and any other MCP client) deliberately has no case here: its
+/// config format wasn't verified at the time this was written, so forcing a
+/// guessed path/shape risked writing something that silently didn't work.
+/// `--print-mcp-config` always emits the plain `mcpServers` JSON body, which
+/// is the de facto standard shape most MCP clients accept — paste it into
+/// whatever config file an unlisted client expects.
+fn resolve_install_client() -> (&'static str, Option<fn() -> Option<std::path::PathBuf>>) {
     match std::env::args()
         .find_map(|a| a.strip_prefix("--client=").map(str::to_string))
         .as_deref()
     {
-        Some("cursor") => ("Cursor", get_cursor_config_path as fn() -> _),
-        _ => ("Claude Desktop", get_claude_config_path as fn() -> _),
+        Some("cursor") => ("Cursor", Some(get_cursor_config_path as fn() -> _)),
+        Some("cline") => ("Cline", Some(get_cline_config_path as fn() -> _)),
+        Some("codex") => ("Codex", None),
+        _ => ("Claude Desktop", Some(get_claude_config_path as fn() -> _)),
     }
 }
 
@@ -313,8 +354,9 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
         });
         eprintln!(
             "Paste the JSON below into your MCP client's config (same \"mcpServers\" shape \
-             used by Claude Desktop and Cursor). For a client with a known config path, use \
-             --install --client=<claude|cursor> instead to write it automatically."
+             used by Claude Desktop, Cursor, and Cline). Codex uses TOML instead — use \
+             --install --client=codex for that one. For a client with a known config path, use \
+             --install --client=<claude|cursor|cline|codex> instead to write it automatically."
         );
         println!("{}", serde_json::to_string_pretty(&config)?);
         return Ok(Some(()));
@@ -322,7 +364,62 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
 
     if install_config {
         let (client_name, resolve_path) = resolve_install_client();
-        let config_path = resolve_path();
+
+        // Codex's config is TOML, not the JSON `mcpServers` shape every other
+        // client here uses — handled as its own branch rather than forcing it
+        // through the generic JSON merge below.
+        if client_name == "Codex" {
+            let Some(path) = get_codex_config_path() else {
+                return Err(anyhow::anyhow!(
+                    "Could not detect Codex config directory on this OS."
+                ));
+            };
+            let mut root: toml::Value = if path.exists() {
+                let s = std::fs::read_to_string(&path)?;
+                toml::from_str(&s).unwrap_or(toml::Value::Table(Default::default()))
+            } else {
+                toml::Value::Table(Default::default())
+            };
+            let root_table = root
+                .as_table_mut()
+                .ok_or_else(|| anyhow::anyhow!("{} is not a valid TOML table", path.display()))?;
+            let mcp_servers = root_table
+                .entry("mcp_servers")
+                .or_insert_with(|| toml::Value::Table(Default::default()));
+            let mcp_servers_table = mcp_servers
+                .as_table_mut()
+                .ok_or_else(|| anyhow::anyhow!("mcp_servers in {} is not a table", path.display()))?;
+
+            let mut env_table = toml::map::Map::new();
+            env_table.insert("KLAYER_DB".into(), toml::Value::String(db_str.clone()));
+            env_table.insert(
+                "KLAYER_CODE_DB".into(),
+                toml::Value::String(code_db_str.clone()),
+            );
+            env_table.insert(
+                "KLAYER_TRAIN_DB".into(),
+                toml::Value::String(train_db_str.clone()),
+            );
+            env_table.insert(
+                "KLAYER_SESSION_DB".into(),
+                toml::Value::String(session_db_str.clone()),
+            );
+            let mut klayer_entry = toml::map::Map::new();
+            klayer_entry.insert("command".into(), toml::Value::String(exe_str.clone()));
+            klayer_entry.insert("args".into(), toml::Value::Array(vec![]));
+            klayer_entry.insert("env".into(), toml::Value::Table(env_table));
+            mcp_servers_table.insert("klayer".into(), toml::Value::Table(klayer_entry));
+
+            if let Some(p) = path.parent() {
+                std::fs::create_dir_all(p)?;
+            }
+            std::fs::write(&path, toml::to_string_pretty(&root)?)?;
+            println!("Successfully configured Codex MCP server in:");
+            println!("  {}", path.display());
+            return Ok(Some(()));
+        }
+
+        let config_path = resolve_path.and_then(|f| f());
         if let Some(path) = config_path {
             let mut root: serde_json::Value = if path.exists() {
                 let s = std::fs::read_to_string(&path)?;

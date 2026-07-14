@@ -59,6 +59,10 @@ rand = "0.8"
 # Lightweight terminal UI (`klayer tui`/`klayer status`, Stage 5).
 ratatui = "0.29"
 crossterm = "0.28"
+# Codex's MCP config (~/.codex/config.toml) is TOML, not JSON like every other
+# supported client — used by --install --client=codex to merge in place
+# without corrupting whatever else is already in the user's config.toml.
+toml = "0.8"
 
 # internal crates
 kl-core   = { path = "crates/kl-core" }

@@ -42,3 +42,4 @@ reqwest = { workspace = true, features = ["json"] }
 rand.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
+toml.workspace = true
