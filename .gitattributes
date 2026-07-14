@@ -1,0 +1,6 @@
+# npm/klayer-mcp/bin/klayer-mcp.js is a shebang'd Node script (#!/usr/bin/env node) run
+# directly by npx on Linux/macOS. CRLF line endings corrupt the shebang there (the
+# interpreter path becomes "node\r", which fails, and npm's publish-time bin validation
+# also silently strips the package's "bin" entry when it sees this) — force LF regardless
+# of the checking-out platform's core.autocrlf setting.
+npm/klayer-mcp/bin/*.js text eol=lf
