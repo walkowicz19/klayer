@@ -390,7 +390,24 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
                 .as_table_mut()
                 .ok_or_else(|| anyhow::anyhow!("mcp_servers in {} is not a table", path.display()))?;
 
-            let mut env_table = toml::map::Map::new();
+            // Merge, don't replace: an existing `[mcp_servers.klayer]` entry may carry
+            // fields we don't know about (e.g. Codex's own `enabled`,
+            // `startup_timeout_sec`, or per-tool `[mcp_servers.klayer.tools.*]`
+            // approval settings) — only touch command/args/env, leave the rest as-is.
+            let klayer_entry = mcp_servers_table
+                .entry("klayer")
+                .or_insert_with(|| toml::Value::Table(Default::default()));
+            let klayer_table = klayer_entry
+                .as_table_mut()
+                .ok_or_else(|| anyhow::anyhow!("mcp_servers.klayer in {} is not a table", path.display()))?;
+            klayer_table.insert("command".into(), toml::Value::String(exe_str.clone()));
+            klayer_table.insert("args".into(), toml::Value::Array(vec![]));
+            let env_entry = klayer_table
+                .entry("env")
+                .or_insert_with(|| toml::Value::Table(Default::default()));
+            let env_table = env_entry
+                .as_table_mut()
+                .ok_or_else(|| anyhow::anyhow!("mcp_servers.klayer.env in {} is not a table", path.display()))?;
             env_table.insert("KLAYER_DB".into(), toml::Value::String(db_str.clone()));
             env_table.insert(
                 "KLAYER_CODE_DB".into(),
@@ -404,11 +421,6 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
                 "KLAYER_SESSION_DB".into(),
                 toml::Value::String(session_db_str.clone()),
             );
-            let mut klayer_entry = toml::map::Map::new();
-            klayer_entry.insert("command".into(), toml::Value::String(exe_str.clone()));
-            klayer_entry.insert("args".into(), toml::Value::Array(vec![]));
-            klayer_entry.insert("env".into(), toml::Value::Table(env_table));
-            mcp_servers_table.insert("klayer".into(), toml::Value::Table(klayer_entry));
 
             if let Some(p) = path.parent() {
                 std::fs::create_dir_all(p)?;
@@ -431,19 +443,27 @@ fn handle_install_or_print(print_config: bool, install_config: bool) -> Result<O
             if !root.is_object() {
                 root = serde_json::json!({});
             }
-            if root.get("mcpServers").is_none() {
+            if root.get("mcpServers").is_none() || !root["mcpServers"].is_object() {
                 root["mcpServers"] = serde_json::json!({});
             }
 
-            root["mcpServers"]["klayer"] = serde_json::json!({
-                "command": exe_str,
-                "env": {
-                    "KLAYER_DB": db_str,
-                    "KLAYER_CODE_DB": code_db_str,
-                    "KLAYER_TRAIN_DB": train_db_str,
-                    "KLAYER_SESSION_DB": session_db_str
-                }
-            });
+            // Merge, don't replace: an existing "klayer" entry may carry fields we
+            // don't know about (extra env vars, "disabled", "autoApprove", etc. —
+            // seen in practice) — only touch command/env, leave the rest as-is.
+            if root["mcpServers"]["klayer"].is_null() || !root["mcpServers"]["klayer"].is_object()
+            {
+                root["mcpServers"]["klayer"] = serde_json::json!({});
+            }
+            root["mcpServers"]["klayer"]["command"] = serde_json::json!(exe_str);
+            if !root["mcpServers"]["klayer"]["env"].is_object() {
+                root["mcpServers"]["klayer"]["env"] = serde_json::json!({});
+            }
+            root["mcpServers"]["klayer"]["env"]["KLAYER_DB"] = serde_json::json!(db_str);
+            root["mcpServers"]["klayer"]["env"]["KLAYER_CODE_DB"] = serde_json::json!(code_db_str);
+            root["mcpServers"]["klayer"]["env"]["KLAYER_TRAIN_DB"] =
+                serde_json::json!(train_db_str);
+            root["mcpServers"]["klayer"]["env"]["KLAYER_SESSION_DB"] =
+                serde_json::json!(session_db_str);
 
             if let Some(p) = path.parent() {
                 std::fs::create_dir_all(p)?;
