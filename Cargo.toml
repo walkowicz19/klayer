@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.6.5"
+version = "1.7.0"
 edition = "2021"
 license = "MIT"
 rust-version = "1.82"
@@ -63,6 +63,8 @@ crossterm = "0.28"
 # supported client — used by --install --client=codex to merge in place
 # without corrupting whatever else is already in the user's config.toml.
 toml = "0.8"
+sqlite-vec = "0.1"
+zerocopy = "0.8"
 
 # internal crates
 kl-core   = { path = "crates/kl-core" }

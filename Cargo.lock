@@ -1562,7 +1562,7 @@ dependencies = [
 
 [[package]]
 name = "kl-code"
-version = "1.6.5"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1575,7 +1575,7 @@ dependencies = [
 
 [[package]]
 name = "kl-core"
-version = "1.6.5"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1589,7 +1589,7 @@ dependencies = [
 
 [[package]]
 name = "kl-ingest"
-version = "1.6.5"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "pdf-extract",
@@ -1601,7 +1601,7 @@ dependencies = [
 
 [[package]]
 name = "kl-mcp"
-version = "1.6.5"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
@@ -1631,7 +1631,7 @@ dependencies = [
 
 [[package]]
 name = "kl-search"
-version = "1.6.5"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1644,7 +1644,7 @@ dependencies = [
 
 [[package]]
 name = "kl-session"
-version = "1.6.5"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1657,7 +1657,7 @@ dependencies = [
 
 [[package]]
 name = "kl-store"
-version = "1.6.5"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1665,11 +1665,13 @@ dependencies = [
  "libsql-rusqlite",
  "serde_json",
  "sha2",
+ "sqlite-vec",
+ "zerocopy 0.8.50",
 ]
 
 [[package]]
 name = "kl-train"
-version = "1.6.5"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3208,6 +3210,15 @@ checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "sqlite-vec"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0ba424237a9a5db2f6071f193319e2b6a32f7f3961debb2fbbfe67067abce3f"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

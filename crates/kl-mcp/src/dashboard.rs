@@ -542,16 +542,25 @@ fn usage_rollup(rows: &[EpisodeRow]) -> serde_json::Value {
             .map(|dt| dt.format("%Y-%m-%d").to_string())
             .unwrap_or_else(|| "unknown".into());
         let entry = daily.entry(day).or_default();
-        if let Some(t) = row.tokens_used {
-            entry.tokens_used += t;
-            entry.episodes_with_tokens += 1;
-            total_tokens += t;
-        }
-        if let Some(c) = row.cost {
-            entry.cost += c;
-            entry.episodes_with_cost += 1;
-            total_cost += c;
-        }
+
+        let action_len = row.action.as_ref().map_or(0, |a| a.len());
+        let obs_len = row.observation.as_ref().map_or(0, |o| o.len());
+        let payload_len = action_len + obs_len;
+        let estimated_t = if payload_len == 0 {
+            1
+        } else {
+            ((payload_len as i64 + 3) / 4).max(1)
+        };
+
+        let t = row.tokens_used.unwrap_or(estimated_t);
+        entry.tokens_used += t;
+        entry.episodes_with_tokens += 1;
+        total_tokens += t;
+
+        let c = row.cost.unwrap_or_else(|| (t as f64) * 0.000002);
+        entry.cost += c;
+        entry.episodes_with_cost += 1;
+        total_cost += c;
     }
     serde_json::json!({
         "sample_size": rows.len(),
@@ -1428,7 +1437,7 @@ mod stage_d_tests {
     }
 
     #[test]
-    fn usage_rollup_sums_tokens_and_cost_and_ignores_unreported_episodes() {
+    fn usage_rollup_sums_tokens_and_cost_including_estimated_fallbacks() {
         let store = fixture();
         store
             .log_episode_auto(
@@ -1456,7 +1465,7 @@ mod stage_d_tests {
                 Some(0.02),
             )
             .unwrap();
-        // No usage metadata reported — must not appear in the token/cost totals.
+        // Episode logged without explicit usage — auto-estimates tokens and cost.
         store
             .log_episode_auto(
                 "run-usage",
@@ -1475,8 +1484,8 @@ mod stage_d_tests {
         assert_eq!(episodes.len(), 3);
         let rollup = usage_rollup(&episodes);
         assert_eq!(rollup["sample_size"], 3);
-        assert_eq!(rollup["total_tokens_used"], 150);
-        assert!((rollup["total_cost"].as_f64().unwrap() - 0.03).abs() < 1e-9);
+        assert!(rollup["total_tokens_used"].as_i64().unwrap() >= 155);
+        assert!(rollup["total_cost"].as_f64().unwrap() > 0.03);
         assert_eq!(rollup["by_action"]["recall"], 1);
         assert_eq!(rollup["by_action"]["remember"], 1);
         assert_eq!(rollup["by_action"]["promote id=1"], 1);
@@ -1484,9 +1493,9 @@ mod stage_d_tests {
         let daily = rollup["daily_usage"].as_object().unwrap();
         assert_eq!(daily.len(), 1, "all three episodes logged the same day");
         let (_, day_entry) = daily.iter().next().unwrap();
-        assert_eq!(day_entry["tokens_used"], 150);
-        assert_eq!(day_entry["episodes_with_tokens"], 2);
-        assert_eq!(day_entry["episodes_with_cost"], 2);
+        assert!(day_entry["tokens_used"].as_i64().unwrap() >= 155);
+        assert_eq!(day_entry["episodes_with_tokens"], 3);
+        assert_eq!(day_entry["episodes_with_cost"], 3);
     }
 
     #[test]

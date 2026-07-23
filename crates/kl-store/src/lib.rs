@@ -63,6 +63,11 @@ impl Store {
         // comment on the `rusqlite` dependency for the full explanation of
         // the SQLite dual-link conflict this avoids. Do not "unify" this
         // with `kl_core::open_db()`.
+        unsafe {
+            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
         let conn = Connection::open(path).with_context(|| format!("opening db at {path}"))?;
         conn.pragma_update(None, "journal_mode", "WAL").ok();
         conn.pragma_update(None, "foreign_keys", "ON").ok();
@@ -120,7 +125,45 @@ impl Store {
             "BOOLEAN NOT NULL DEFAULT 0",
         )?;
         ensure_column(&c, "knowledge", "retention_days", "INTEGER")?;
+        c.execute_batch(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(chunk_id INTEGER PRIMARY KEY, embedding float[384]);
+             CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_vec USING vec0(knowledge_id INTEGER PRIMARY KEY, embedding float[384]);"
+        ).ok();
         Ok(())
+    }
+
+    // ---- vector search (sqlite-vec) ---------------------------------------
+
+    pub fn insert_chunk_vector(&self, chunk_id: i64, embedding: &[f32]) -> Result<()> {
+        let c = self.conn.lock().unwrap();
+        let bytes = zerocopy::IntoBytes::as_bytes(embedding);
+        c.execute(
+            "INSERT OR REPLACE INTO chunks_vec(chunk_id, embedding) VALUES (?1, ?2)",
+            params![chunk_id, bytes],
+        )?;
+        Ok(())
+    }
+
+    pub fn insert_knowledge_vector(&self, knowledge_id: i64, embedding: &[f32]) -> Result<()> {
+        let c = self.conn.lock().unwrap();
+        let bytes = zerocopy::IntoBytes::as_bytes(embedding);
+        c.execute(
+            "INSERT OR REPLACE INTO knowledge_vec(knowledge_id, embedding) VALUES (?1, ?2)",
+            params![knowledge_id, bytes],
+        )?;
+        Ok(())
+    }
+
+    pub fn search_knowledge_vector(&self, embedding: &[f32], limit: usize) -> Result<Vec<(i64, f64)>> {
+        let c = self.conn.lock().unwrap();
+        let bytes = zerocopy::IntoBytes::as_bytes(embedding);
+        let mut stmt = c.prepare(
+            "SELECT knowledge_id, distance FROM knowledge_vec WHERE embedding MATCH ?1 ORDER BY distance LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![bytes, limit as i64], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     // ---- preferences ------------------------------------------------------
@@ -215,5 +258,26 @@ pub(crate) fn clamp_retention(value: Option<i64>, max: Option<i64>) -> Option<i6
     match (value, max) {
         (Some(n), Some(max)) if n > max => Some(max),
         (v, _) => v,
+    }
+}
+
+#[cfg(test)]
+mod vec_tests {
+    use super::*;
+
+    #[test]
+    fn test_sqlite_vec_vector_search() {
+        let store = Store::open(":memory:").unwrap();
+        store.migrate().unwrap();
+
+        let vec1 = vec![0.1f32; 384];
+        let vec2 = vec![0.9f32; 384];
+
+        store.insert_knowledge_vector(1, &vec1).unwrap();
+        store.insert_knowledge_vector(2, &vec2).unwrap();
+
+        let results = store.search_knowledge_vector(&vec1, 2).unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(results[0].0, 1);
     }
 }

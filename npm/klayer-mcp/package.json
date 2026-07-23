@@ -1,6 +1,6 @@
 {
   "name": "klayer-mcp",
-  "version": "1.6.5",
+  "version": "1.7.0",
   "description": "Zero-install launcher for the klayer MCP server — downloads and runs the right platform binary for you.",
   "bin": {
     "klayer-mcp": "./bin/klayer-mcp.js"

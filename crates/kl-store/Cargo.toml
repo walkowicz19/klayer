@@ -11,3 +11,5 @@ anyhow.workspace = true
 chrono.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+sqlite-vec.workspace = true
+zerocopy.workspace = true
