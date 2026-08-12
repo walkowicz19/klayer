@@ -232,6 +232,7 @@ async fn dash_marketplace_apply(
             "domain": template.slug,
             "inserted": outcome.inserted,
             "skipped": outcome.skipped,
+            "documents": outcome.documents,
             "source_created": outcome.source_created
         })),
         Err(e) => Json(serde_json::json!({ "ok": false, "error": e.to_string() })),
@@ -248,6 +249,7 @@ async fn dash_marketplace_templates() -> Json<serde_json::Value> {
                 "query_hint": t.query_hint,
                 "author": t.author,
                 "item_count": t.items.len(),
+                "doc_count": t.documents.len(),
             })
         })
         .collect::<Vec<_>>();
@@ -257,6 +259,7 @@ async fn dash_marketplace_templates() -> Json<serde_json::Value> {
 struct MarketplaceApplyOutcome {
     inserted: u64,
     skipped: u64,
+    documents: u64,
     source_created: bool,
 }
 
@@ -295,6 +298,12 @@ fn apply_marketplace_template(
             .items
             .iter()
             .map(|item| format!("{}: {}", item.title, item.body))
+            .chain(
+                template
+                    .documents
+                    .iter()
+                    .map(|doc| format!("{}\n\n{}", doc.title, doc.body)),
+            )
             .collect::<Vec<_>>();
         store.add_chunks(id, &template.slug, &chunks)?;
         id
@@ -331,6 +340,7 @@ fn apply_marketplace_template(
     Ok(MarketplaceApplyOutcome {
         inserted,
         skipped,
+        documents: template.documents.len() as u64,
         source_created,
     })
 }
@@ -1074,6 +1084,7 @@ async fn dash_submission_review(
                 query_hint: row.query_hint.clone().unwrap_or_default(),
                 author: row.author.clone(),
                 items,
+                documents: Vec::new(),
             };
             if let Err(e) = append_marketplace_template(&template) {
                 return Json(serde_json::json!({ "ok": false, "error": e.to_string() }));
@@ -1772,5 +1783,37 @@ mod stage_f_tests {
     #[test]
     fn bearer_token_rejects_empty_presented_value() {
         assert!(!bearer_token_matches("secret-token", Some("Bearer ")));
+    }
+
+    #[test]
+    fn embedded_marketplace_parses_and_has_expected_domains() {
+        let templates = serde_json::from_str::<Vec<MarketplaceTemplate>>(MARKETPLACE_EMBEDDED)
+            .expect("embedded marketplace.json must parse against MarketplaceTemplate");
+        let slugs: Vec<&str> = templates.iter().map(|t| t.slug.as_str()).collect();
+        for expected in [
+            "clean-code",
+            "architecture",
+            "cyber-security",
+            "quality-assurance",
+            "front-end",
+            "build-agents",
+            "legacy-modernization",
+        ] {
+            assert!(slugs.contains(&expected), "missing domain {expected}");
+        }
+        let front = templates
+            .iter()
+            .find(|t| t.slug == "front-end")
+            .expect("front-end template present");
+        assert!(
+            !front.documents.is_empty(),
+            "front-end should ship reference design documents"
+        );
+        for t in &templates {
+            assert!(!t.items.is_empty(), "{} has no items", t.slug);
+            for i in &t.items {
+                assert!(!i.body.trim().is_empty(), "{}.{} body empty", t.slug, i.title);
+            }
+        }
     }
 }

@@ -238,6 +238,17 @@ pub struct MarketplaceItem {
     pub remediation: Option<String>,
 }
 
+/// A reference document bundled with a marketplace template: a titled body of
+/// text (e.g. a DESIGN.md, an ADR template, a pattern catalog). Unlike
+/// `items`, documents do NOT become enforceable knowledge when a template is
+/// applied — they are stored as untrusted reference chunks so `recall` can
+/// ground answers in them with provenance.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceDocument {
+    pub title: String,
+    pub body: String,
+}
+
 /// A domain template in the marketplace: a slug, discovery metadata, and its
 /// curated items. Serialized as one element of the marketplace.json array.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,6 +261,10 @@ pub struct MarketplaceTemplate {
     #[serde(default)]
     pub author: Option<String>,
     pub items: Vec<MarketplaceItem>,
+    /// Reference documents shipped with the template. Optional so existing
+    /// marketplace.json entries (which predate documents) still deserialize.
+    #[serde(default)]
+    pub documents: Vec<MarketplaceDocument>,
 }
 
 /// A row returned by list_model_registry — one `(harness, model_id,
