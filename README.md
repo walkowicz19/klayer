@@ -156,7 +156,7 @@ Any domain's reviewed/user knowledge can become a reusable template others can a
 1. **Domains** page → **Publish** on your domain → snapshots into a pending submission.
 2. **Submissions** page → **Export** it to a JSON file.
 3. Send that file to the project maintainer (PR, direct message — klayer is local-only, so this step is out-of-band).
-4. The maintainer **Imports** it into their admin queue and **Approves** or **Denies** it.
+4. The maintainer **Imports** the submission and **Approves** or **Denies** it.
 5. Approved templates land in `marketplace.json` and appear for everyone under **Marketplace**.
 
 Set your **author name** once from Settings (changeable every 14 days) — it's attached to everything you publish.
@@ -216,22 +216,6 @@ Requires `rustup`.
 cargo build --release
 KLAYER_DB=./klayer.db ./target/release/klayer
 # Dashboard opens automatically at http://localhost:7474
-```
-
-**Admin vs. user build** — the `admin` Cargo feature (on by default) unlocks marketplace submission review/approval. Release builds publish both:
-
-- **User** assets (`klayer-*-x86_64` / `klayer-macos-arm64`) — what `npx klayer-mcp@1.7.0` downloads
-- **Admin** assets (`klayer-admin-*`) — review/approve enabled, for maintainers
-
-```bash
-cargo build --release                              # admin build
-cargo build --release --no-default-features        # user build (no review/approve)
-```
-
-Verify the two actually differ before shipping both:
-```bash
-curl http://localhost:7474/api/admin   # {"admin": true}  on the admin build
-                                        # {"admin": false} on the user build
 ```
 
 </details>
@@ -510,13 +494,12 @@ Default port **7474** (`KLAYER_DASHBOARD_PORT` to override). All dashboard pages
 | `GET /api/submissions` | `status` | Marketplace publish queue |
 | `GET /api/submissions/get` | `id` | One submission + snapshotted items |
 | `POST /api/submissions/publish` | `{domain}` | Snapshot a domain into a pending submission |
-| `POST /api/submissions/review` | `{id, action, note}` | Approve/deny (admin build only) |
+| `POST /api/submissions/review` | `{id, action, note}` | Approve/deny a submission |
 | `GET /api/submissions/export` | `id` | Download a submission as JSON |
-| `POST /api/submissions/import` | `{json}` | Import a submission (admin build only) |
+| `POST /api/submissions/import` | `{json}` | Import a submission |
 | `GET /api/submissions/delete` | `id` | Withdraw your own submission |
 | `GET /api/author` | — | Author name + cooldown status |
 | `POST /api/author` | `{name}` | Register/change author name (14-day cooldown) |
-| `GET /api/admin` | — | Whether this is the admin build |
 
 </details>
 
