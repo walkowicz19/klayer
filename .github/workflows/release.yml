@@ -19,16 +19,20 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: klayer-linux-x86_64
+            user_artifact: klayer-linux-x86_64
+            admin_artifact: klayer-admin-linux-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: klayer-windows-x86_64.exe
+            user_artifact: klayer-windows-x86_64.exe
+            admin_artifact: klayer-admin-windows-x86_64.exe
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: klayer-macos-x86_64
+            user_artifact: klayer-macos-x86_64
+            admin_artifact: klayer-admin-macos-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: klayer-macos-arm64
+            user_artifact: klayer-macos-arm64
+            admin_artifact: klayer-admin-macos-arm64
 
     steps:
       - name: Checkout repository
@@ -45,20 +49,33 @@ jobs:
       - name: Build user binary (no admin review/approve capability)
         run: cargo build --release --no-default-features --target ${{ matrix.target }}
 
-      - name: Prepare asset
+      - name: Prepare user asset
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/${{ matrix.target }}/release/klayer.exe ${{ matrix.artifact_name }}
+            cp target/${{ matrix.target }}/release/klayer.exe ${{ matrix.user_artifact }}
           else
-            cp target/${{ matrix.target }}/release/klayer ${{ matrix.artifact_name }}
+            cp target/${{ matrix.target }}/release/klayer ${{ matrix.user_artifact }}
+          fi
+
+      - name: Build admin binary (marketplace review/approve enabled)
+        run: cargo build --release --features admin --target ${{ matrix.target }}
+
+      - name: Prepare admin asset
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/${{ matrix.target }}/release/klayer.exe ${{ matrix.admin_artifact }}
+          else
+            cp target/${{ matrix.target }}/release/klayer ${{ matrix.admin_artifact }}
           fi
 
       - name: Upload binaries to Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ matrix.artifact_name }}
+            ${{ matrix.user_artifact }}
+            ${{ matrix.admin_artifact }}
             klayer-skill/SKILL.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

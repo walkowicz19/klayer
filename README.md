@@ -61,7 +61,7 @@ chmod +x klayer-macos-arm64   # macOS/Linux only
   "mcpServers": {
     "klayer": {
       "command": "npx",
-      "args": ["-y", "klayer-mcp@latest"]
+      "args": ["-y", "klayer-mcp@1.7.0"]
     }
   }
 }
@@ -218,7 +218,10 @@ KLAYER_DB=./klayer.db ./target/release/klayer
 # Dashboard opens automatically at http://localhost:7474
 ```
 
-**Admin vs. user build** — the `admin` Cargo feature (on by default) unlocks marketplace submission review/approval. Build the user-facing binary without it:
+**Admin vs. user build** — the `admin` Cargo feature (on by default) unlocks marketplace submission review/approval. Release builds publish both:
+
+- **User** assets (`klayer-*-x86_64` / `klayer-macos-arm64`) — what `npx klayer-mcp@1.7.0` downloads
+- **Admin** assets (`klayer-admin-*`) — review/approve enabled, for maintainers
 
 ```bash
 cargo build --release                              # admin build
@@ -314,7 +317,7 @@ For a pure-SSH session with no browser: `klayer status` prints a one-shot plain-
 <details>
 <summary><b>Ingest sources</b></summary>
 
-`ingest` accepts HTTP/HTTPS URLs, absolute local paths, and `file://` URIs. Content-type auto-detected: HTML, PDF, JSON, Markdown, plain text, Office docs (`.docx`/`.xlsx`/`.pptx`), YAML, JSONL, SQL, CSS, and common source-code extensions. `index_codebase` walks a directory for the **Codebase** search tool — known languages get symbol-aware metadata, everything else (including legacy/niche formats) falls back to plain-text chunks; binaries/oversized/unreadable files are skipped with an explicit per-file reason, never a silent success.
+`ingest` accepts HTTP/HTTPS URLs, absolute local paths, and `file://` URIs. Content-type auto-detected: HTML, PDF, JSON, Markdown, plain text, Office docs (`.docx`/`.xlsx`/`.pptx`), YAML, JSONL, SQL, CSS, and common source-code extensions. `index_codebase` starts a background index and returns immediately (so host MCP timeouts don't kill large trees) — poll `list_repos` until `indexing` is false, then `search_code`. Known languages get symbol-aware metadata; everything else (including legacy/niche formats) falls back to plain-text chunks; binaries/oversized/unreadable files are skipped with an explicit per-file reason, never a silent success.
 
 </details>
 
@@ -358,7 +361,7 @@ export_dataset(out_dir="./dataset_out")                   # reviewed+user only, 
 | `KLAYER_SESSION_RETENTION_DAYS` | — | TTL for session memory journal rows; unset = never expires |
 | `KLAYER_SERVER_TOKEN` | auto-generated | Bearer token required by `--mode=server`; persisted at `~/.klayer/server_token.txt` if not set |
 | `KLAYER_TLS_TERMINATED` | — | Set to silence the unencrypted-connection warning in `--mode=server` once a reverse proxy handles TLS |
-| `KLAYER_MCP_VERSION` | `latest` | (npm shim only) pin the release tag `npx klayer-mcp` downloads |
+| `KLAYER_MCP_VERSION` | unset | (npm shim) override the pinned GitHub release tag; defaults to this package's version (`v` + `package.json` version), e.g. `klayer-mcp@1.7.0` → `v1.7.0` |
 | `KLAYER_SEARCH` | `auto` | `auto` · `duckduckgo` · `bing` · `brave` |
 | `KLAYER_BRAVE_API_KEY` | — | Required when `KLAYER_SEARCH=brave` |
 | `RUST_LOG` | `info` | Log level (stderr only, never the MCP channel) |
@@ -413,7 +416,7 @@ Default build is keyword-only (FTS5/BM25) — zero extra native deps. Extension 
 
 | Tool | Description |
 |---|---|
-| `index_codebase` | Walk a directory, index source files for semantic search |
+| `index_codebase` | Start a background directory index (returns immediately; poll `list_repos`) |
 | `search_code` | Full-text + semantic search across indexed codebases |
 | `list_repos` / `forget_repo` / `clear_codebase` | Manage indexed repositories |
 | `log_work` | Append a curated session-journal entry (`done`/`failed`/`avoid`/`decision`/`note`) |

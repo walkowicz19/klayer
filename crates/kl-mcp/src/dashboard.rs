@@ -150,7 +150,7 @@ async fn dash_index(State(s): State<DashState>) -> Response {
 async fn dash_stats(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
     let domains = store.list_domains().unwrap_or_default();
     let sources = store.list_sources(None).unwrap_or_default();
-    let episodes = store.list_episodes(None).unwrap_or_default();
+    let episode_count = store.count_episodes(None).unwrap_or(0);
     let prefs = store.list_preferences().unwrap_or_default();
     let total_docs: i64 = domains.iter().map(|d| d.doc_count).sum();
     let total_rules: i64 = domains.iter().map(|d| d.rule_count).sum();
@@ -166,7 +166,7 @@ async fn dash_stats(State(store): State<Arc<Store>>) -> Json<serde_json::Value> 
         "rules":       total_rules,
         "proposed":    proposed,
         "sources":     sources.len(),
-        "episodes":    episodes.len(),
+        "episodes":    episode_count,
         "preferences": prefs.len(),
     }))
 }
@@ -207,8 +207,15 @@ async fn dash_sources(
 async fn dash_episodes(
     State(store): State<Arc<Store>>,
     Query(q): Query<ApiRunFilter>,
-) -> Json<Vec<EpisodeRow>> {
-    Json(store.list_episodes(q.run_id.as_deref()).unwrap_or_default())
+) -> Json<serde_json::Value> {
+    let run_id = q.run_id.as_deref();
+    let total = store.count_episodes(run_id).unwrap_or(0);
+    let episodes = store.list_episodes(run_id).unwrap_or_default();
+    Json(serde_json::json!({
+        "episodes": episodes,
+        "total": total,
+        "limit": Store::EPISODE_LIST_LIMIT,
+    }))
 }
 
 async fn dash_preferences(State(store): State<Arc<Store>>) -> Json<Vec<String>> {
@@ -612,15 +619,34 @@ fn model_registry_grouped(
                 "sub_agent_name": r.sub_agent_name,
             }));
     }
+    if let Some(captured) = captured_harness.as_deref() {
+        let target = kl_core::normalize_harness(captured);
+        let listed = by_harness
+            .keys()
+            .any(|h| kl_core::normalize_harness(h) == target);
+        if !listed {
+            by_harness.entry(captured.to_string()).or_default();
+        }
+    }
     let harnesses: Vec<serde_json::Value> = by_harness
         .into_iter()
         .map(|(harness, tiers)| {
             let needle = format!("harness={harness}");
+            let model_count: usize = tiers.values().map(|v| v.len()).sum();
+            let sub_agent_count: usize = tiers
+                .values()
+                .flat_map(|v| v.iter())
+                .filter(|m| m.get("sub_agent_name").map(|s| !s.is_null()).unwrap_or(false))
+                .count();
+            let supports_sub_agents = kl_core::harness_supports_sub_agents(&harness);
             serde_json::json!({
                 "harness": harness,
                 "tiers": tiers,
                 "connected_now": captured_harness.as_deref().map(kl_core::normalize_harness)
                     == Some(kl_core::normalize_harness(&harness)),
+                "supports_sub_agents": supports_sub_agents,
+                "missing_models": model_count == 0,
+                "missing_sub_agents": supports_sub_agents && sub_agent_count == 0,
                 "last_edit_ts": store.last_episode_ts_for("model_registry", &needle),
                 "last_recommendation_ts": store.last_episode_ts_for("model_recommendation", &needle),
             })
@@ -644,7 +670,10 @@ async fn dash_model_registry(
 /// `complexity_tier` matrix, grouped by harness (mirroring the Model
 /// Registry grouping above) since the matrix is only meaningful within one
 /// harness's own registry at a time.
-fn routing_rules_grouped(rows: &[kl_core::RoutingRuleRow]) -> serde_json::Value {
+fn routing_rules_grouped(
+    rows: &[kl_core::RoutingRuleRow],
+    captured_harness: &Option<String>,
+) -> serde_json::Value {
     let mut by_harness = std::collections::BTreeMap::<String, Vec<_>>::new();
     for r in rows {
         by_harness
@@ -657,16 +686,38 @@ fn routing_rules_grouped(rows: &[kl_core::RoutingRuleRow]) -> serde_json::Value 
                 "model_id": r.model_id,
             }));
     }
+    if let Some(captured) = captured_harness.as_deref() {
+        let target = kl_core::normalize_harness(captured);
+        let listed = by_harness
+            .keys()
+            .any(|h| kl_core::normalize_harness(h) == target);
+        if !listed {
+            by_harness.entry(captured.to_string()).or_default();
+        }
+    }
     let harnesses: Vec<serde_json::Value> = by_harness
         .into_iter()
-        .map(|(harness, rules)| serde_json::json!({"harness": harness, "rules": rules}))
+        .map(|(harness, rules)| {
+            serde_json::json!({
+                "harness": harness,
+                "rules": rules,
+                "connected_now": captured_harness.as_deref().map(kl_core::normalize_harness)
+                    == Some(kl_core::normalize_harness(&harness)),
+                "supports_sub_agents": kl_core::harness_supports_sub_agents(&harness),
+                "missing_rules": rules.is_empty(),
+            })
+        })
         .collect();
     serde_json::json!({ "harnesses": harnesses })
 }
 
-async fn dash_routing_rules(State(store): State<Arc<Store>>) -> Json<serde_json::Value> {
+async fn dash_routing_rules(
+    State(store): State<Arc<Store>>,
+    State(captured_harness): State<Arc<std::sync::Mutex<Option<String>>>>,
+) -> Json<serde_json::Value> {
+    let captured = captured_harness.lock().ok().and_then(|g| g.clone());
     match store.list_routing_rules() {
-        Ok(rows) => Json(routing_rules_grouped(&rows)),
+        Ok(rows) => Json(routing_rules_grouped(&rows, &captured)),
         Err(e) => Json(serde_json::json!({"error": e.to_string()})),
     }
 }
@@ -1724,6 +1775,31 @@ mod stage_e_tests {
     }
 
     #[test]
+    fn model_registry_grouped_injects_connected_ibm_bob_without_models() {
+        let store = Store::open(":memory:").expect("open in-memory store");
+        store.migrate().expect("migrate");
+        let shaped = model_registry_grouped(&[], &store, &Some("IBM Bob/0.4.1".into()));
+        let harnesses = shaped["harnesses"].as_array().unwrap();
+        assert_eq!(harnesses.len(), 1);
+        let bob = &harnesses[0];
+        assert_eq!(bob["harness"], "IBM Bob/0.4.1");
+        assert_eq!(bob["connected_now"], true);
+        assert_eq!(bob["supports_sub_agents"], true);
+        assert_eq!(bob["missing_models"], true);
+        assert_eq!(bob["missing_sub_agents"], true);
+    }
+
+    #[test]
+    fn routing_rules_grouped_injects_connected_harness_without_rules() {
+        let shaped = routing_rules_grouped(&[], &Some("IBM Bob".into()));
+        let harnesses = shaped["harnesses"].as_array().unwrap();
+        assert_eq!(harnesses.len(), 1);
+        assert_eq!(harnesses[0]["missing_rules"], true);
+        assert_eq!(harnesses[0]["supports_sub_agents"], true);
+        assert_eq!(harnesses[0]["connected_now"], true);
+    }
+
+    #[test]
     fn routing_rules_grouped_groups_by_harness_as_a_matrix() {
         let rows = vec![
             kl_core::RoutingRuleRow {
@@ -1741,7 +1817,7 @@ mod stage_e_tests {
                 model_id: "haiku".into(),
             },
         ];
-        let shaped = routing_rules_grouped(&rows);
+        let shaped = routing_rules_grouped(&rows, &None);
         let harnesses = shaped["harnesses"].as_array().unwrap();
         assert_eq!(harnesses.len(), 1);
         let rules = harnesses[0]["rules"].as_array().unwrap();

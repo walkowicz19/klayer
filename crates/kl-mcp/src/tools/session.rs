@@ -57,6 +57,29 @@ impl Klayer {
             .store
             .recommend_model(&harness, &p.domain_type, &p.task_type, complexity)
             .map_err(err)?;
+        let registry = self.store.list_model_registry().map_err(err)?;
+        let target = kl_core::normalize_harness(&harness);
+        let harness_rows: Vec<_> = registry
+            .iter()
+            .filter(|r| kl_core::normalize_harness(&r.harness) == target)
+            .collect();
+        let model_count = harness_rows.len();
+        let sub_agent_count = harness_rows
+            .iter()
+            .filter(|r| r.sub_agent_name.is_some())
+            .count();
+        let supports_sub_agents = kl_core::harness_supports_sub_agents(&harness);
+        let mut alerts = Vec::new();
+        if model_count == 0 {
+            alerts.push(format!(
+                "No models are registered for harness '{harness}'. Use configure_model_registry (add_model) before relying on routing recommendations."
+            ));
+        }
+        if supports_sub_agents && sub_agent_count == 0 {
+            alerts.push(format!(
+                "Harness '{harness}' supports sub-agents (IBM Bob does), but none are registered. Use configure_model_registry (add_sub_agent)."
+            ));
+        }
         let recommended_summary = recommendation
             .as_ref()
             .map(|(model, _cost, reason)| format!("{model} ({reason})"))
@@ -78,7 +101,21 @@ impl Klayer {
             )
             .ok();
         json_ok(
-            &serde_json::json!({"complexity_tier":complexity,"harness":harness,"signal_source":source,"signal":signal,"repo":p.repo,"recommendation":recommendation.map(|(model,cost,reason)|serde_json::json!({"model_id":model,"cost_weight":cost,"reason":reason})),"advisory":true}),
+            &serde_json::json!({
+                "complexity_tier": complexity,
+                "harness": harness,
+                "signal_source": source,
+                "signal": signal,
+                "repo": p.repo,
+                "recommendation": recommendation.map(|(model, cost, reason)| serde_json::json!({
+                    "model_id": model,
+                    "cost_weight": cost,
+                    "reason": reason
+                })),
+                "advisory": true,
+                "supports_sub_agents": supports_sub_agents,
+                "alerts": alerts,
+            }),
         )
     }
 

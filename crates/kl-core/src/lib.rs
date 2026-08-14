@@ -358,6 +358,13 @@ pub fn normalize_harness(h: &str) -> String {
         .collect()
 }
 
+/// Whether this harness's host exposes named sub-agents that belong in the
+/// model registry (`configure_model_registry add_sub_agent`). IBM Bob is the
+/// canonical case — its clientInfo normalizes to a key containing `"bob"`.
+pub fn harness_supports_sub_agents(h: &str) -> bool {
+    normalize_harness(h).contains("bob")
+}
+
 /// Env vars that opt a store into embedded-replica mode. Empty/unset means
 /// pure local mode — no behavior change from plain SQLite-over-libsql.
 pub const TURSO_URL_ENV: &str = "KLAYER_TURSO_URL";
@@ -492,5 +499,14 @@ mod sync_health_tests {
             "fallback total is cumulative, not reset by success"
         );
         assert!(snap.last_success_at.is_some());
+    }
+
+    #[test]
+    fn harness_supports_sub_agents_matches_ibm_bob_clientinfo() {
+        assert!(harness_supports_sub_agents("IBM Bob"));
+        assert!(harness_supports_sub_agents("ibm-bob/0.4.1"));
+        assert!(harness_supports_sub_agents("Bob"));
+        assert!(!harness_supports_sub_agents("claude-code"));
+        assert!(!harness_supports_sub_agents("cursor"));
     }
 }

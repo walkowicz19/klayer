@@ -1,5 +1,7 @@
 //! Codebase indexing MCP tools: index_codebase, search_code, list_repos.
 
+use std::sync::Arc;
+
 use rmcp::{
     handler::server::wrapper::Parameters, model::CallToolResult, tool, tool_router,
     ErrorData as McpError,
@@ -7,52 +9,87 @@ use rmcp::{
 
 use super::{err, json_ok, text_ok, IndexCodebaseParams, Klayer, SearchCodeParams};
 
+/// Clears the in-flight index flag even if the background task panics.
+struct IndexFinish(Arc<kl_code::CodeStore>, String);
+impl Drop for IndexFinish {
+    fn drop(&mut self) {
+        self.0.finish_index(&self.1);
+    }
+}
+
 #[tool_router(router = codebase_tool_router, vis = "pub(crate)")]
 impl Klayer {
     #[tool(
-        description = "Index a local codebase directory into persistent code memory. After indexing, search_code() can recall any function, struct, file, or pattern across sessions — the LLM never forgets what was indexed. Re-indexing the same path refreshes the index."
+        description = "Start indexing a local codebase directory into persistent code memory. Returns immediately so the host does not time out on large trees — the walk and FTS write continue in the background. Call list_repos() until `indexing` is false and file/chunk counts settle, then search_code(). Re-indexing the same path refreshes the index; a second call while one is already running is a no-op."
     )]
     #[allow(dead_code)]
     async fn index_codebase(
         &self,
         Parameters(p): Parameters<IndexCodebaseParams>,
     ) -> Result<CallToolResult, McpError> {
-        let stats = self
-            .code_store
-            .index_repo(&p.path, p.name.as_deref())
-            .await
-            .map_err(err)?;
-        let observation = format!(
-            "indexed repo '{}': {} files, {} chunks",
-            p.path, stats.files, stats.chunks
-        );
-        self.store
-            .log_episode_auto(
-                &self.session_run_id,
-                Some("indexing"),
-                Some(&format!("index_codebase path={}", p.path)),
-                Some(&observation),
-                Some("success"),
-                None,
-                None,
-                None,
-                None,
-            )
-            .ok();
-        let mut message = format!(
-            "Indexed '{}': {} files, {} chunks ({} skipped).",
-            p.path, stats.files, stats.chunks, stats.skipped
-        );
-        if !stats.skip_reasons.is_empty() {
-            message.push_str("\nSkipped files:\n- ");
-            message.push_str(&stats.skip_reasons.join("\n- "));
+        let canonical = std::fs::canonicalize(&p.path)
+            .map_err(|e| err(anyhow::anyhow!("resolving path '{}': {e}", p.path)))?;
+        let canon_str = canonical.to_string_lossy().replace('\\', "/");
+
+        if !self.code_store.begin_index(&canon_str) {
+            return text_ok(format!(
+                "Indexing already in progress for '{canon_str}'. Call list_repos() — the `indexing` flag stays true until it finishes."
+            ));
         }
-        if !stats.warnings.is_empty() {
-            message.push_str("\nWarnings:\n- ");
-            message.push_str(&stats.warnings.join("\n- "));
-        }
-        message.push_str("\nUse search_code() to recall any symbol or pattern.");
-        text_ok(message)
+
+        let code_store = Arc::clone(&self.code_store);
+        let store = Arc::clone(&self.store);
+        let run_id = self.session_run_id.clone();
+        let path = p.path.clone();
+        let name = p.name.clone();
+        let canon_for_job = canon_str.clone();
+
+        tokio::spawn(async move {
+            let _guard = IndexFinish(Arc::clone(&code_store), canon_for_job);
+            match code_store.index_repo(&path, name.as_deref()).await {
+                Ok(stats) => {
+                    let observation = format!(
+                        "indexed repo '{}': {} files, {} chunks",
+                        path, stats.files, stats.chunks
+                    );
+                    store
+                        .log_episode_auto(
+                            &run_id,
+                            Some("indexing"),
+                            Some(&format!("index_codebase path={path}")),
+                            Some(&observation),
+                            Some("success"),
+                            None,
+                            None,
+                            None,
+                            None,
+                        )
+                        .ok();
+                    tracing::info!("{}", observation);
+                }
+                Err(e) => {
+                    let observation = format!("index_codebase failed for '{path}': {e:#}");
+                    store
+                        .log_episode_auto(
+                            &run_id,
+                            Some("indexing"),
+                            Some(&format!("index_codebase path={path}")),
+                            Some(&observation),
+                            Some("error"),
+                            None,
+                            None,
+                            None,
+                            None,
+                        )
+                        .ok();
+                    tracing::error!("{}", observation);
+                }
+            }
+        });
+
+        text_ok(format!(
+            "Indexing started in the background for '{canon_str}'. Large trees can take several minutes; this call returns immediately so the host does not time out. Call list_repos() until `indexing` is false and file/chunk counts settle, then search_code(). Do not re-run index_codebase on this path until it finishes."
+        ))
     }
 
     #[tool(
@@ -87,11 +124,10 @@ impl Klayer {
     }
 
     #[tool(
-        description = "List all indexed code repositories with their file/chunk counts and last-indexed timestamp."
+        description = "List all indexed code repositories with their file/chunk counts, last-indexed timestamp, and whether a background index job is still running (`indexing`)."
     )]
     async fn list_repos(&self) -> Result<CallToolResult, McpError> {
         let repos = self.code_store.list_repos().await.map_err(err)?;
         json_ok(&repos)
     }
-
 }

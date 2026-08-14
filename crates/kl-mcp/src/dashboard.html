@@ -227,6 +227,12 @@
     .dbar-fill { height: 100%; background: var(--blue); border-radius: 2px; }
     .dcard-btns { display: flex; gap: 6px; margin-top: 14px; }
     .dcard-btns .sub-btn { flex: 1; justify-content: center; }
+    .alert-banner {
+      font-size: 13px; line-height: 1.45; padding: 12px 14px; margin-bottom: 12px;
+      border-radius: var(--r-md); border: 1px solid rgba(245,158,11,.45);
+      background: rgba(245,158,11,.10); color: #92400E;
+    }
+    body.dark .alert-banner { color: #fbbf24; background: rgba(251,191,36,.12); border-color: rgba(251,191,36,.35); }
     /* ── Pagination ── */
     .pagination { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-top: 1px solid var(--hairline); font-size: 12px; color: var(--body); }
     .pagination-info { flex: 1; text-align: center; color: var(--mute); }
@@ -1180,7 +1186,7 @@ const LANGS = {
     codeSearchPlaceholder: 'Search functions, symbols, file paths…',
     codeSearchBtn: 'Search', viewFullFile: 'View full file', viewChunks: 'View chunks',
     codeNoResults: 'No results', codeSearchPrompt: 'Type a query and press Search',
-    repoFiles: 'files', repoChunks: 'chunks', repoIndexed: 'indexed',
+    repoFiles: 'files', repoChunks: 'chunks', repoIndexed: 'indexed', repoIndexing: 'indexing…',
     phTrainingSub: 'Trust-gated training examples — only reviewed and user rows are ever exported',
     trainStatTotal: 'Examples', trainStatTotalHint: 'training rows',
     trainStatProposed: 'Proposed', trainStatProposedHint: 'awaiting promotion',
@@ -1304,6 +1310,9 @@ const LANGS = {
     registryModelsStat: 'models', registrySubAgentsStat: 'sub-agents',
     registryConnectedNow: 'connected now', registryLastEdit: 'last edit', registryLastRecommendation: 'last recommendation',
     emptyModelRegistry: 'No models registered yet — use configure_model_registry or the Model Registry page',
+    registryAlertNoModels: h => `No models are registered for ${h}. Add them with configure_model_registry (add_model) so routing and recommendations can run.`,
+    registryAlertNoSubAgents: h => `${h} supports sub-agents (IBM Bob does), but none are registered. Add them with configure_model_registry (add_sub_agent).`,
+    routingAlertNoRules: h => `No routing rules are configured for ${h}. Add them with configure_model_registry (add_routing_rule).`,
     thDomainType: 'Domain Type', thTaskType: 'Task Type', thComplexityTier: 'Complexity Tier', thModelId: 'Model',
     emptyRoutingRules: 'No routing rules configured yet',
     fldEnforced: 'Enforced (mandatory rule — flagged in compliance exports)',
@@ -1357,7 +1366,7 @@ const LANGS = {
     codeSearchPlaceholder: 'Buscar funções, símbolos, caminhos de arquivo…',
     codeSearchBtn: 'Buscar', viewFullFile: 'Ver arquivo completo', viewChunks: 'Ver trechos',
     codeNoResults: 'Sem resultados', codeSearchPrompt: 'Digite uma consulta e pressione Buscar',
-    repoFiles: 'arquivos', repoChunks: 'blocos', repoIndexed: 'indexado',
+    repoFiles: 'arquivos', repoChunks: 'blocos', repoIndexed: 'indexado', repoIndexing: 'indexando…',
     phTrainingSub: 'Exemplos de treinamento sob controle de confiança — apenas linhas revisadas e do usuário são exportadas',
     trainStatTotal: 'Exemplos', trainStatTotalHint: 'linhas de treinamento',
     trainStatProposed: 'Propostos', trainStatProposedHint: 'aguardando promoção',
@@ -1481,6 +1490,9 @@ const LANGS = {
     registryModelsStat: 'modelos', registrySubAgentsStat: 'sub-agentes',
     registryConnectedNow: 'conectado agora', registryLastEdit: 'última edição', registryLastRecommendation: 'última recomendação',
     emptyModelRegistry: 'Nenhum modelo registrado ainda — use configure_model_registry ou a página Registro de Modelos',
+    registryAlertNoModels: h => `Nenhum modelo registrado para ${h}. Adicione-os com configure_model_registry (add_model) para que o roteamento funcione.`,
+    registryAlertNoSubAgents: h => `${h} oferece sub-agentes (como o IBM Bob), mas nenhum está registrado. Adicione-os com configure_model_registry (add_sub_agent).`,
+    routingAlertNoRules: h => `Nenhuma regra de roteamento configurada para ${h}. Adicione-as com configure_model_registry (add_routing_rule).`,
     thDomainType: 'Tipo de Domínio', thTaskType: 'Tipo de Tarefa', thComplexityTier: 'Nível de Complexidade', thModelId: 'Modelo',
     emptyRoutingRules: 'Nenhuma regra de roteamento configurada ainda',
     fldEnforced: 'Aplicado (regra obrigatória — sinalizado nas exportações de conformidade)',
@@ -1534,7 +1546,7 @@ const LANGS = {
     codeSearchPlaceholder: 'Buscar funciones, símbolos, rutas de archivo…',
     codeSearchBtn: 'Buscar', viewFullFile: 'Ver archivo completo', viewChunks: 'Ver fragmentos',
     codeNoResults: 'Sin resultados', codeSearchPrompt: 'Escribe una consulta y presiona Buscar',
-    repoFiles: 'archivos', repoChunks: 'bloques', repoIndexed: 'indexado',
+    repoFiles: 'archivos', repoChunks: 'bloques', repoIndexed: 'indexado', repoIndexing: 'indexando…',
     phTrainingSub: 'Ejemplos de entrenamiento controlados por confianza — solo se exportan las filas revisadas y del usuario',
     trainStatTotal: 'Ejemplos', trainStatTotalHint: 'filas de entrenamiento',
     trainStatProposed: 'Propuestos', trainStatProposedHint: 'esperando promoción',
@@ -1658,6 +1670,9 @@ const LANGS = {
     registryModelsStat: 'modelos', registrySubAgentsStat: 'sub-agentes',
     registryConnectedNow: 'conectado ahora', registryLastEdit: 'última edición', registryLastRecommendation: 'última recomendación',
     emptyModelRegistry: 'Aún no hay modelos registrados — use configure_model_registry o la página Registro de Modelos',
+    registryAlertNoModels: h => `No hay modelos registrados para ${h}. Añádalos con configure_model_registry (add_model) para que el enrutamiento funcione.`,
+    registryAlertNoSubAgents: h => `${h} admite sub-agentes (IBM Bob sí), pero no hay ninguno registrado. Añádalos con configure_model_registry (add_sub_agent).`,
+    routingAlertNoRules: h => `No hay reglas de enrutamiento para ${h}. Añádalas con configure_model_registry (add_routing_rule).`,
     thDomainType: 'Tipo de Dominio', thTaskType: 'Tipo de Tarea', thComplexityTier: 'Nivel de Complejidad', thModelId: 'Modelo',
     emptyRoutingRules: 'Aún no hay reglas de enrutamiento configuradas',
     fldEnforced: 'Aplicado (regla obligatoria — señalada en las exportaciones de cumplimiento)',
@@ -1711,7 +1726,7 @@ const LANGS = {
     codeSearchPlaceholder: '搜索函数、符号、文件路径…',
     codeSearchBtn: '搜索', viewFullFile: '查看完整文件', viewChunks: '查看代码分块',
     codeNoResults: '无结果', codeSearchPrompt: '输入查询并点击搜索',
-    repoFiles: '文件', repoChunks: '块', repoIndexed: '已索引',
+    repoFiles: '文件', repoChunks: '块', repoIndexed: '已索引', repoIndexing: '索引中…',
     phTrainingSub: '受信任控制的训练样本 — 仅导出已审核和用户行',
     trainStatTotal: '样本', trainStatTotalHint: '训练行',
     trainStatProposed: '待定', trainStatProposedHint: '等待提升',
@@ -1835,6 +1850,9 @@ const LANGS = {
     registryModelsStat: '模型', registrySubAgentsStat: '子智能体',
     registryConnectedNow: '当前已连接', registryLastEdit: '最后编辑', registryLastRecommendation: '最后推荐',
     emptyModelRegistry: '尚未注册任何模型 — 请使用 configure_model_registry 或模型注册表页面',
+    registryAlertNoModels: h => `${h} 尚未注册任何模型。请用 configure_model_registry (add_model) 添加，否则无法路由或推荐。`,
+    registryAlertNoSubAgents: h => `${h} 支持子智能体（IBM Bob 支持），但尚未注册。请用 configure_model_registry (add_sub_agent) 添加。`,
+    routingAlertNoRules: h => `${h} 尚未配置路由规则。请用 configure_model_registry (add_routing_rule) 添加。`,
     thDomainType: '域类型', thTaskType: '任务类型', thComplexityTier: '复杂度级别', thModelId: '模型',
     emptyRoutingRules: '尚未配置路由规则',
     fldEnforced: '强制执行（强制规则 — 在合规导出中标记）',
@@ -1888,7 +1906,7 @@ const LANGS = {
     codeSearchPlaceholder: 'Szukaj funkcji, symboli, ścieżek pliku…',
     codeSearchBtn: 'Szukaj', viewFullFile: 'Zobacz pełny plik', viewChunks: 'Zobacz fragmenty',
     codeNoResults: 'Brak wyników', codeSearchPrompt: 'Wpisz zapytanie i naciśnij Szukaj',
-    repoFiles: 'pliki', repoChunks: 'fragmenty', repoIndexed: 'zaindeksowano',
+    repoFiles: 'pliki', repoChunks: 'fragmenty', repoIndexed: 'zaindeksowano', repoIndexing: 'indeksowanie…',
     phTrainingSub: 'Przykłady treningowe pod kontrolą zaufania — eksportowane są tylko wiersze zrecenzowane i użytkownika',
     trainStatTotal: 'Przykłady', trainStatTotalHint: 'wiersze treningowe',
     trainStatProposed: 'Proponowane', trainStatProposedHint: 'oczekują na promocję',
@@ -2012,6 +2030,9 @@ const LANGS = {
     registryModelsStat: 'modele', registrySubAgentsStat: 'subagenci',
     registryConnectedNow: 'połączono teraz', registryLastEdit: 'ostatnia edycja', registryLastRecommendation: 'ostatnia rekomendacja',
     emptyModelRegistry: 'Brak jeszcze zarejestrowanych modeli — użyj configure_model_registry lub strony Rejestr Modeli',
+    registryAlertNoModels: h => `Brak modeli dla ${h}. Dodaj je przez configure_model_registry (add_model), aby routing i rekomendacje działały.`,
+    registryAlertNoSubAgents: h => `${h} obsługuje subagentów (IBM Bob tak), ale żaden nie jest zarejestrowany. Dodaj ich przez configure_model_registry (add_sub_agent).`,
+    routingAlertNoRules: h => `Brak reguł routingu dla ${h}. Dodaj je przez configure_model_registry (add_routing_rule).`,
     thDomainType: 'Typ Domeny', thTaskType: 'Typ Zadania', thComplexityTier: 'Poziom Złożoności', thModelId: 'Model',
     emptyRoutingRules: 'Brak jeszcze skonfigurowanych reguł routingu',
     fldEnforced: 'Wymuszone (obowiązkowa reguła — oznaczona w eksportach zgodności)',
@@ -2079,7 +2100,13 @@ function setLang(code) {
 }
 
 // ── Global state ────────────────────────────────────────────────────────────
-let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], preferences: [], codeStats: null, codeRepos: [], training: [], trainStats: null, marketplaceTemplates: [], journal: [], submissions: [], isAdmin: false, author: null, conflicts: [], storageHealth: null, usage: null, modelRegistry: null, routingRules: null };
+let G = { stats: null, domains: [], knowledge: [], sources: [], episodes: [], episodeTotal: 0, preferences: [], codeStats: null, codeRepos: [], training: [], trainStats: null, marketplaceTemplates: [], journal: [], submissions: [], isAdmin: false, author: null, conflicts: [], storageHealth: null, usage: null, modelRegistry: null, routingRules: null };
+// Episode Log badge: show exact count through 999, then "999+".
+const EPISODE_DISPLAY_CAP = 999;
+function fmtEpisodeCount(n) {
+  const v = Number(n) || 0;
+  return v > EPISODE_DISPLAY_CAP ? `${EPISODE_DISPLAY_CAP}+` : String(v);
+}
 
 // ── Filter state ─────────────────────────────────────────────────────────────
 let selectedDomainFilter = '';
@@ -2275,6 +2302,8 @@ const HARNESS_ICON_MATCHERS = [
   ['vscode', 'vscode'],
   ['antigravity', 'antigravity'],
   ['codex', 'codex'],
+  ['ibm bob', 'bob'],
+  ['ibm-bob', 'bob'],
   ['bob', 'bob'],
 ];
 // Substring match (case-insensitive) against known harness names, since
@@ -2334,7 +2363,7 @@ function renderOverview() {
   document.getElementById('s-docs-hint').textContent = t('docsHint')(stats?.domains ?? 0);
   document.getElementById('s-rules').textContent   = stats?.rules ?? '—';
   document.getElementById('s-rules-hint').textContent = t('rulesHint')(stats?.proposed ?? 0);
-  document.getElementById('s-eps').textContent     = stats?.episodes ?? '—';
+  document.getElementById('s-eps').textContent     = stats?.episodes != null ? fmtEpisodeCount(stats.episodes) : '—';
   document.getElementById('s-prefs').textContent   = stats?.preferences ?? '—';
 
   const proposed = knowledge.filter(k => k.trust==='proposed').length;
@@ -2359,7 +2388,7 @@ function renderOverview() {
     : `<div class="empty">${t('emptyDomainsCoverage')}</div>`;
 
   const recent4 = episodes.slice(0,4);
-  document.getElementById('ep-ov-count').textContent = t('total')(episodes.length);
+  document.getElementById('ep-ov-count').textContent = t('total')(fmtEpisodeCount(G.episodeTotal || episodes.length));
   document.getElementById('ep-overview').innerHTML = recent4.length
     ? recent4.map(e => `
         <div class="ep-item">
@@ -2585,8 +2614,8 @@ function renderSources() {
 
 function renderEpisodes() {
   const { episodes } = G;
-  const total = episodes.length;
-  const pages = Math.ceil(total / PAGE_SZ) || 1;
+  const listed = episodes.length;
+  const pages = Math.ceil(listed / PAGE_SZ) || 1;
   PAGER.episodes = Math.min(PAGER.episodes, pages - 1);
   const start = PAGER.episodes * PAGE_SZ;
   const slice = episodes.slice(start, start + PAGE_SZ);
@@ -2602,7 +2631,7 @@ function renderEpisodes() {
         </div>`).join('')
     : `<div class="empty">${t('emptyEpisodes')}</div>`;
   const pagerEl = document.getElementById('episodes-pager');
-  if (pagerEl) pagerEl.innerHTML = pagerHtml('episodes', total);
+  if (pagerEl) pagerEl.innerHTML = pagerHtml('episodes', listed);
 }
 
 function renderTrust() {
@@ -2773,7 +2802,13 @@ function renderModelRegistry() {
   PAGER.modelRegistry = Math.min(PAGER.modelRegistry, pages - 1);
   const start = PAGER.modelRegistry * PAGE_SZ;
   const harnesses = allHarnesses.slice(start, start + PAGE_SZ);
-  list.innerHTML = harnesses.length
+  const alerts = allHarnesses.flatMap(h => {
+    const out = [];
+    if (h.missing_models) out.push(`<div class="alert-banner">${escHtml(t('registryAlertNoModels')(h.harness))}</div>`);
+    if (h.missing_sub_agents) out.push(`<div class="alert-banner">${escHtml(t('registryAlertNoSubAgents')(h.harness))}</div>`);
+    return out;
+  }).join('');
+  list.innerHTML = (alerts || '') + (harnesses.length
     ? `<div class="domain-grid">${harnesses.map(h => {
         const tiers = h.tiers || {};
         const tierNames = [...TIER_ORDER.filter(k => tiers[k]), ...Object.keys(tiers).filter(k => !TIER_ORDER.includes(k)).sort()];
@@ -2781,7 +2816,7 @@ function renderModelRegistry() {
         const subAgentCount = tierNames.reduce((n, tier) => n + (tiers[tier]||[]).filter(m => m.sub_agent_name).length, 0);
         return `
         <div class="dcard">
-          <div class="dcard-name dcard-name-icon">${harnessIcon(h.harness)}<span>${escHtml(h.harness)}</span>${h.connected_now ? `<span class="badge b-user" style="margin-left:8px;vertical-align:middle">${t('registryConnectedNow')}</span>` : ''}</div>
+          <div class="dcard-name dcard-name-icon">${harnessIcon(h.harness)}<span>${escHtml(h.harness)}</span>${h.connected_now ? `<span class="badge b-user" style="margin-left:8px;vertical-align:middle">${t('registryConnectedNow')}</span>` : ''}${h.missing_models || h.missing_sub_agents ? `<span class="badge b-proposed" style="margin-left:8px;vertical-align:middle">!</span>` : ''}</div>
           <div class="dcard-row">
             <div>
               <div class="dcard-stat-val">${modelCount}</div>
@@ -2813,7 +2848,7 @@ function renderModelRegistry() {
             </div>`).join('')}
         </div>`;
       }).join('')}</div>`
-    : `<div class="empty">${t('emptyModelRegistry')}</div>`;
+    : `<div class="empty">${t('emptyModelRegistry')}</div>`);
   const pagerEl = document.getElementById('model-registry-pager');
   if (pagerEl) pagerEl.innerHTML = pagerHtml('modelRegistry', total);
 }
@@ -2828,11 +2863,15 @@ function renderRoutingRules() {
   PAGER.routingRules = Math.min(PAGER.routingRules, pages - 1);
   const start = PAGER.routingRules * PAGE_SZ;
   const harnesses = allHarnesses.slice(start, start + PAGE_SZ);
-  list.innerHTML = harnesses.length
+  const alerts = allHarnesses
+    .filter(h => h.missing_rules)
+    .map(h => `<div class="alert-banner">${escHtml(t('routingAlertNoRules')(h.harness))}</div>`)
+    .join('');
+  list.innerHTML = (alerts || '') + (harnesses.length
     ? harnesses.map(h => `
         <div class="card-fw" style="margin-bottom:16px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--hairline)">
-            <div style="font-weight:700;color:var(--navy);font-size:15px">${escHtml(h.harness)}</div>
+            <div style="font-weight:700;color:var(--navy);font-size:15px;display:flex;align-items:center;gap:8px">${harnessIcon(h.harness)}<span>${escHtml(h.harness)}</span>${h.connected_now ? `<span class="badge b-user">${t('registryConnectedNow')}</span>` : ''}${h.missing_rules ? `<span class="badge b-proposed">!</span>` : ''}</div>
             <div style="font-size:.72rem;color:var(--mute)">${t('itemsCount')((h.rules||[]).length)}</div>
           </div>
           <div class="tw"><table>
@@ -2851,7 +2890,7 @@ function renderRoutingRules() {
             </tbody>
           </table></div>
         </div>`).join('')
-    : `<div class="empty">${t('emptyRoutingRules')}</div>`;
+    : `<div class="empty">${t('emptyRoutingRules')}</div>`);
   const pagerEl = document.getElementById('routing-rules-pager');
   if (pagerEl) pagerEl.innerHTML = pagerHtml('routingRules', total);
   applyLang(true);
@@ -2895,7 +2934,7 @@ function renderCodebase() {
     <div class="repo-row" style="display:flex;align-items:center;justify-content:space-between">
       <span class="repo-icon">⬡</span>
       <div style="flex:1;min-width:0;margin-right:1rem">
-        <div class="repo-name">${escHtml(r.name)}</div>
+        <div class="repo-name">${escHtml(r.name)}${r.indexing ? ` <span class="badge b-proposed">${t('repoIndexing')}</span>` : ''}</div>
         <div class="repo-path">${escHtml(r.path)}</div>
       </div>
       <div class="repo-stats" style="display:flex;align-items:center;gap:1.25rem">
@@ -3008,7 +3047,7 @@ function renderAll() {
   document.getElementById('nb-domains').textContent   = G.domains.length;
   document.getElementById('nb-knowledge').textContent = G.knowledge.length;
   document.getElementById('nb-sources').textContent   = G.sources.length;
-  document.getElementById('nb-episodes').textContent  = G.episodes.length;
+  document.getElementById('nb-episodes').textContent  = fmtEpisodeCount(G.episodeTotal || G.episodes.length);
   document.getElementById('nb-repos').textContent     = G.codeRepos.length;
   document.getElementById('nb-training').textContent  = G.training.length;
   const nbSessions = document.getElementById('nb-sessions');
@@ -3336,7 +3375,11 @@ async function loadData(opts = {}) {
       domains:     domains     ?? G.domains,
       knowledge:   knowledge   ?? G.knowledge,
       sources:     sources     ?? G.sources,
-      episodes:    episodes    ?? G.episodes,
+      episodes:    Array.isArray(episodes) ? episodes
+                   : (episodes && Array.isArray(episodes.episodes) ? episodes.episodes : G.episodes),
+      episodeTotal: Array.isArray(episodes) ? episodes.length
+                   : (episodes && typeof episodes.total === 'number' ? episodes.total
+                     : (Array.isArray(episodes?.episodes) ? episodes.episodes.length : G.episodeTotal)),
       preferences: preferences ?? G.preferences,
       codeStats:   codeStats   ?? G.codeStats,
       codeRepos:   codeRepos   ?? G.codeRepos,

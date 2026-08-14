@@ -9,6 +9,16 @@ const { spawn } = require('child_process');
 
 const REPO = 'walkowicz19/klayer';
 
+// Pin downloads to this package's version (e.g. npm 1.7.0 → GitHub tag v1.7.0).
+// Override with KLAYER_MCP_VERSION only when you intentionally want another tag.
+const PACKAGE_VERSION = (() => {
+  try {
+    return require('../package.json').version;
+  } catch (_) {
+    return null;
+  }
+})();
+
 const ASSET_MAP = {
   'linux-x64': 'klayer-linux-x86_64',
   'win32-x64': 'klayer-windows-x86_64.exe',
@@ -103,10 +113,20 @@ function downloadToFile(url, destPath, redirectsLeft) {
   });
 }
 
+function normalizeTag(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s || s === 'latest') return null;
+  return s.startsWith('v') ? s : `v${s}`;
+}
+
 async function resolveReleaseTag() {
-  if (process.env.KLAYER_MCP_VERSION) {
-    return process.env.KLAYER_MCP_VERSION;
-  }
+  const fromEnv = normalizeTag(process.env.KLAYER_MCP_VERSION);
+  if (fromEnv) return fromEnv;
+
+  const fromPackage = normalizeTag(PACKAGE_VERSION);
+  if (fromPackage) return fromPackage;
+
   const release = await httpsGetJson(`https://api.github.com/repos/${REPO}/releases/latest`);
   if (!release || !release.tag_name) {
     throw new Error('GitHub API response did not contain a tag_name');
@@ -115,15 +135,10 @@ async function resolveReleaseTag() {
 }
 
 async function resolveAssetUrl(tag, assetName) {
-  if (process.env.KLAYER_MCP_VERSION) {
-    return `https://github.com/${REPO}/releases/download/${tag}/${assetName}`;
-  }
-  const release = await httpsGetJson(`https://api.github.com/repos/${REPO}/releases/latest`);
-  const asset = (release.assets || []).find((a) => a.name === assetName);
-  if (!asset) {
-    throw new Error(`release ${release.tag_name} has no asset named "${assetName}"`);
-  }
-  return asset.browser_download_url;
+  // Prefer the deterministic download URL for the pinned tag so an npm package
+  // version always fetches that exact GitHub release — never silently drift to
+  // whatever happens to be marked latest on the repo.
+  return `https://github.com/${REPO}/releases/download/${tag}/${assetName}`;
 }
 
 async function ensureBinary(assetName) {

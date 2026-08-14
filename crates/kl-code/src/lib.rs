@@ -18,8 +18,9 @@ use chrono::Utc;
 use kl_core::{SyncHealth, SyncHealthSnapshot};
 use libsql::{params, Connection, Database};
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use indexing::{collect_files, fts_match, insert_repo_data, scalar_i64, scalar_i64_params};
 
@@ -65,6 +66,10 @@ pub struct CodeStore {
     db: Arc<Database>,
     health: Arc<SyncHealth>,
     remote_configured: bool,
+    /// Canonical repo paths currently being indexed (in-process). Lets
+    /// `list_repos` surface in-flight work and `index_codebase` refuse a
+    /// second overlapping run of the same tree.
+    indexing: Mutex<HashSet<String>>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -75,6 +80,9 @@ pub struct RepoInfo {
     pub indexed_at: Option<i64>,
     pub file_count: i64,
     pub chunk_count: i64,
+    /// True while an `index_codebase` job for this path is still running.
+    #[serde(default)]
+    pub indexing: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -123,6 +131,7 @@ impl CodeStore {
             db,
             health,
             remote_configured,
+            indexing: Mutex::new(HashSet::new()),
         })
     }
 
@@ -136,6 +145,27 @@ impl CodeStore {
 
     pub fn health(&self) -> SyncHealthSnapshot {
         self.health.snapshot(self.remote_configured)
+    }
+
+    /// Mark `canon` as in-flight. Returns `false` if that path is already indexing.
+    pub fn begin_index(&self, canon: &str) -> bool {
+        self.indexing
+            .lock()
+            .map(|mut g| g.insert(canon.to_string()))
+            .unwrap_or(false)
+    }
+
+    pub fn finish_index(&self, canon: &str) {
+        if let Ok(mut g) = self.indexing.lock() {
+            g.remove(canon);
+        }
+    }
+
+    fn is_indexing(&self, canon: &str) -> bool {
+        self.indexing
+            .lock()
+            .map(|g| g.contains(canon))
+            .unwrap_or(false)
     }
 
     pub async fn stats(&self) -> Result<CodeStats> {
@@ -214,7 +244,11 @@ impl CodeStore {
                 indexed_at: r.get(3)?,
                 file_count: r.get(4)?,
                 chunk_count: r.get(5)?,
+                indexing: false,
             });
+        }
+        for repo in &mut out {
+            repo.indexing = self.is_indexing(&repo.path);
         }
         Ok(out)
     }
@@ -332,15 +366,36 @@ impl CodeStore {
     }
 
     pub async fn index_repo(&self, dir_path: &str, name: Option<&str>) -> Result<IndexStats> {
+        const INSERT_BATCH: usize = 64;
         let canonical = std::fs::canonicalize(dir_path)
             .with_context(|| format!("resolving path: {dir_path}"))?;
         let canon_str = canonical.to_string_lossy().replace('\\', "/");
         let now = Utc::now().timestamp();
+        let name_owned = name.map(|s| s.to_string());
 
-        // Collect files outside any DB call (blocking I/O, may be large).
-        let mut file_data = Vec::new();
-        let mut skip_reasons = Vec::new();
-        collect_files(&canonical, &canonical, &mut file_data, &mut skip_reasons)?;
+        // Stub the repo row immediately so list_repos can show in-flight work
+        // while the (potentially huge) filesystem walk runs off the async runtime.
+        self.conn
+            .execute(
+                "INSERT INTO repos (path, name, indexed_at, file_count, chunk_count)
+                 VALUES (?1, ?2, ?3, 0, 0)
+                 ON CONFLICT(path) DO UPDATE SET
+                     name       = COALESCE(?2, name),
+                     indexed_at = ?3",
+                params![canon_str.clone(), name_owned.clone(), now],
+            )
+            .await?;
+
+        let collect_root = canonical.clone();
+        let (file_data, skip_reasons) = tokio::task::spawn_blocking(move || {
+            let mut file_data = Vec::new();
+            let mut skip_reasons = Vec::new();
+            collect_files(&collect_root, &collect_root, &mut file_data, &mut skip_reasons)?;
+            Ok::<_, anyhow::Error>((file_data, skip_reasons))
+        })
+        .await
+        .context("index collect task")??;
+
         let skipped = skip_reasons.len();
         let mut warnings = Vec::new();
         for repo in self.list_repos().await? {
@@ -365,25 +420,6 @@ impl CodeStore {
             skipped
         );
 
-        // Upsert repo record.
-        self.conn
-            .execute(
-                "INSERT INTO repos (path, name, indexed_at, file_count, chunk_count)
-                 VALUES (?1, ?2, ?3, ?4, ?5)
-                 ON CONFLICT(path) DO UPDATE SET
-                     name        = COALESCE(?2, name),
-                     indexed_at  = ?3,
-                     file_count  = ?4,
-                     chunk_count = ?5",
-                params![
-                    canon_str.clone(),
-                    name,
-                    now,
-                    total_files as i64,
-                    total_chunks as i64
-                ],
-            )
-            .await?;
         let repo_id: i64 = {
             let mut rows = self
                 .conn
@@ -426,8 +462,28 @@ impl CodeStore {
             )
             .await?;
 
-        // Insert new files and chunks in one transaction.
-        insert_repo_data(&self.conn, repo_id, &file_data).await?;
+        let mut written_files = 0usize;
+        let mut written_chunks = 0usize;
+        for batch in file_data.chunks(INSERT_BATCH) {
+            insert_repo_data(&self.conn, repo_id, batch).await?;
+            written_files += batch.len();
+            written_chunks += batch.iter().map(|f| f.chunks.len()).sum::<usize>();
+            self.conn
+                .execute(
+                    "UPDATE repos SET file_count = ?1, chunk_count = ?2, indexed_at = ?3 WHERE id = ?4",
+                    params![written_files as i64, written_chunks as i64, now, repo_id],
+                )
+                .await?;
+            tokio::task::yield_now().await;
+        }
+        if file_data.is_empty() {
+            self.conn
+                .execute(
+                    "UPDATE repos SET file_count = 0, chunk_count = 0, indexed_at = ?1 WHERE id = ?2",
+                    params![now, repo_id],
+                )
+                .await?;
+        }
 
         Ok(IndexStats {
             files: total_files,

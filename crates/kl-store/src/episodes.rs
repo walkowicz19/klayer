@@ -161,7 +161,25 @@ impl Store {
         .flatten()
     }
 
-    /// List agentic run episodes. Filter by run_id if provided. Newest first, limit 200.
+    /// Newest-first window served to the dashboard and `list_episodes` tool.
+    /// Counts above this are still tracked via `count_episodes`; the UI shows
+    /// them as `999+`.
+    pub const EPISODE_LIST_LIMIT: i64 = 999;
+
+    /// Total episode rows, optionally scoped to one `run_id`. Not capped by
+    /// `EPISODE_LIST_LIMIT` — use this for badges / stats.
+    pub fn count_episodes(&self, run_id: Option<&str>) -> Result<i64> {
+        let c = self.conn.lock().unwrap();
+        let n: i64 = c.query_row(
+            "SELECT COUNT(*) FROM episodes WHERE (?1 IS NULL OR run_id = ?1)",
+            params![run_id],
+            |r| r.get(0),
+        )?;
+        Ok(n)
+    }
+
+    /// List agentic run episodes. Filter by run_id if provided. Newest first,
+    /// capped at [`EPISODE_LIST_LIMIT`].
     pub fn list_episodes(&self, run_id: Option<&str>) -> Result<Vec<EpisodeRow>> {
         let c = self.conn.lock().unwrap();
         let mut stmt = c.prepare(
@@ -169,9 +187,9 @@ impl Store {
                FROM episodes
               WHERE (?1 IS NULL OR run_id = ?1)
               ORDER BY ts DESC, step DESC
-              LIMIT 200",
+              LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![run_id], |r| {
+        let rows = stmt.query_map(params![run_id, Self::EPISODE_LIST_LIMIT], |r| {
             Ok(EpisodeRow {
                 id: r.get(0)?,
                 run_id: r.get(1)?,
@@ -205,6 +223,40 @@ impl Store {
         let c = self.conn.lock().unwrap();
         let n = c.execute("DELETE FROM episodes", [])?;
         Ok(n as u64)
+    }
+}
+
+#[cfg(test)]
+mod episode_list_tests {
+    use super::*;
+
+    #[test]
+    fn list_episodes_caps_at_999_while_count_keeps_growing() {
+        let store = Store::open(":memory:").expect("open");
+        store.migrate().expect("migrate");
+        let over = Store::EPISODE_LIST_LIMIT as usize + 6;
+        for i in 0..over {
+            store
+                .log_episode_auto(
+                    "run-cap",
+                    Some("recall"),
+                    Some(&format!("step-{i}")),
+                    Some("ok"),
+                    Some("success"),
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap();
+        }
+        let listed = store.list_episodes(None).unwrap();
+        assert_eq!(listed.len(), Store::EPISODE_LIST_LIMIT as usize);
+        assert_eq!(store.count_episodes(None).unwrap(), over as i64);
+        assert_eq!(
+            store.count_episodes(Some("run-cap")).unwrap(),
+            over as i64
+        );
     }
 }
 
