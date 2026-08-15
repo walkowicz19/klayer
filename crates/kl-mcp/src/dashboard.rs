@@ -1403,11 +1403,17 @@ pub(crate) async fn start_dashboard(
     } else {
         "127.0.0.1"
     };
-    let listener = tokio::net::TcpListener::bind((bind_addr, port))
-        .await
-        .unwrap_or_else(|e| panic!("dashboard: cannot bind {bind_addr}:{port}: {e}"));
+    let listener = match tokio::net::TcpListener::bind((bind_addr, port)).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::warn!("dashboard: cannot bind {bind_addr}:{port}: {e} (HTTP dashboard server will not be available)");
+            return;
+        }
+    };
 
-    axum::serve(listener, app).await.unwrap();
+    if let Err(e) = axum::serve(listener, app).await {
+        tracing::warn!("dashboard: server exited with error: {e}");
+    }
 }
 
 

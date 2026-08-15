@@ -152,23 +152,25 @@ fn resolve_home_dir() -> std::path::PathBuf {
     if cfg!(target_os = "windows") {
         if let (Ok(drive), Ok(path)) = (std::env::var("HOMEDRIVE"), std::env::var("HOMEPATH")) {
             if !drive.is_empty() && !path.is_empty() {
-                // HOMEPATH already carries its leading separator (e.g. "\Users\name"),
-                // and PathBuf::join drops the separator entirely when joining onto a
-                // bare drive prefix like "C:" (no root component) — concatenate the
-                // strings directly instead of going through `join`.
                 return std::path::PathBuf::from(format!("{drive}{path}"));
             }
         }
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            if let Some(parent) = std::path::Path::new(&appdata).parent() {
+                if let Some(user_home) = parent.parent() {
+                    return user_home.to_path_buf();
+                }
+            }
+        }
+        if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+            if let Some(parent) = std::path::Path::new(&localappdata).parent() {
+                if let Some(user_home) = parent.parent() {
+                    return user_home.to_path_buf();
+                }
+            }
+        }
     }
-    eprintln!(
-        "klayer: could not resolve a home directory (none of USERPROFILE, HOME{} is set in \
-         this process's environment). Refusing to fall back to the current directory, since \
-         that would scatter a separate ./.klayer database per folder. Fix your MCP client's \
-         launch environment to inherit USERPROFILE/HOME, or set KLAYER_DB/KLAYER_CODE_DB/\
-         KLAYER_TRAIN_DB/KLAYER_SESSION_DB explicitly.",
-        if cfg!(target_os = "windows") { "/HOMEDRIVE+HOMEPATH" } else { "" }
-    );
-    std::process::exit(1);
+    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
 }
 
 pub(crate) fn get_klayer_dir() -> std::path::PathBuf {
@@ -187,22 +189,37 @@ pub(crate) struct DbPaths {
 /// so `klayer status`/`klayer tui` see the exact same databases the MCP
 /// server and dashboard do.
 pub(crate) fn resolve_db_paths() -> DbPaths {
+    let db = std::env::var("KLAYER_DB").ok();
+    let code_db = std::env::var("KLAYER_CODE_DB").ok();
+    let train_db = std::env::var("KLAYER_TRAIN_DB").ok();
+    let session_db = std::env::var("KLAYER_SESSION_DB").ok();
+
+    if let (Some(db), Some(code_db), Some(train_db), Some(session_db)) =
+        (db.as_ref(), code_db.as_ref(), train_db.as_ref(), session_db.as_ref())
+    {
+        return DbPaths {
+            db: db.clone(),
+            code_db: code_db.clone(),
+            train_db: train_db.clone(),
+            session_db: session_db.clone(),
+        };
+    }
+
     let klayer_dir = get_klayer_dir();
-    let db = std::env::var("KLAYER_DB")
-        .unwrap_or_else(|_| klayer_dir.join("klayer.db").to_string_lossy().to_string());
-    let code_db = std::env::var("KLAYER_CODE_DB").unwrap_or_else(|_| {
+    let db = db.unwrap_or_else(|| klayer_dir.join("klayer.db").to_string_lossy().to_string());
+    let code_db = code_db.unwrap_or_else(|| {
         klayer_dir
             .join("klayer_code.db")
             .to_string_lossy()
             .to_string()
     });
-    let train_db = std::env::var("KLAYER_TRAIN_DB").unwrap_or_else(|_| {
+    let train_db = train_db.unwrap_or_else(|| {
         klayer_dir
             .join("klayer_train.db")
             .to_string_lossy()
             .to_string()
     });
-    let session_db = std::env::var("KLAYER_SESSION_DB").unwrap_or_else(|_| {
+    let session_db = session_db.unwrap_or_else(|| {
         klayer_dir
             .join("klayer_session.db")
             .to_string_lossy()
