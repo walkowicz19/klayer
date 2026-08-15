@@ -10,8 +10,9 @@ path = "src/main.rs"
 
 [features]
 default = ["admin"]
-# Vector retrieval (sqlite-vec + local ONNX embeddings). Not wired in v0; the
-# Embedder trait + chunks_vec table are the extension points. See README.
+# Vector retrieval (sqlite-vec + local ONNX embeddings). Storage tables/APIs
+# ship in kl-store already; Embedder + recall fusion still live behind this
+# unfinished feature. See README "Vector retrieval".
 embed-local = []
 # Admin build: enables the marketplace submission review/approval workflow
 # (approve/deny/import). Distributed user binaries are built WITHOUT this, so

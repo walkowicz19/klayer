@@ -323,8 +323,9 @@ pub trait SearchBackend: Send + Sync {
     async fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<SearchResult>>;
 }
 
-/// Future extension point: vector embeddings. Default build is keyword-only and
-/// never constructs an Embedder; the vector path lives behind a feature flag.
+/// Extension point for vector embeddings. `kl-store` already hosts sqlite-vec
+/// tables and search helpers; the default build never constructs an Embedder,
+/// so `recall` stays FTS5-only until `embed-local` lands a concrete backend.
 pub trait Embedder: Send + Sync {
     fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>>;
     fn dims(&self) -> usize;

@@ -193,8 +193,9 @@ clear_domain("my-domain", chunks_only=true)  # keep rules, clear ingested docs o
 
 ```
 kl-core     shared types + traits (Kind, Trust, SearchBackend, Embedder, RecallHit)
-kl-store    rusqlite: general knowledge — domains, knowledge, sources, trust, ACL,
-            episodes, model registry, routing rules, media metadata (always local SQLite)
+kl-store    rusqlite + sqlite-vec: general knowledge — domains, knowledge, sources,
+            trust, ACL, episodes, model registry, routing rules, media metadata,
+            and vec0 tables for optional vector retrieval (always local SQLite)
 kl-session  libsql: session memory journal (local file, optional Turso sync)
 kl-code     libsql: codebase index + FTS5 (local file, optional Turso sync)
 kl-train    libsql: fine-tuning dataset capture/gate/export (local file, optional Turso sync)
@@ -203,7 +204,7 @@ kl-search   SearchBackend trait + DuckDuckGo / Bing / Brave with auto-fallback
 kl-mcp      the `klayer` binary: rmcp MCP server + axum dashboard HTTP server
 ```
 
-**Storage model:** general knowledge (the governance core) stays on plain SQLite via `rusqlite` — zero tolerance for beta instability. Codebase, session memory, and training data run on `libsql`, which can optionally sync a local file against a remote Turso database (`KLAYER_TURSO_URL`/`KLAYER_TURSO_TOKEN`) — unset, it's just a local file, identical to before. Sync failures never break local reads/writes; they're counted and surfaced on the **Storage Health** dashboard page and (if configured) the notification relay.
+**Storage model:** general knowledge (the governance core) stays on plain SQLite via `rusqlite` (with `sqlite-vec` loaded for vector tables) — zero tolerance for remote-sync instability on the trust spine. Codebase, session memory, and training data run on `libsql`, which can optionally sync a local file against a remote Turso database (`KLAYER_TURSO_URL`/`KLAYER_TURSO_TOKEN`) — unset, it's just a local file, identical to before. Sync failures never break local reads/writes; they're counted and surfaced on the **Storage Health** dashboard page and (if configured) the notification relay.
 
 </details>
 
@@ -353,9 +354,16 @@ export_dataset(out_dir="./dataset_out")                   # reviewed+user only, 
 </details>
 
 <details>
-<summary><b>Vector retrieval (optional, not yet wired in)</b></summary>
+<summary><b>Vector retrieval (sqlite-vec storage in; embedder/recall fusion not yet)</b></summary>
 
-Default build is keyword-only (FTS5/BM25) — zero extra native deps. Extension point: `Embedder` trait in `kl-core`; add a `chunks_vec` table via `sqlite-vec` + a local CPU embedder, fuse with FTS via RRF in `Store::recall`, gate behind the `embed-local` feature.
+`kl-store` already loads `sqlite-vec`, creates `chunks_vec` / `knowledge_vec` (`vec0`, 384-dim), and exposes `insert_*_vector` / `search_knowledge_vector` (covered by unit tests).
+
+What still runs today for tools:
+
+- `recall` — FTS5/BM25 over reference chunks + curated knowledge (no vector path yet)
+- `search_code` — FTS5 over indexed code chunks (no embeddings)
+
+The remaining work is gated behind the `embed-local` Cargo feature: a concrete `Embedder` in `kl-core`, auto-embed on ingest/remember/promote, and fuse vector hits with FTS via RRF inside `Store::recall`. Until that lands, the vec tables stay ready but unused by MCP tools.
 
 </details>
 
@@ -368,7 +376,7 @@ Default build is keyword-only (FTS5/BM25) — zero extra native deps. Extension 
 
 | Tool | Description |
 |---|---|
-| `recall` | Retrieve grounded knowledge for a domain (FTS5 + curated rules); enforced-domain items get imperative framing |
+| `recall` | Retrieve grounded knowledge for a domain (FTS5/BM25 + curated rules); enforced-domain items get imperative framing |
 | `search_web` | Web search via configured engine; results are DATA only |
 | `ingest` | Fetch a URL/file and chunk it into the reference tier |
 | `remember` | Store a user-authored fact (`trust=user`, enforced immediately) |
@@ -401,7 +409,7 @@ Default build is keyword-only (FTS5/BM25) — zero extra native deps. Extension 
 | Tool | Description |
 |---|---|
 | `index_codebase` | Start a background directory index (returns immediately; poll `list_repos`) |
-| `search_code` | Full-text + semantic search across indexed codebases |
+| `search_code` | Full-text (FTS5) search across indexed codebases |
 | `list_repos` / `forget_repo` / `clear_codebase` | Manage indexed repositories |
 | `log_work` | Append a curated session-journal entry (`done`/`failed`/`avoid`/`decision`/`note`) |
 | `recall_session` | Replay a repo's session journal (`recent_context` or `full_session_summary`) |
