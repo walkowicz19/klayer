@@ -10,7 +10,7 @@ use kl_code::CodeStore;
 use kl_session::SessionStore;
 use kl_store::Store;
 use kl_train::TrainStore;
-use rmcp::{transport::stdio, ServiceExt};
+use rmcp::ServiceExt;
 use tracing_subscriber::EnvFilter;
 
 use crate::dashboard::{load_dashboard_html, start_dashboard};
@@ -745,6 +745,54 @@ pub(crate) async fn run() -> Result<()> {
     ));
     tracing::info!("klayer dashboard  →  http://localhost:{port}");
 
+
+
+    let mut stdin = tokio::io::stdin();
+    let mut stdout = tokio::io::stdout();
+
+    let mut first_line = Vec::new();
+    let mut temp = [0u8; 1];
+    loop {
+        use tokio::io::AsyncReadExt;
+        match stdin.read_exact(&mut temp).await {
+            Ok(_) => {
+                first_line.push(temp[0]);
+                if temp[0] == b'\n' {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+
+    let mut prefix = None;
+    if !first_line.is_empty() {
+        let first_line_str = String::from_utf8_lossy(&first_line);
+        if first_line_str.contains("\"method\":\"server/discover\"") {
+            // Extract request ID if present
+            let id_value = if let Some(pos) = first_line_str.find("\"id\":") {
+                let rest = &first_line_str[pos + 5..];
+                let end_pos = rest
+                    .find(|c: char| c == ',' || c == '}' || c.is_whitespace())
+                    .unwrap_or(rest.len());
+                rest[..end_pos].trim().to_string()
+            } else {
+                "1".to_string()
+            };
+
+            // Respond with Method not found (-32601) so the client falls back to legacy initialize
+            use tokio::io::AsyncWriteExt;
+            let response = format!(
+                "{{\"jsonrpc\":\"2.0\",\"id\":{},\"error\":{{\"code\":-32601,\"message\":\"Method not found\"}}}}\n",
+                id_value
+            );
+            let _ = stdout.write_all(response.as_bytes()).await;
+            let _ = stdout.flush().await;
+        } else {
+            prefix = Some(std::io::Cursor::new(first_line));
+        }
+    }
+
     let service = Klayer::new(
         store,
         code_store,
@@ -752,9 +800,47 @@ pub(crate) async fn run() -> Result<()> {
         session_store,
         notify_state,
         captured_harness,
-    )
-    .serve(stdio())
-    .await?;
-    service.waiting().await?;
+    );
+
+    let wait_handle = if let Some(p) = prefix {
+        let reader = InterceptedReader {
+            inner: stdin,
+            prefix: Some(p),
+        };
+        service.serve((reader, stdout)).await?
+    } else {
+        service.serve((stdin, stdout)).await?
+    };
+
+    wait_handle.waiting().await?;
     Ok(())
 }
+
+struct InterceptedReader<R> {
+    inner: R,
+    prefix: Option<std::io::Cursor<Vec<u8>>>,
+}
+
+impl<R: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for InterceptedReader<R> {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        if let Some(ref mut prefix) = this.prefix {
+            let before = buf.filled().len();
+            let res = std::pin::Pin::new(&mut *prefix).poll_read(cx, buf);
+            let after = buf.filled().len();
+            if after > before {
+                if prefix.position() as usize >= prefix.get_ref().len() {
+                    this.prefix = None;
+                }
+                return res;
+            }
+        }
+        std::pin::Pin::new(&mut this.inner).poll_read(cx, buf)
+    }
+}
+
+
