@@ -8,7 +8,12 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+mod embed;
 pub mod redact;
+
+pub use embed::{
+    cosine_similarity, default_embedder, rrf_fuse, HashingEmbedder, EMBED_DIMS,
+};
 
 /// What kind of curated knowledge an item is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -323,9 +328,8 @@ pub trait SearchBackend: Send + Sync {
     async fn search(&self, query: &str, limit: usize) -> anyhow::Result<Vec<SearchResult>>;
 }
 
-/// Extension point for vector embeddings. `kl-store` already hosts sqlite-vec
-/// tables and search helpers; the default build never constructs an Embedder,
-/// so `recall` stays FTS5-only until `embed-local` lands a concrete backend.
+/// Local text → vector embedding. Default binary uses [`HashingEmbedder`];
+/// swap in a heavier model behind `embed-local` later without changing callers.
 pub trait Embedder: Send + Sync {
     fn embed(&self, text: &str) -> anyhow::Result<Vec<f32>>;
     fn dims(&self) -> usize;

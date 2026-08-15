@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use chrono::Utc;
-use kl_core::{Kind, KnowledgeItemWithSource, KnowledgeRow, MediaRow, RecallHit, Trust};
+use kl_core::{Kind, KnowledgeItemWithSource, KnowledgeRow, MediaRow, Trust};
 use rusqlite::{params, OptionalExtension};
 
 use crate::{clamp_retention, Store};
@@ -71,6 +71,8 @@ impl Store {
 
     pub fn forget(&self, id: i64) -> Result<bool> {
         let c = self.conn.lock().unwrap();
+        c.execute("DELETE FROM knowledge_vec WHERE knowledge_id = ?1", params![id])
+            .ok();
         let n = c.execute("DELETE FROM knowledge WHERE id = ?1", params![id])?;
         Ok(n > 0)
     }
@@ -126,126 +128,14 @@ impl Store {
                 c.execute("UPDATE knowledge SET conflict_with_id=?1, conflict_status='open', updated_at=?3 WHERE id=?2", params![old_id, id, now])?;
             }
         }
-        Ok(id)
-    }
-
-    // ---- retrieval --------------------------------------------------------
-
-    /// Hybrid-ish recall: FTS over the reference tier + a LIKE pass over curated
-    /// knowledge, merged and trust-ranked. Every hit carries provenance + trust.
-    pub fn recall(
-        &self,
-        domain: &str,
-        query: &str,
-        kind: Option<Kind>,
-        k: usize,
-    ) -> Result<Vec<RecallHit>> {
-        let c = self.conn.lock().unwrap();
-        let mut hits: Vec<RecallHit> = Vec::new();
-
-        // 1) reference tier via FTS5 (bm25: lower is better)
-        let match_expr = fts_match(query);
-        if !match_expr.is_empty() {
-            let mut stmt = c.prepare(
-                "SELECT c.text, s.uri, s.fetched_at, bm25(chunks_fts) AS score
-                   FROM chunks_fts
-                   JOIN chunks c ON c.id = chunks_fts.rowid
-                   JOIN sources s ON s.id = c.source_id
-                  WHERE chunks_fts MATCH ?1 AND c.domain = ?2
-                  ORDER BY score ASC
-                  LIMIT ?3",
-            )?;
-            let rows = stmt.query_map(params![match_expr, domain, k as i64], |r| {
-                Ok(RecallHit {
-                    source_kind: "chunk".into(),
-                    kind: None,
-                    title: String::new(),
-                    body: r.get::<_, String>(0)?,
-                    domain: domain.to_string(),
-                    trust: "untrusted".into(),
-                    enforceable: false,
-                    provenance: r.get::<_, Option<String>>(1)?,
-                    fetched_at: r.get::<_, Option<i64>>(2)?,
-                    score: r.get::<_, f64>(3)?,
-                })
-            })?;
-            for row in rows {
-                hits.push(row?);
-            }
-        }
-
-        // 2) curated knowledge via LIKE — match ANY query term, not the whole
-        // phrase. Natural-language queries are the intended input to recall(), so
-        // a single `%full query%` substring would almost never hit a curated rule.
-        // Tokenize like the FTS pass and OR a per-term (title OR body) LIKE.
-        let terms: Vec<String> = query
-            .split_whitespace()
-            .map(|t| t.replace('%', "").replace('_', ""))
-            .filter(|t| !t.is_empty())
-            .map(|t| format!("%{t}%"))
-            .collect();
-        let terms = if terms.is_empty() {
-            vec![format!("%{}%", query.replace('%', "").replace('_', ""))]
+        drop(c);
+        let embed_text = if title.is_empty() {
+            body.to_string()
         } else {
-            terms
+            format!("{title}\n{body}")
         };
-
-        // Positional params: ?1 = domain, ?2.. = one per term, then optional kind.
-        let mut bind: Vec<String> = vec![domain.to_string()];
-        let mut clauses = Vec::with_capacity(terms.len());
-        for term in &terms {
-            let idx = bind.len() + 1;
-            clauses.push(format!("(title LIKE ?{idx} OR body LIKE ?{idx})"));
-            bind.push(term.clone());
-        }
-        let mut sql = format!(
-            "SELECT kind, title, body, trust, source_id, created_at
-               FROM knowledge
-              WHERE domain = ?1 AND ({})",
-            clauses.join(" OR ")
-        );
-        if let Some(kd) = kind {
-            let idx = bind.len() + 1;
-            sql.push_str(&format!(" AND kind = ?{idx}"));
-            bind.push(kd.as_str().to_string());
-        }
-        sql.push_str(" ORDER BY (CASE trust WHEN 'user' THEN 3 WHEN 'reviewed' THEN 2 WHEN 'proposed' THEN 1 ELSE 0 END) DESC, updated_at DESC LIMIT 50");
-
-        let mut stmt = c.prepare(&sql)?;
-        let map = |r: &rusqlite::Row| -> rusqlite::Result<RecallHit> {
-            let trust_s: String = r.get(3)?;
-            Ok(RecallHit {
-                source_kind: "knowledge".into(),
-                kind: Some(r.get::<_, String>(0)?),
-                title: r.get::<_, String>(1)?,
-                body: r.get::<_, String>(2)?,
-                domain: domain.to_string(),
-                enforceable: Trust::parse(&trust_s).is_enforceable(),
-                trust: trust_s,
-                provenance: r
-                    .get::<_, Option<i64>>(4)?
-                    .map(|id| format!("knowledge:source#{id}")),
-                fetched_at: r.get::<_, Option<i64>>(5)?,
-                score: 0.0,
-            })
-        };
-        let rows = stmt
-            .query_map(rusqlite::params_from_iter(bind.iter()), map)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        hits.extend(rows);
-
-        // trust first, then bm25 score for chunks
-        hits.sort_by(|a, b| {
-            let ta = Trust::parse(&a.trust).rank();
-            let tb = Trust::parse(&b.trust).rank();
-            tb.cmp(&ta).then(
-                a.score
-                    .partial_cmp(&b.score)
-                    .unwrap_or(std::cmp::Ordering::Equal),
-            )
-        });
-        hits.truncate(k.max(1));
-        Ok(hits)
+        self.embed_and_store_knowledge(id, &embed_text).ok();
+        Ok(id)
     }
 
     // ---- knowledge listing ------------------------------------------------
@@ -449,6 +339,7 @@ impl Store {
 
     pub fn clear_all_knowledge(&self) -> Result<u64> {
         let c = self.conn.lock().unwrap();
+        c.execute("DELETE FROM knowledge_vec", []).ok();
         let n = c.execute("DELETE FROM knowledge", [])?;
         Ok(n as u64)
     }
@@ -474,6 +365,15 @@ impl Store {
               WHERE id = ?1",
             params![id, title, body, stage, trigger, severity, remediation, now],
         )?;
+        drop(c);
+        if n > 0 {
+            let embed_text = if title.is_empty() {
+                body.to_string()
+            } else {
+                format!("{title}\n{body}")
+            };
+            self.embed_and_store_knowledge(id, &embed_text).ok();
+        }
         Ok(n > 0)
     }
 
@@ -596,6 +496,7 @@ fn media_row_from(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
 }
 
 /// Build a safe FTS5 MATCH expression: each whitespace token quoted, OR-joined.
+#[allow(dead_code)]
 fn fts_match(query: &str) -> String {
     let terms: Vec<String> = query
         .split_whitespace()

@@ -197,7 +197,7 @@ kl-store    rusqlite + sqlite-vec: general knowledge — domains, knowledge, sou
             trust, ACL, episodes, model registry, routing rules, media metadata,
             and vec0 tables for optional vector retrieval (always local SQLite)
 kl-session  libsql: session memory journal (local file, optional Turso sync)
-kl-code     libsql: codebase index + FTS5 (local file, optional Turso sync)
+kl-code     libsql: codebase index + FTS5 + embeddings (local file, optional Turso sync)
 kl-train    libsql: fine-tuning dataset capture/gate/export (local file, optional Turso sync)
 kl-ingest   fetch (HTTP or local file) → content-type dispatch → chunk
 kl-search   SearchBackend trait + DuckDuckGo / Bing / Brave with auto-fallback
@@ -354,16 +354,16 @@ export_dataset(out_dir="./dataset_out")                   # reviewed+user only, 
 </details>
 
 <details>
-<summary><b>Vector retrieval (sqlite-vec storage in; embedder/recall fusion not yet)</b></summary>
+<summary><b>Vector retrieval (hybrid FTS + embeddings)</b></summary>
 
-`kl-store` already loads `sqlite-vec`, creates `chunks_vec` / `knowledge_vec` (`vec0`, 384-dim), and exposes `insert_*_vector` / `search_knowledge_vector` (covered by unit tests).
+`kl-store` loads `sqlite-vec` and keeps `chunks_vec` / `knowledge_vec` (`vec0`, 384-dim). `kl-code` stores per-chunk embedding BLOBs in `code_chunk_emb`.
 
-What still runs today for tools:
+Every build ships a default hashing embedder (pure Rust, 384-d feature hashing — no ONNX download). On ingest / remember / index, text is embedded automatically; migrate also backfills missing vectors.
 
-- `recall` — FTS5/BM25 over reference chunks + curated knowledge (no vector path yet)
-- `search_code` — FTS5 over indexed code chunks (no embeddings)
+- `recall` — FTS5/BM25 + curated LIKE + sqlite-vec NN, fused with Reciprocal Rank Fusion (RRF)
+- `search_code` — FTS5/BM25 + cosine NN over code embeddings, fused with RRF
 
-The remaining work is gated behind the `embed-local` Cargo feature: a concrete `Embedder` in `kl-core`, auto-embed on ingest/remember/promote, and fuse vector hits with FTS via RRF inside `Store::recall`. Until that lands, the vec tables stay ready but unused by MCP tools.
+The empty `embed-local` Cargo feature is reserved for a heavier local model (e.g. MiniLM ONNX) that can replace the hashing embedder without changing callers.
 
 </details>
 
@@ -376,7 +376,7 @@ The remaining work is gated behind the `embed-local` Cargo feature: a concrete `
 
 | Tool | Description |
 |---|---|
-| `recall` | Retrieve grounded knowledge for a domain (FTS5/BM25 + curated rules); enforced-domain items get imperative framing |
+| `recall` | Hybrid retrieve grounded knowledge for a domain (FTS5 + vectors via RRF + curated rules); enforced-domain items get imperative framing |
 | `search_web` | Web search via configured engine; results are DATA only |
 | `ingest` | Fetch a URL/file and chunk it into the reference tier |
 | `remember` | Store a user-authored fact (`trust=user`, enforced immediately) |
@@ -409,7 +409,7 @@ The remaining work is gated behind the `embed-local` Cargo feature: a concrete `
 | Tool | Description |
 |---|---|
 | `index_codebase` | Start a background directory index (returns immediately; poll `list_repos`) |
-| `search_code` | Full-text (FTS5) search across indexed codebases |
+| `search_code` | Hybrid (FTS5 + embedding) search across indexed codebases |
 | `list_repos` / `forget_repo` / `clear_codebase` | Manage indexed repositories |
 | `log_work` | Append a curated session-journal entry (`done`/`failed`/`avoid`/`decision`/`note`) |
 | `recall_session` | Replay a repo's session journal (`recent_context` or `full_session_summary`) |

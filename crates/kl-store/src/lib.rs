@@ -26,12 +26,14 @@ mod domains;
 mod episodes;
 mod knowledge;
 mod model_registry;
+mod recall;
 mod sources;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use chrono::Utc;
+use kl_core::{default_embedder, Embedder, EMBED_DIMS};
 use rusqlite::{params, Connection, OptionalExtension};
 
 const MIGRATION: &str = include_str!("migrations/0001_init.sql");
@@ -52,6 +54,7 @@ pub enum AuthorSetOutcome {
 
 pub struct Store {
     conn: Mutex<Connection>,
+    embedder: Arc<dyn Embedder>,
 }
 
 impl Store {
@@ -73,7 +76,18 @@ impl Store {
         conn.pragma_update(None, "foreign_keys", "ON").ok();
         Ok(Self {
             conn: Mutex::new(conn),
+            embedder: default_embedder(),
         })
+    }
+
+    /// Swap the embedder (tests / future ONNX backend). Default is [`kl_core::HashingEmbedder`].
+    pub fn with_embedder(mut self, embedder: Arc<dyn Embedder>) -> Self {
+        self.embedder = embedder;
+        self
+    }
+
+    pub fn embedder(&self) -> &Arc<dyn Embedder> {
+        &self.embedder
     }
 
     pub fn migrate(&self) -> Result<()> {
@@ -129,12 +143,22 @@ impl Store {
             "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(chunk_id INTEGER PRIMARY KEY, embedding float[384]);
              CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_vec USING vec0(knowledge_id INTEGER PRIMARY KEY, embedding float[384]);"
         ).ok();
+        drop(c);
+        // Best-effort: fill vec rows for knowledge/chunks written before embedding
+        // was enabled. Failures are ignored so a broken vec extension never
+        // blocks migrate / startup.
+        self.backfill_embeddings().ok();
         Ok(())
     }
 
     // ---- vector search (sqlite-vec) ---------------------------------------
 
     pub fn insert_chunk_vector(&self, chunk_id: i64, embedding: &[f32]) -> Result<()> {
+        anyhow::ensure!(
+            embedding.len() == EMBED_DIMS,
+            "chunk embedding must be {EMBED_DIMS}-d, got {}",
+            embedding.len()
+        );
         let c = self.conn.lock().unwrap();
         let bytes = zerocopy::IntoBytes::as_bytes(embedding);
         c.execute(
@@ -145,6 +169,11 @@ impl Store {
     }
 
     pub fn insert_knowledge_vector(&self, knowledge_id: i64, embedding: &[f32]) -> Result<()> {
+        anyhow::ensure!(
+            embedding.len() == EMBED_DIMS,
+            "knowledge embedding must be {EMBED_DIMS}-d, got {}",
+            embedding.len()
+        );
         let c = self.conn.lock().unwrap();
         let bytes = zerocopy::IntoBytes::as_bytes(embedding);
         c.execute(
@@ -154,7 +183,11 @@ impl Store {
         Ok(())
     }
 
-    pub fn search_knowledge_vector(&self, embedding: &[f32], limit: usize) -> Result<Vec<(i64, f64)>> {
+    pub fn search_knowledge_vector(
+        &self,
+        embedding: &[f32],
+        limit: usize,
+    ) -> Result<Vec<(i64, f64)>> {
         let c = self.conn.lock().unwrap();
         let bytes = zerocopy::IntoBytes::as_bytes(embedding);
         let mut stmt = c.prepare(
@@ -164,6 +197,70 @@ impl Store {
             Ok((r.get(0)?, r.get(1)?))
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn search_chunks_vector(&self, embedding: &[f32], limit: usize) -> Result<Vec<(i64, f64)>> {
+        let c = self.conn.lock().unwrap();
+        let bytes = zerocopy::IntoBytes::as_bytes(embedding);
+        let mut stmt = c.prepare(
+            "SELECT chunk_id, distance FROM chunks_vec WHERE embedding MATCH ?1 ORDER BY distance LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![bytes, limit as i64], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Embed `text` with the store embedder and upsert into `knowledge_vec`.
+    pub fn embed_and_store_knowledge(&self, knowledge_id: i64, text: &str) -> Result<()> {
+        let emb = self.embedder.embed(text)?;
+        self.insert_knowledge_vector(knowledge_id, &emb)
+    }
+
+    /// Embed `text` with the store embedder and upsert into `chunks_vec`.
+    pub fn embed_and_store_chunk(&self, chunk_id: i64, text: &str) -> Result<()> {
+        let emb = self.embedder.embed(text)?;
+        self.insert_chunk_vector(chunk_id, &emb)
+    }
+
+    /// Embed any knowledge/chunk rows that are missing vector rows.
+    pub fn backfill_embeddings(&self) -> Result<(usize, usize)> {
+        let missing_knowledge: Vec<(i64, String, String)> = {
+            let c = self.conn.lock().unwrap();
+            let mut stmt = c.prepare(
+                "SELECT k.id, k.title, k.body FROM knowledge k
+                  WHERE NOT EXISTS (SELECT 1 FROM knowledge_vec v WHERE v.knowledge_id = k.id)",
+            )?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        let mut kn = 0usize;
+        for (id, title, body) in missing_knowledge {
+            let text = if title.is_empty() {
+                body
+            } else {
+                format!("{title}\n{body}")
+            };
+            if self.embed_and_store_knowledge(id, &text).is_ok() {
+                kn += 1;
+            }
+        }
+        let missing_chunks: Vec<(i64, String)> = {
+            let c = self.conn.lock().unwrap();
+            let mut stmt = c.prepare(
+                "SELECT c.id, c.text FROM chunks c
+                  WHERE NOT EXISTS (SELECT 1 FROM chunks_vec v WHERE v.chunk_id = c.id)",
+            )?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        let mut cn = 0usize;
+        for (id, text) in missing_chunks {
+            if self.embed_and_store_chunk(id, &text).is_ok() {
+                cn += 1;
+            }
+        }
+        Ok((kn, cn))
     }
 
     // ---- preferences ------------------------------------------------------

@@ -28,39 +28,44 @@ impl Store {
         Ok(c.last_insert_rowid())
     }
 
-    /// Insert reference chunks and mirror them into the FTS index (rowid == chunk id).
+    /// Insert reference chunks and mirror them into the FTS index (rowid == chunk id),
+    /// then embed each chunk into `chunks_vec`.
     pub fn add_chunks(&self, source_id: i64, domain: &str, chunks: &[String]) -> Result<usize> {
         let now = Utc::now().timestamp();
         let redact = self.domain_redact_enabled(domain)?;
-        let mut c = self.conn.lock().unwrap();
-        let tx = c.transaction()?;
-        for (ord, text) in chunks.iter().enumerate() {
-            let redacted;
-            let text: &str = if redact {
-                redacted = kl_core::redact::redact(text);
-                &redacted
-            } else {
-                text
-            };
+        let mut inserted: Vec<(i64, String)> = Vec::with_capacity(chunks.len());
+        {
+            let mut c = self.conn.lock().unwrap();
+            let tx = c.transaction()?;
+            for (ord, text) in chunks.iter().enumerate() {
+                let redacted;
+                let text: &str = if redact {
+                    redacted = kl_core::redact::redact(text);
+                    &redacted
+                } else {
+                    text
+                };
+                tx.execute(
+                    "INSERT INTO chunks (source_id, domain, ord, text) VALUES (?1, ?2, ?3, ?4)",
+                    params![source_id, domain, ord as i64, text],
+                )?;
+                let id = tx.last_insert_rowid();
+                tx.execute(
+                    "INSERT INTO chunks_fts (rowid, text) VALUES (?1, ?2)",
+                    params![id, text],
+                )?;
+                inserted.push((id, text.to_string()));
+            }
             tx.execute(
-                "INSERT INTO chunks (source_id, domain, ord, text) VALUES (?1, ?2, ?3, ?4)",
-                params![source_id, domain, ord as i64, text],
+                "INSERT INTO domains (name, doc_count, last_updated) VALUES (?1, 1, ?2)
+                 ON CONFLICT(name) DO UPDATE SET doc_count = domains.doc_count + 1, last_updated = ?2",
+                params![domain, now],
             )?;
-            let id = tx.last_insert_rowid();
-            tx.execute(
-                "INSERT INTO chunks_fts (rowid, text) VALUES (?1, ?2)",
-                params![id, text],
-            )?;
+            tx.commit()?;
         }
-        // Fold the domain touch into the same transaction so we only hold the
-        // mutex once. The original design called touch_domain_internal after
-        // commit while c was still in scope, which deadlocked on every ingest.
-        tx.execute(
-            "INSERT INTO domains (name, doc_count, last_updated) VALUES (?1, 1, ?2)
-             ON CONFLICT(name) DO UPDATE SET doc_count = domains.doc_count + 1, last_updated = ?2",
-            params![domain, now],
-        )?;
-        tx.commit()?;
+        for (id, text) in &inserted {
+            self.embed_and_store_chunk(*id, text).ok();
+        }
         Ok(chunks.len())
     }
 
@@ -79,6 +84,11 @@ impl Store {
             return Ok(false);
         };
 
+        tx.execute(
+            "DELETE FROM chunks_vec WHERE chunk_id IN (SELECT id FROM chunks WHERE source_id = ?1)",
+            params![id],
+        )
+        .ok();
         tx.execute(
             "DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE source_id = ?1)",
             params![id],
@@ -128,6 +138,7 @@ impl Store {
             "UPDATE knowledge SET source_id = NULL WHERE source_id IS NOT NULL",
             [],
         )?;
+        tx.execute("DELETE FROM chunks_vec", []).ok();
         tx.execute("DELETE FROM chunks_fts", [])?;
         tx.execute("DELETE FROM chunks", [])?;
         let n = tx.execute("DELETE FROM sources", [])?;

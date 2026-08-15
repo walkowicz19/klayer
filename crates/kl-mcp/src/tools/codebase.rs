@@ -20,7 +20,7 @@ impl Drop for IndexFinish {
 #[tool_router(router = codebase_tool_router, vis = "pub(crate)")]
 impl Klayer {
     #[tool(
-        description = "Start indexing a local codebase directory into persistent code memory. Returns immediately so the host does not time out on large trees — the walk and FTS write continue in the background. Call list_repos() until `indexing` is false and file/chunk counts settle, then search_code(). Re-indexing the same path refreshes the index; a second call while one is already running is a no-op."
+        description = "Start indexing a local codebase directory into persistent code memory (FTS5 + embeddings). Returns immediately so the host does not time out on large trees — the walk and write continue in the background. Call list_repos() until `indexing` is false and file/chunk counts settle, then search_code(). Re-indexing the same path refreshes the index; a second call while one is already running is a no-op."
     )]
     #[allow(dead_code)]
     async fn index_codebase(
@@ -93,7 +93,7 @@ impl Klayer {
     }
 
     #[tool(
-        description = "Search indexed codebases using full-text search over function names, symbols, file paths, and code content. Returns grounded snippets with exact file paths and line numbers. Always call this before answering questions about an indexed codebase — it never forgets across sessions."
+        description = "Hybrid search over indexed codebases (FTS5 + embedding cosine NN fused with RRF). Returns grounded snippets with exact file paths and line numbers. Always call this before answering questions about an indexed codebase — it never forgets across sessions."
     )]
     #[allow(dead_code)]
     async fn search_code(

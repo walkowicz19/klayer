@@ -1571,6 +1571,7 @@ dependencies = [
  "serde",
  "tokio",
  "tracing",
+ "zerocopy 0.8.50",
 ]
 
 [[package]]

@@ -15,7 +15,10 @@ mod symbols;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use kl_core::{SyncHealth, SyncHealthSnapshot};
+use kl_core::{
+    cosine_similarity, default_embedder, rrf_fuse, Embedder, SyncHealth, SyncHealthSnapshot,
+    EMBED_DIMS,
+};
 use libsql::{params, Connection, Database};
 use serde::Serialize;
 use std::collections::HashSet;
@@ -56,6 +59,11 @@ CREATE TABLE IF NOT EXISTS code_chunks (
 
 -- Plain FTS5 (no content=): owns its data so standard DELETE works.
 CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(body);
+
+CREATE TABLE IF NOT EXISTS code_chunk_emb (
+    chunk_id  INTEGER PRIMARY KEY REFERENCES code_chunks(id) ON DELETE CASCADE,
+    embedding BLOB    NOT NULL
+);
 ";
 
 // ── Public types ─────────────────────────────────────────────────────────────
@@ -70,6 +78,7 @@ pub struct CodeStore {
     /// `list_repos` surface in-flight work and `index_codebase` refuse a
     /// second overlapping run of the same tree.
     indexing: Mutex<HashSet<String>>,
+    embedder: Arc<dyn Embedder>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -132,6 +141,7 @@ impl CodeStore {
             health,
             remote_configured,
             indexing: Mutex::new(HashSet::new()),
+            embedder: default_embedder(),
         })
     }
 
@@ -140,6 +150,55 @@ impl CodeStore {
             .execute_batch(SCHEMA)
             .await
             .context("code db schema")?;
+        self.backfill_embeddings().await.ok();
+        Ok(())
+    }
+
+    /// Embed any code chunks that are missing a `code_chunk_emb` row (legacy
+    /// indexes created before hybrid search).
+    async fn backfill_embeddings(&self) -> Result<usize> {
+        let mut missing: Vec<(i64, String)> = Vec::new();
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT cc.id,
+                        COALESCE(cc.symbol_name, '') || ' ' || cf.rel_path || char(10) || cc.content
+                   FROM code_chunks cc
+                   JOIN code_files cf ON cf.id = cc.file_id
+                  WHERE NOT EXISTS (
+                        SELECT 1 FROM code_chunk_emb e WHERE e.chunk_id = cc.id
+                  )",
+                (),
+            )
+            .await?;
+        while let Some(r) = rows.next().await? {
+            missing.push((r.get(0)?, r.get(1)?));
+        }
+        let mut n = 0usize;
+        for (id, text) in missing {
+            if self.store_chunk_embedding(id, &text).await.is_ok() {
+                n += 1;
+            }
+        }
+        if n > 0 {
+            tracing::info!("code-index: backfilled {n} chunk embeddings");
+        }
+        Ok(n)
+    }
+
+    async fn store_chunk_embedding(&self, chunk_id: i64, text: &str) -> Result<()> {
+        use zerocopy::IntoBytes;
+        let emb = self.embedder.embed(text)?;
+        if emb.len() != EMBED_DIMS {
+            anyhow::bail!("embedder dims {} != expected {EMBED_DIMS}", emb.len());
+        }
+        let bytes = emb.as_bytes().to_vec();
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO code_chunk_emb (chunk_id, embedding) VALUES (?1, ?2)",
+                params![chunk_id, bytes],
+            )
+            .await?;
         Ok(())
     }
 
@@ -283,10 +342,13 @@ impl CodeStore {
             chunk_ids.push(r.get(0)?);
         }
 
-        // Remove from FTS5 then cascade-delete from repos
+        // Remove from FTS5 / emb then cascade-delete from repos
         for id in &chunk_ids {
             self.conn
                 .execute("DELETE FROM code_fts WHERE rowid = ?1", params![*id])
+                .await?;
+            self.conn
+                .execute("DELETE FROM code_chunk_emb WHERE chunk_id = ?1", params![*id])
                 .await?;
         }
         self.conn
@@ -297,10 +359,12 @@ impl CodeStore {
 
     pub async fn clear_all(&self) -> Result<u64> {
         self.conn.execute("DELETE FROM code_fts", ()).await?;
+        self.conn.execute("DELETE FROM code_chunk_emb", ()).await?;
         let deleted = self.conn.execute("DELETE FROM repos", ()).await?;
         Ok(deleted)
     }
 
+    /// Hybrid search: FTS5/BM25 + hashing-embedder cosine NN, fused with RRF.
     pub async fn search(
         &self,
         query: &str,
@@ -310,59 +374,164 @@ impl CodeStore {
         if query.trim().is_empty() {
             return Ok(vec![]);
         }
+        let limit = limit.max(1);
+        let pool = limit.saturating_mul(3).max(16);
         let match_expr = fts_match(query);
-        let lim = limit as i64;
-        let mut hits = Vec::new();
 
+        let fts_ids = self.fts_ranked_ids(&match_expr, repo_path, pool).await?;
+        let vec_ids = self.vector_ranked_ids(query, repo_path, pool).await?;
+
+        let fused = if fts_ids.is_empty() && vec_ids.is_empty() {
+            return Ok(vec![]);
+        } else if fts_ids.is_empty() {
+            vec_ids
+                .into_iter()
+                .map(|id| (id, 0.0))
+                .collect::<Vec<_>>()
+        } else if vec_ids.is_empty() {
+            fts_ids
+                .into_iter()
+                .map(|id| (id, 0.0))
+                .collect::<Vec<_>>()
+        } else {
+            rrf_fuse(&[fts_ids, vec_ids], 60)
+        };
+
+        let mut hits = Vec::new();
+        let mut seen = HashSet::new();
+        for (id, rrf_score) in fused {
+            if !seen.insert(id) {
+                continue;
+            }
+            if let Some(mut hit) = self.load_hit(id).await? {
+                // Higher RRF is better; negate so callers that treat lower
+                // scores as better (legacy BM25) keep working.
+                hit.score = -rrf_score;
+                hits.push(hit);
+                if hits.len() >= limit {
+                    break;
+                }
+            }
+        }
+        Ok(hits)
+    }
+
+    async fn fts_ranked_ids(
+        &self,
+        match_expr: &str,
+        repo_path: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<i64>> {
+        if match_expr.is_empty() {
+            return Ok(vec![]);
+        }
+        let lim = limit as i64;
+        let mut ids = Vec::new();
         let mut rows = if let Some(rp) = repo_path {
             self.conn
                 .query(
-                    "SELECT cc.content, cc.kind, cc.symbol_name,
-                            cc.line_start, cc.line_end,
-                            cf.rel_path, cf.language, r.path,
-                            bm25(code_fts) AS score
-                     FROM code_fts
-                     JOIN code_chunks cc ON cc.id = code_fts.rowid
-                     JOIN code_files  cf ON cf.id = cc.file_id
-                     JOIN repos        r ON  r.id = cf.repo_id
-                     WHERE code_fts MATCH ?1 AND r.path = ?2
-                     ORDER BY score ASC LIMIT ?3",
+                    "SELECT code_fts.rowid
+                       FROM code_fts
+                       JOIN code_chunks cc ON cc.id = code_fts.rowid
+                       JOIN code_files  cf ON cf.id = cc.file_id
+                       JOIN repos        r ON  r.id = cf.repo_id
+                      WHERE code_fts MATCH ?1 AND r.path = ?2
+                      ORDER BY bm25(code_fts) ASC
+                      LIMIT ?3",
                     params![match_expr, rp, lim],
                 )
                 .await?
         } else {
             self.conn
                 .query(
-                    "SELECT cc.content, cc.kind, cc.symbol_name,
-                            cc.line_start, cc.line_end,
-                            cf.rel_path, cf.language, r.path,
-                            bm25(code_fts) AS score
-                     FROM code_fts
-                     JOIN code_chunks cc ON cc.id = code_fts.rowid
-                     JOIN code_files  cf ON cf.id = cc.file_id
-                     JOIN repos        r ON  r.id = cf.repo_id
-                     WHERE code_fts MATCH ?1
-                     ORDER BY score ASC LIMIT ?2",
+                    "SELECT code_fts.rowid
+                       FROM code_fts
+                      WHERE code_fts MATCH ?1
+                      ORDER BY bm25(code_fts) ASC
+                      LIMIT ?2",
                     params![match_expr, lim],
                 )
                 .await?
         };
-
         while let Some(r) = rows.next().await? {
-            hits.push(CodeHit {
-                snippet: r.get(0)?,
-                kind: r.get(1)?,
-                symbol_name: r.get(2)?,
-                line_start: r.get(3)?,
-                line_end: r.get(4)?,
-                file_path: r.get(5)?,
-                language: r.get(6)?,
-                repo_path: r.get(7)?,
-                score: r.get(8)?,
-            });
+            ids.push(r.get(0)?);
         }
+        Ok(ids)
+    }
 
-        Ok(hits)
+    async fn vector_ranked_ids(
+        &self,
+        query: &str,
+        repo_path: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<i64>> {
+        let qemb = match self.embedder.embed(query) {
+            Ok(v) => v,
+            Err(_) => return Ok(vec![]),
+        };
+        let mut scored: Vec<(i64, f64)> = Vec::new();
+        let mut rows = if let Some(rp) = repo_path {
+            self.conn
+                .query(
+                    "SELECT e.chunk_id, e.embedding
+                       FROM code_chunk_emb e
+                       JOIN code_chunks cc ON cc.id = e.chunk_id
+                       JOIN code_files  cf ON cf.id = cc.file_id
+                       JOIN repos        r ON  r.id = cf.repo_id
+                      WHERE r.path = ?1",
+                    params![rp],
+                )
+                .await?
+        } else {
+            self.conn
+                .query("SELECT chunk_id, embedding FROM code_chunk_emb", ())
+                .await?
+        };
+        while let Some(r) = rows.next().await? {
+            let id: i64 = r.get(0)?;
+            let bytes: Vec<u8> = r.get(1)?;
+            if bytes.len() != EMBED_DIMS * 4 {
+                continue;
+            }
+            let mut emb = vec![0f32; EMBED_DIMS];
+            for (i, chunk) in bytes.chunks_exact(4).enumerate() {
+                emb[i] = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            }
+            let sim = cosine_similarity(&qemb, &emb);
+            scored.push((id, sim));
+        }
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(scored.into_iter().take(limit).map(|(id, _)| id).collect())
+    }
+
+    async fn load_hit(&self, chunk_id: i64) -> Result<Option<CodeHit>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT cc.content, cc.kind, cc.symbol_name,
+                        cc.line_start, cc.line_end,
+                        cf.rel_path, cf.language, r.path
+                   FROM code_chunks cc
+                   JOIN code_files  cf ON cf.id = cc.file_id
+                   JOIN repos        r ON  r.id = cf.repo_id
+                  WHERE cc.id = ?1",
+                params![chunk_id],
+            )
+            .await?;
+        let Some(r) = rows.next().await? else {
+            return Ok(None);
+        };
+        Ok(Some(CodeHit {
+            snippet: r.get(0)?,
+            kind: r.get(1)?,
+            symbol_name: r.get(2)?,
+            line_start: r.get(3)?,
+            line_end: r.get(4)?,
+            file_path: r.get(5)?,
+            language: r.get(6)?,
+            repo_path: r.get(7)?,
+            score: 0.0,
+        }))
     }
 
     pub async fn index_repo(&self, dir_path: &str, name: Option<&str>) -> Result<IndexStats> {
@@ -449,10 +618,13 @@ impl CodeStore {
             old_chunk_ids.push(r.get(0)?);
         }
 
-        // Clean FTS5 for old entries, then delete old files (cascade → chunks).
+        // Clean FTS5 / emb for old entries, then delete old files (cascade → chunks).
         for id in &old_chunk_ids {
             self.conn
                 .execute("DELETE FROM code_fts WHERE rowid = ?1", params![*id])
+                .await?;
+            self.conn
+                .execute("DELETE FROM code_chunk_emb WHERE chunk_id = ?1", params![*id])
                 .await?;
         }
         self.conn
@@ -465,7 +637,7 @@ impl CodeStore {
         let mut written_files = 0usize;
         let mut written_chunks = 0usize;
         for batch in file_data.chunks(INSERT_BATCH) {
-            insert_repo_data(&self.conn, repo_id, batch).await?;
+            insert_repo_data(&self.conn, repo_id, batch, self.embedder.as_ref()).await?;
             written_files += batch.len();
             written_chunks += batch.iter().map(|f| f.chunks.len()).sum::<usize>();
             self.conn
@@ -523,6 +695,46 @@ mod tests {
             .any(|r| r.contains("artifact.bin: binary content")));
         let hits = store.search("IDENTIFICATION", None, 5).await.unwrap();
         assert!(hits.iter().any(|h| h.file_path == "PROGRAM.CBLX"));
+        drop(store);
+        std::fs::remove_dir_all(root).ok();
+    }
+
+    #[tokio::test]
+    async fn hybrid_search_stores_embeddings_and_finds_paraphrase() {
+        let root =
+            std::env::temp_dir().join(format!("klayer-hybrid-code-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("auth.rs"),
+            "fn verify_jwt_signature(token: &str) -> bool {\n    // check HMAC\n    true\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("layout.css"),
+            ".grid { display: flex; flex-wrap: wrap; }\n",
+        )
+        .unwrap();
+        let db = root.join("code.db");
+        let store = CodeStore::open(db.to_str().unwrap()).await.unwrap();
+        store.migrate().await.unwrap();
+        store
+            .index_repo(root.to_str().unwrap(), Some("hybrid"))
+            .await
+            .unwrap();
+
+        let emb_count = scalar_i64(&store.conn, "SELECT COUNT(*) FROM code_chunk_emb")
+            .await
+            .unwrap();
+        assert!(emb_count >= 1, "expected embeddings after index");
+
+        let hits = store
+            .search("authenticate token hmac signature", None, 5)
+            .await
+            .unwrap();
+        assert!(
+            hits.iter().any(|h| h.file_path == "auth.rs"),
+            "expected auth.rs via hybrid search: {hits:?}"
+        );
         drop(store);
         std::fs::remove_dir_all(root).ok();
     }

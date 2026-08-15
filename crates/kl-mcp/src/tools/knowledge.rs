@@ -17,7 +17,7 @@ use super::{
 #[tool_router(router = knowledge_tool_router, vis = "pub(crate)")]
 impl Klayer {
     #[tool(
-        description = "Retrieve grounded knowledge for a domain. Returns reference chunks and curated knowledge with provenance and trust. Call this BEFORE answering in a known domain."
+        description = "Retrieve grounded knowledge for a domain via hybrid search (FTS5 + vector NN fused with RRF). Returns reference chunks and curated knowledge with provenance and trust. Call this BEFORE answering in a known domain."
     )]
     fn recall(&self, Parameters(p): Parameters<RecallParams>) -> Result<CallToolResult, McpError> {
         if !self

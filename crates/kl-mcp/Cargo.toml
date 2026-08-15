@@ -10,9 +10,9 @@ path = "src/main.rs"
 
 [features]
 default = ["admin"]
-# Vector retrieval (sqlite-vec + local ONNX embeddings). Storage tables/APIs
-# ship in kl-store already; Embedder + recall fusion still live behind this
-# unfinished feature. See README "Vector retrieval".
+# Reserved for a heavier local ONNX/model embedder that can replace the
+# default HashingEmbedder without changing callers. Hybrid recall/search_code
+# already work with the hashing embedder in every build.
 embed-local = []
 # Admin build: enables the marketplace submission review/approval workflow
 # (approve/deny/import). Distributed user binaries are built WITHOUT this, so

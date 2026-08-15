@@ -116,6 +116,11 @@ impl Store {
         let tx = c.transaction()?;
 
         let knowledge_deleted = if !chunks_only {
+            tx.execute(
+                "DELETE FROM knowledge_vec WHERE knowledge_id IN (SELECT id FROM knowledge WHERE domain = ?1)",
+                params![domain],
+            )
+            .ok();
             tx.execute("DELETE FROM knowledge WHERE domain = ?1", params![domain])?
         } else {
             tx.execute(
@@ -126,6 +131,11 @@ impl Store {
             0
         };
 
+        tx.execute(
+            "DELETE FROM chunks_vec WHERE chunk_id IN (SELECT id FROM chunks WHERE domain = ?1)",
+            params![domain],
+        )
+        .ok();
         // delete FTS index entries for this domain's chunks
         tx.execute(
             "DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE domain = ?1)",
@@ -143,7 +153,9 @@ impl Store {
     pub fn clear_all_domains(&self) -> Result<u64> {
         let mut c = self.conn.lock().unwrap();
         let tx = c.transaction()?;
+        tx.execute("DELETE FROM knowledge_vec", []).ok();
         tx.execute("DELETE FROM knowledge", [])?;
+        tx.execute("DELETE FROM chunks_vec", []).ok();
         tx.execute("DELETE FROM chunks_fts", [])?;
         tx.execute("DELETE FROM chunks", [])?;
         tx.execute("DELETE FROM sources", [])?;

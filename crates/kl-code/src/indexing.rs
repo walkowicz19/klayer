@@ -1,8 +1,10 @@
-//! Repo scanning/ingestion: file collection, chunking, FTS5 writes.
+//! Repo scanning/ingestion: file collection, chunking, FTS5 + embedding writes.
 
 use anyhow::Result;
+use kl_core::Embedder;
 use libsql::{params, Connection};
 use std::path::Path;
+use zerocopy::IntoBytes;
 
 use crate::lang::detect_language;
 use crate::symbols::detect_symbol;
@@ -74,6 +76,7 @@ pub async fn insert_repo_data(
     conn: &Connection,
     repo_id: i64,
     file_data: &[FileEntry],
+    embedder: &dyn Embedder,
 ) -> Result<()> {
     let tx = conn.transaction().await?;
     for entry in file_data {
@@ -109,9 +112,18 @@ pub async fn insert_repo_data(
             );
             tx.execute(
                 "INSERT INTO code_fts (rowid, body) VALUES (?1, ?2)",
-                params![chunk_id, body],
+                params![chunk_id, body.clone()],
             )
             .await?;
+
+            if let Ok(emb) = embedder.embed(&body) {
+                let bytes = emb.as_bytes().to_vec();
+                tx.execute(
+                    "INSERT OR REPLACE INTO code_chunk_emb (chunk_id, embedding) VALUES (?1, ?2)",
+                    params![chunk_id, bytes],
+                )
+                .await?;
+            }
         }
     }
     tx.commit().await?;
