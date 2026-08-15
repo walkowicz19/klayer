@@ -335,40 +335,60 @@ impl CodeStore {
             return Ok(false);
         };
 
-        // Collect chunk IDs before cascade-deleting (FTS5 must be cleaned first).
-        let mut chunk_ids: Vec<i64> = Vec::new();
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT cc.id FROM code_chunks cc
-                 JOIN code_files cf ON cf.id = cc.file_id
-                 WHERE cf.repo_id = ?1",
-                params![repo_id],
-            )
-            .await?;
-        while let Some(r) = rows.next().await? {
-            chunk_ids.push(r.get(0)?);
-        }
+        let tx = self.conn.transaction().await?;
 
-        // Remove from FTS5 / emb then cascade-delete from repos
-        for id in &chunk_ids {
-            self.conn
-                .execute("DELETE FROM code_fts WHERE rowid = ?1", params![*id])
-                .await?;
-            self.conn
-                .execute("DELETE FROM code_chunk_emb WHERE chunk_id = ?1", params![*id])
-                .await?;
-        }
-        self.conn
-            .execute("DELETE FROM repos WHERE id = ?1", params![repo_id])
-            .await?;
+        tx.execute(
+            "DELETE FROM code_fts WHERE rowid IN (
+                SELECT cc.id FROM code_chunks cc
+                JOIN code_files cf ON cf.id = cc.file_id
+                WHERE cf.repo_id = ?1
+            )",
+            params![repo_id],
+        )
+        .await?;
+
+        tx.execute(
+            "DELETE FROM code_chunk_emb WHERE chunk_id IN (
+                SELECT cc.id FROM code_chunks cc
+                JOIN code_files cf ON cf.id = cc.file_id
+                WHERE cf.repo_id = ?1
+            )",
+            params![repo_id],
+        )
+        .await?;
+
+        tx.execute(
+            "DELETE FROM code_chunks WHERE file_id IN (
+                SELECT id FROM code_files WHERE repo_id = ?1
+            )",
+            params![repo_id],
+        )
+        .await?;
+
+        tx.execute(
+            "DELETE FROM code_files WHERE repo_id = ?1",
+            params![repo_id],
+        )
+        .await?;
+
+        tx.execute(
+            "DELETE FROM repos WHERE id = ?1",
+            params![repo_id],
+        )
+        .await?;
+
+        tx.commit().await?;
         Ok(true)
     }
 
     pub async fn clear_all(&self) -> Result<u64> {
-        self.conn.execute("DELETE FROM code_fts", ()).await?;
-        self.conn.execute("DELETE FROM code_chunk_emb", ()).await?;
-        let deleted = self.conn.execute("DELETE FROM repos", ()).await?;
+        let tx = self.conn.transaction().await?;
+        tx.execute("DELETE FROM code_fts", ()).await?;
+        tx.execute("DELETE FROM code_chunk_emb", ()).await?;
+        tx.execute("DELETE FROM code_chunks", ()).await?;
+        tx.execute("DELETE FROM code_files", ()).await?;
+        let deleted = tx.execute("DELETE FROM repos", ()).await?;
+        tx.commit().await?;
         Ok(deleted)
     }
 
@@ -611,36 +631,39 @@ impl CodeStore {
                 .get(0)?
         };
 
-        // Collect old chunk IDs before cascade-deleting (FTS cleanup required).
-        let mut old_chunk_ids: Vec<i64> = Vec::new();
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT cc.id FROM code_chunks cc
-                 JOIN code_files cf ON cf.id = cc.file_id
-                 WHERE cf.repo_id = ?1",
-                params![repo_id],
-            )
-            .await?;
-        while let Some(r) = rows.next().await? {
-            old_chunk_ids.push(r.get(0)?);
-        }
-
-        // Clean FTS5 / emb for old entries, then delete old files (cascade → chunks).
-        for id in &old_chunk_ids {
-            self.conn
-                .execute("DELETE FROM code_fts WHERE rowid = ?1", params![*id])
-                .await?;
-            self.conn
-                .execute("DELETE FROM code_chunk_emb WHERE chunk_id = ?1", params![*id])
-                .await?;
-        }
-        self.conn
-            .execute(
-                "DELETE FROM code_files WHERE repo_id = ?1",
-                params![repo_id],
-            )
-            .await?;
+        // Clean FTS5 / emb / chunks for old entries, then delete old files in a single transaction.
+        let tx = self.conn.transaction().await?;
+        tx.execute(
+            "DELETE FROM code_fts WHERE rowid IN (
+                SELECT cc.id FROM code_chunks cc
+                JOIN code_files cf ON cf.id = cc.file_id
+                WHERE cf.repo_id = ?1
+            )",
+            params![repo_id],
+        )
+        .await?;
+        tx.execute(
+            "DELETE FROM code_chunk_emb WHERE chunk_id IN (
+                SELECT cc.id FROM code_chunks cc
+                JOIN code_files cf ON cf.id = cc.file_id
+                WHERE cf.repo_id = ?1
+            )",
+            params![repo_id],
+        )
+        .await?;
+        tx.execute(
+            "DELETE FROM code_chunks WHERE file_id IN (
+                SELECT id FROM code_files WHERE repo_id = ?1
+            )",
+            params![repo_id],
+        )
+        .await?;
+        tx.execute(
+            "DELETE FROM code_files WHERE repo_id = ?1",
+            params![repo_id],
+        )
+        .await?;
+        tx.commit().await?;
 
         let mut written_files = 0usize;
         let mut written_chunks = 0usize;

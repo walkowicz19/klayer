@@ -338,9 +338,11 @@ impl Store {
     }
 
     pub fn clear_all_knowledge(&self) -> Result<u64> {
-        let c = self.conn.lock().unwrap();
-        c.execute("DELETE FROM knowledge_vec", []).ok();
-        let n = c.execute("DELETE FROM knowledge", [])?;
+        let mut c = self.conn.lock().unwrap();
+        let tx = c.transaction()?;
+        tx.execute("DELETE FROM knowledge_vec", []).ok();
+        let n = tx.execute("DELETE FROM knowledge", [])?;
+        tx.commit()?;
         Ok(n as u64)
     }
 
