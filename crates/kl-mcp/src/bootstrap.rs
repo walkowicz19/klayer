@@ -652,6 +652,10 @@ pub(crate) async fn run() -> Result<()> {
     ensure_parent_dir(&code_db)?;
     let code_store = Arc::new(CodeStore::open(&code_db).await?);
     code_store.migrate().await?;
+    let cs_backfill = Arc::clone(&code_store);
+    tokio::spawn(async move {
+        cs_backfill.backfill_embeddings().await.ok();
+    });
     tracing::info!("klayer code store ready at {code_db}");
 
     ensure_parent_dir(&train_db)?;

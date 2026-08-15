@@ -150,13 +150,12 @@ impl CodeStore {
             .execute_batch(SCHEMA)
             .await
             .context("code db schema")?;
-        self.backfill_embeddings().await.ok();
         Ok(())
     }
 
     /// Embed any code chunks that are missing a `code_chunk_emb` row (legacy
     /// indexes created before hybrid search).
-    async fn backfill_embeddings(&self) -> Result<usize> {
+    pub async fn backfill_embeddings(&self) -> Result<usize> {
         let mut missing: Vec<(i64, String)> = Vec::new();
         let mut rows = self
             .conn
@@ -174,10 +173,34 @@ impl CodeStore {
         while let Some(r) = rows.next().await? {
             missing.push((r.get(0)?, r.get(1)?));
         }
+        if missing.is_empty() {
+            return Ok(0);
+        }
         let mut n = 0usize;
-        for (id, text) in missing {
-            if self.store_chunk_embedding(id, &text).await.is_ok() {
-                n += 1;
+        for chunk in missing.chunks(250) {
+            use zerocopy::IntoBytes;
+            let mut batch = Vec::with_capacity(chunk.len());
+            for (id, text) in chunk {
+                if let Ok(emb) = self.embedder.embed(text) {
+                    if emb.len() == EMBED_DIMS {
+                        batch.push((*id, emb.as_bytes().to_vec()));
+                    }
+                }
+            }
+            if let Ok(tx) = self.conn.transaction().await {
+                for (id, bytes) in batch {
+                    if tx
+                        .execute(
+                            "INSERT OR REPLACE INTO code_chunk_emb (chunk_id, embedding) VALUES (?1, ?2)",
+                            params![id, bytes],
+                        )
+                        .await
+                        .is_ok()
+                    {
+                        n += 1;
+                    }
+                }
+                tx.commit().await.ok();
             }
         }
         if n > 0 {
@@ -186,21 +209,6 @@ impl CodeStore {
         Ok(n)
     }
 
-    async fn store_chunk_embedding(&self, chunk_id: i64, text: &str) -> Result<()> {
-        use zerocopy::IntoBytes;
-        let emb = self.embedder.embed(text)?;
-        if emb.len() != EMBED_DIMS {
-            anyhow::bail!("embedder dims {} != expected {EMBED_DIMS}", emb.len());
-        }
-        let bytes = emb.as_bytes().to_vec();
-        self.conn
-            .execute(
-                "INSERT OR REPLACE INTO code_chunk_emb (chunk_id, embedding) VALUES (?1, ?2)",
-                params![chunk_id, bytes],
-            )
-            .await?;
-        Ok(())
-    }
 
     pub fn health(&self) -> SyncHealthSnapshot {
         self.health.snapshot(self.remote_configured)

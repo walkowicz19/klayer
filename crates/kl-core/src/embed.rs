@@ -120,7 +120,11 @@ pub fn rrf_fuse(ranked_lists: &[Vec<i64>], k: u32) -> Vec<(i64, f64)> {
         }
     }
     let mut out: Vec<(i64, f64)> = scores.into_iter().collect();
-    out.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    out.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
     out
 }
 

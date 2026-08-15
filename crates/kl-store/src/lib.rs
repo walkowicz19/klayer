@@ -234,17 +234,6 @@ impl Store {
             let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         };
-        let mut kn = 0usize;
-        for (id, title, body) in missing_knowledge {
-            let text = if title.is_empty() {
-                body
-            } else {
-                format!("{title}\n{body}")
-            };
-            if self.embed_and_store_knowledge(id, &text).is_ok() {
-                kn += 1;
-            }
-        }
         let missing_chunks: Vec<(i64, String)> = {
             let c = self.conn.lock().unwrap();
             let mut stmt = c.prepare(
@@ -254,12 +243,61 @@ impl Store {
             let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?
         };
-        let mut cn = 0usize;
+
+        if missing_knowledge.is_empty() && missing_chunks.is_empty() {
+            return Ok((0, 0));
+        }
+
+        let mut k_embeddings = Vec::with_capacity(missing_knowledge.len());
+        for (id, title, body) in missing_knowledge {
+            let text = if title.is_empty() {
+                body
+            } else {
+                format!("{title}\n{body}")
+            };
+            if let Ok(emb) = self.embedder.embed(&text) {
+                k_embeddings.push((id, emb));
+            }
+        }
+
+        let mut c_embeddings = Vec::with_capacity(missing_chunks.len());
         for (id, text) in missing_chunks {
-            if self.embed_and_store_chunk(id, &text).is_ok() {
+            if let Ok(emb) = self.embedder.embed(&text) {
+                c_embeddings.push((id, emb));
+            }
+        }
+
+        let mut c = self.conn.lock().unwrap();
+        let tx = c.transaction()?;
+        let mut kn = 0usize;
+        for (id, emb) in k_embeddings {
+            use zerocopy::IntoBytes;
+            let bytes = emb.as_bytes();
+            if tx
+                .execute(
+                    "INSERT OR REPLACE INTO knowledge_vec (knowledge_id, embedding) VALUES (?1, ?2)",
+                    rusqlite::params![id, bytes],
+                )
+                .is_ok()
+            {
+                kn += 1;
+            }
+        }
+        let mut cn = 0usize;
+        for (id, emb) in c_embeddings {
+            use zerocopy::IntoBytes;
+            let bytes = emb.as_bytes();
+            if tx
+                .execute(
+                    "INSERT OR REPLACE INTO chunks_vec (chunk_id, embedding) VALUES (?1, ?2)",
+                    rusqlite::params![id, bytes],
+                )
+                .is_ok()
+            {
                 cn += 1;
             }
         }
+        tx.commit()?;
         Ok((kn, cn))
     }
 
